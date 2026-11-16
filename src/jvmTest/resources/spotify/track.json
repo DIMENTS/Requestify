@@ -1,0 +1,10 @@
+{
+  "id": "1B75hgRqe7A4fwee3g3Wmu",
+  "uri": "spotify:track:1B75hgRqe7A4fwee3g3Wmu",
+  "name": "Midnight City",
+  "type": "track",
+  "duration_ms": 243000,
+  "explicit": true,
+  "artists": [{"name": "M83"}, {"name": "Guest"}],
+  "album": {"images": [{"url": "https://i.scdn.co/image/medium", "width": 300, "height": 300}]}
+}

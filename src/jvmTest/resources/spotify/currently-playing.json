@@ -1,0 +1,19 @@
+{
+  "progress_ms": 141000,
+  "is_playing": true,
+  "currently_playing_type": "track",
+  "item": {
+    "id": "1B75hgRqe7A4fwee3g3Wmu",
+    "uri": "spotify:track:1B75hgRqe7A4fwee3g3Wmu",
+    "name": "Midnight City",
+    "type": "track",
+    "duration_ms": 243000,
+    "explicit": false,
+    "artists": [{"id": "63MQldklfxkjYDoUE4Tppz", "name": "M83"}],
+    "album": {"name": "Hurry Up, We're Dreaming", "images": [
+      {"url": "https://i.scdn.co/image/large", "width": 640, "height": 640},
+      {"url": "https://i.scdn.co/image/medium", "width": 300, "height": 300},
+      {"url": "https://i.scdn.co/image/small", "width": 64, "height": 64}
+    ]}
+  }
+}

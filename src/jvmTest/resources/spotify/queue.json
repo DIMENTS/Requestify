@@ -1,0 +1,8 @@
+{
+  "currently_playing": {"id": "cur", "type": "track"},
+  "queue": [
+    {"id": "q1", "type": "track", "name": "Q1"},
+    {"id": "ep1", "type": "episode", "name": "Some episode"},
+    {"id": "q2", "type": "track", "name": "Q2"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "tracks": {
+    "items": [
+      {"id": "a1", "uri": "spotify:track:a1", "name": "One", "type": "track", "duration_ms": 1000, "explicit": false,
+       "artists": [{"name": "A"}], "album": {"images": []}},
+      {"id": "b2", "uri": "spotify:track:b2", "name": "Two", "type": "track", "duration_ms": 2000, "explicit": true,
+       "artists": [{"name": "B"}, {"name": "C"}], "album": {"images": [{"url": "https://i.scdn.co/image/b2", "width": 640, "height": 640}]}}
+    ]
+  }
+}
