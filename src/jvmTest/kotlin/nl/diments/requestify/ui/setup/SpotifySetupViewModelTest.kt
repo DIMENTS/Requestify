@@ -235,6 +235,18 @@ class SpotifySetupViewModelTest {
     }
 
     @Test
+    fun loginWhoseReceiverCannotLoadEndsWithAnError() = runTest {
+        val settings = settingsStore()
+        val noHttpServer = auth(settings, receiverFactory = { throw NoClassDefFoundError("com/sun/net/httpserver/HttpServer") })
+        val vm = viewModel(settings, noHttpServer, backgroundScope)
+        vm.onClientIdChange(VALID_ID)
+        vm.onLogin()
+        runCurrent()
+        assertEquals(LoginError.Failed, vm.state.value.loginError)
+        assertFalse(vm.state.value.loggingIn, "the spinner ends")
+    }
+
+    @Test
     fun loginUrlIsShownWhileTheBrowserCouldNotOpen() = runTest {
         lateinit var vm: SpotifySetupViewModel
         vm = nobodyLogsIn(onBrowser = { url -> vm.showLoginUrl(url) })

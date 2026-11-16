@@ -129,6 +129,16 @@ class SpotifyAuthTest {
     }
 
     @Test
+    fun receiverThatCannotLoadIsAFailedLoginNotAHang() = runBlocking {
+        // A packaged runtime without jdk.httpserver throws an Error, not an Exception, when the receiver is made.
+        val a = auth(InMemorySecretStore(), receiverFactory = { throw NoClassDefFoundError("com/sun/net/httpserver/HttpServer") }) {
+            error("no http")
+        }
+        assertTrue(a.login() is LoginResult.Failed)
+        assertEquals(SpotifyAuthStatus.LoggedOut, a.status.value)
+    }
+
+    @Test
     fun refreshPersistsRotatedTokenBeforeReturning() = runBlocking {
         val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
         var now = 0L

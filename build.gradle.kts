@@ -56,6 +56,9 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "Requestify"
             packageVersion = "0.1.0"
+            // From `./gradlew suggestRuntimeModules`. jdk.httpserver is the Spotify login's loopback receiver;
+            // without it the installed app cannot log in.
+            modules("java.instrument", "java.management", "jdk.httpserver", "jdk.unsupported")
         }
     }
 }

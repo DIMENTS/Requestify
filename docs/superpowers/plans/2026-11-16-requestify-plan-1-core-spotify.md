@@ -716,5 +716,5 @@ is the acceptance check for plan 1.
 - [ ] **Step 4:** Reorder and remove a queued track and check it sticks. Close and reopen the app: the queue is restored.
 - [ ] **Step 5:** Close Spotify on all devices. The chip shows "Open Spotify on a device" and the queue stays intact. Reopen Spotify: hand-over resumes.
 - [ ] **Step 6:** Switch to a custom colour. Only the Now Playing panel still follows the album.
-- [ ] **Step 7:** `./gradlew packageExe` produces an installer under `build/compose/binaries/` (smoke only; signing and updates come in plan 4).
+- [ ] **Step 7:** `./gradlew packageExe` produces an installer under `build/compose/binaries/`. Install that exe, launch the **installed** app (not `./gradlew run`) and log in to Spotify once: this proves the packaged runtime has every JDK module the app needs (e.g. `jdk.httpserver` for the login). Signing and updates come in plan 4.
 - [ ] **Step 8:** Note any findings in the plan, fix with a test first, and commit.

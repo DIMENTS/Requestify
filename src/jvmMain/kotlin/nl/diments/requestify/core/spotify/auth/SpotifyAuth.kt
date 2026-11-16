@@ -100,6 +100,11 @@ class SpotifyAuth(
             receiverFactory()
         } catch (_: BindException) {
             return LoginResult.Failed(LOGIN_FAILED_PORT_IN_USE)
+        } catch (e: Exception) {
+            return LoginResult.Failed(e.message ?: "redirect receiver failed")
+        } catch (e: LinkageError) {
+            // E.g. a runtime image without jdk.httpserver: a failed login, never a login that waits forever.
+            return LoginResult.Failed(e.toString())
         }
         val code = try {
             openBrowser(authorizeUrl(Pkce.challenge(verifier), state))
