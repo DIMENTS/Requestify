@@ -74,9 +74,13 @@ class PlaybackController(
     private val _history = MutableStateFlow<List<PlayedEntry>>(emptyList())
     private val _health = MutableStateFlow<SpotifyHealth>(SpotifyHealth.NothingPlaying)
     private val _persistError = MutableStateFlow<String?>(null)
+    private val _handedOver = MutableStateFlow<Request?>(null)
 
     val queue: StateFlow<RequestQueue> = _queue.asStateFlow()
     val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
+
+    /** The request in Spotify's queue that has not started yet: it is in neither [queue] nor [nowPlaying]. */
+    val handedOver: StateFlow<Request?> = _handedOver.asStateFlow()
 
     /** Newest first, at most [QueueStore.MAX_HISTORY] entries. */
     val history: StateFlow<List<PlayedEntry>> = _history.asStateFlow()
@@ -91,7 +95,6 @@ class PlaybackController(
     // Guarded by [stateMutex], like every write to the state flows above. Only holders of [spotifyMutex]
     // change [handedOver], [playing] and [lastTrackId] (after the first load), so they stay put during a sequence.
     private var loaded = false
-    private var handedOver: Request? = null // in Spotify's queue, not playing yet
     private var playing: Request? = null
     private var lastTrackId: String? = null
     private var lastSaved: PersistedPlayback? = null
@@ -246,7 +249,7 @@ class PlaybackController(
 
     /** A track ended that wasn't the handed-over one: only Spotify's queue can tell whether it still has it. */
     private fun needsSpotifyQueueCheck(trackId: String?): Boolean {
-        val sent = handedOver ?: return false
+        val sent = _handedOver.value ?: return false
         return trackId != lastTrackId && lastTrackId != null && sent.track.id != trackId
     }
 
@@ -262,13 +265,13 @@ class PlaybackController(
                 playing = null
             }
         }
-        val sent = handedOver
+        val sent = _handedOver.value
         if (sent != null && sent.track.id == trackId) {
             playing = sent
-            handedOver = null
+            _handedOver.value = null
         } else if (sent != null && spotifyQueue != null && sent.track.id !in spotifyQueue) {
             _queue.value = _queue.value.addFirst(sent)
-            handedOver = null
+            _handedOver.value = null
         }
         lastTrackId = trackId
     }
@@ -278,11 +281,11 @@ class PlaybackController(
      * playing now: Spotify would report that repeat under the same id, so its start could never be seen.
      */
     private fun handOverCandidate(currentTrackId: String?): Request? =
-        _queue.value.head?.takeIf { requestsOpen.value && handedOver == null && it.track.id != currentTrackId }
+        _queue.value.head?.takeIf { requestsOpen.value && _handedOver.value == null && it.track.id != currentTrackId }
 
     /** Spotify has [request] now, even if it was moved or removed meanwhile: take it out of the current queue. */
     private fun markHandedOver(request: Request) {
-        handedOver = request
+        _handedOver.value = request
         _queue.value = _queue.value.remove(request.id)
     }
 
@@ -317,7 +320,7 @@ class PlaybackController(
         if (loaded) return
         val saved = withContext(ioDispatcher) { store.load() }
         _queue.value = saved.queue
-        handedOver = saved.handedOver
+        _handedOver.value = saved.handedOver
         playing = saved.playing
         _history.value = saved.history
         lastSaved = saved
@@ -326,7 +329,7 @@ class PlaybackController(
 
     /** Saves when the state differs from the last successful save; a failure shows in [persistError]. */
     private suspend fun persistIfChanged() {
-        val snapshot = PersistedPlayback(_queue.value, handedOver, playing, _history.value)
+        val snapshot = PersistedPlayback(_queue.value, _handedOver.value, playing, _history.value)
         if (snapshot == lastSaved) return
         try {
             withContext(ioDispatcher + NonCancellable) { store.save(snapshot) }

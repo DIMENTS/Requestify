@@ -4,4 +4,57 @@
     <string name="oauth_success_title">Connected to Spotify</string>
     <string name="oauth_success_body">You can close this window and return to Requestify.</string>
     <string name="oauth_failed_body">Spotify login failed. You can close this window and try again in Requestify.</string>
+
+    <!-- Home: queue -->
+    <string name="home_queue_title">Queue</string>
+    <string name="home_queue_tab">Queue · %1$d</string>
+    <string name="home_played_tab">Played</string>
+    <string name="home_queue_total">Total %1$s</string>
+    <string name="home_queue_empty">The queue is empty. New requests show up here.</string>
+    <string name="home_played_empty">Nothing has been played yet.</string>
+    <string name="home_up_next_in_spotify">Up next in Spotify</string>
+    <string name="home_save_failing">Couldn’t save the queue — retrying</string>
+    <string name="home_remove_request">Remove %1$s</string>
+    <string name="home_drag_to_reorder">Drag to reorder</string>
+    <string name="home_paid_request">Paid request</string>
+    <string name="requester_you">You</string>
+
+    <!-- Home: adding a track -->
+    <string name="add_placeholder">Search or paste a Spotify link</string>
+    <string name="add_clear">Clear</string>
+    <string name="add_no_results">No tracks found</string>
+    <string name="add_not_a_track">Only tracks can be added, not %1$s</string>
+    <string name="add_not_a_track_generic">Only tracks can be added</string>
+    <string name="add_spotify_unavailable">Couldn’t reach Spotify. Try again in a moment.</string>
+    <string name="spotify_kind_album">albums</string>
+    <string name="spotify_kind_playlist">playlists</string>
+    <string name="spotify_kind_artist">artists</string>
+    <string name="spotify_kind_episode">episodes</string>
+    <string name="spotify_kind_show">podcasts</string>
+
+    <!-- Request sources -->
+    <string name="source_manual">Manual</string>
+    <string name="source_chat">!sr</string>
+    <string name="source_channel_points">Channel Points</string>
+    <string name="source_bits">%1$d Bits</string>
+    <string name="source_streamelements">SE %1$s</string>
+    <string name="source_donolink">DonoLink %1$s</string>
+
+    <!-- Home: now playing -->
+    <string name="now_playing_label">NOW PLAYING</string>
+    <string name="now_playing_own_music">Your own music</string>
+    <string name="now_playing_idle_title">Nothing playing</string>
+    <string name="now_playing_idle_body">Start music in Spotify and it shows up here.</string>
+    <string name="now_playing_play">Play</string>
+    <string name="now_playing_pause">Pause</string>
+    <string name="now_playing_skip">Skip</string>
+
+    <!-- Spotify status -->
+    <string name="spotify_status_ok">Spotify connected</string>
+    <string name="spotify_status_nothing_playing">Spotify is not playing</string>
+    <string name="spotify_status_no_device">Open Spotify on a device</string>
+    <string name="spotify_status_login_needed">Log in to Spotify again</string>
+    <string name="spotify_status_premium_required">Spotify Premium required</string>
+    <string name="spotify_status_rate_limited">Spotify busy, retrying</string>
+    <string name="spotify_status_unreachable">Spotify unreachable</string>
 </resources>

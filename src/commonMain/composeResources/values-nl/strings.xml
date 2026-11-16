@@ -4,4 +4,57 @@
     <string name="oauth_success_title">Verbonden met Spotify</string>
     <string name="oauth_success_body">Je kunt dit venster sluiten en teruggaan naar Requestify.</string>
     <string name="oauth_failed_body">Inloggen bij Spotify is mislukt. Je kunt dit venster sluiten en het opnieuw proberen in Requestify.</string>
+
+    <!-- Home: queue -->
+    <string name="home_queue_title">Wachtrij</string>
+    <string name="home_queue_tab">Wachtrij · %1$d</string>
+    <string name="home_played_tab">Gespeeld</string>
+    <string name="home_queue_total">Totaal %1$s</string>
+    <string name="home_queue_empty">De wachtrij is leeg. Nieuwe verzoeken verschijnen hier.</string>
+    <string name="home_played_empty">Er is nog niets gespeeld.</string>
+    <string name="home_up_next_in_spotify">Volgende in Spotify</string>
+    <string name="home_save_failing">Wachtrij opslaan mislukt — wordt opnieuw geprobeerd</string>
+    <string name="home_remove_request">%1$s verwijderen</string>
+    <string name="home_drag_to_reorder">Sleep om te verplaatsen</string>
+    <string name="home_paid_request">Betaald verzoek</string>
+    <string name="requester_you">Jij</string>
+
+    <!-- Home: adding a track -->
+    <string name="add_placeholder">Zoek of plak een Spotify-link</string>
+    <string name="add_clear">Wissen</string>
+    <string name="add_no_results">Geen nummers gevonden</string>
+    <string name="add_not_a_track">Alleen nummers kunnen worden toegevoegd, geen %1$s</string>
+    <string name="add_not_a_track_generic">Alleen nummers kunnen worden toegevoegd</string>
+    <string name="add_spotify_unavailable">Spotify reageert niet. Probeer het zo opnieuw.</string>
+    <string name="spotify_kind_album">albums</string>
+    <string name="spotify_kind_playlist">afspeellijsten</string>
+    <string name="spotify_kind_artist">artiesten</string>
+    <string name="spotify_kind_episode">afleveringen</string>
+    <string name="spotify_kind_show">podcasts</string>
+
+    <!-- Request sources -->
+    <string name="source_manual">Handmatig</string>
+    <string name="source_chat">!sr</string>
+    <string name="source_channel_points">Channel Points</string>
+    <string name="source_bits">%1$d Bits</string>
+    <string name="source_streamelements">SE %1$s</string>
+    <string name="source_donolink">DonoLink %1$s</string>
+
+    <!-- Home: now playing -->
+    <string name="now_playing_label">NU SPEELT</string>
+    <string name="now_playing_own_music">Je eigen muziek</string>
+    <string name="now_playing_idle_title">Er speelt niets</string>
+    <string name="now_playing_idle_body">Start muziek in Spotify, dan verschijnt die hier.</string>
+    <string name="now_playing_play">Afspelen</string>
+    <string name="now_playing_pause">Pauzeren</string>
+    <string name="now_playing_skip">Overslaan</string>
+
+    <!-- Spotify status -->
+    <string name="spotify_status_ok">Spotify verbonden</string>
+    <string name="spotify_status_nothing_playing">Spotify speelt niet</string>
+    <string name="spotify_status_no_device">Open Spotify op een apparaat</string>
+    <string name="spotify_status_login_needed">Log opnieuw in bij Spotify</string>
+    <string name="spotify_status_premium_required">Spotify Premium vereist</string>
+    <string name="spotify_status_rate_limited">Spotify is druk, wordt opnieuw geprobeerd</string>
+    <string name="spotify_status_unreachable">Spotify onbereikbaar</string>
 </resources>

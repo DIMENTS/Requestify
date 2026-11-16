@@ -133,6 +133,16 @@ class PlaybackControllerTest {
     }
 
     @Test
+    fun handedOverRequestIsExposedUntilItPlays() = runTest {
+        val player = fakePlayer()
+        val controller = startWithR1HandedOver(player)
+        assertEquals(r1, controller.handedOver.value)
+        player.plays(r1.track, progressMs = 1_000)
+        advance(1_000)
+        assertNull(controller.handedOver.value)
+    }
+
+    @Test
     fun finishedRequestGoesToHistory() = runTest {
         val player = fakePlayer()
         val controller = startWithR1HandedOver(player)
