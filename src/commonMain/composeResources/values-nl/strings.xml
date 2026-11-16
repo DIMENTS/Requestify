@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Requestify</string>
+    <string name="oauth_success_title">Verbonden met Spotify</string>
+    <string name="oauth_success_body">Je kunt dit venster sluiten en teruggaan naar Requestify.</string>
+    <string name="oauth_failed_body">Inloggen bij Spotify is mislukt. Je kunt dit venster sluiten en het opnieuw proberen in Requestify.</string>
 </resources>
