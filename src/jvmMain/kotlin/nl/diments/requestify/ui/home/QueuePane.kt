@@ -107,11 +107,7 @@ fun QueuePane(
     val motion = MaterialTheme.motionScheme
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                stringResource(Res.string.home_queue_title),
-                style = MaterialTheme.typography.headlineMediumEmphasized,
-                fontWeight = EmphasizedWeight,
-            )
+            Text(stringResource(Res.string.home_queue_title), style = MaterialTheme.typography.headlineMediumEmphasized)
             Spacer(Modifier.weight(1f))
             SpotifyStatusChip(state.health)
         }

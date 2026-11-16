@@ -49,6 +49,9 @@ private data class TokenError(val error: String? = null)
 
 private const val REFRESH_MARGIN_MS = 60_000L
 
+/** The [LoginResult.Failed.reason] when another app holds the redirect port. */
+const val LOGIN_FAILED_PORT_IN_USE = "port $SPOTIFY_REDIRECT_PORT in use"
+
 class SpotifyAuth(
     private val http: HttpClient,
     private val secrets: SecretStore,
@@ -97,7 +100,7 @@ class SpotifyAuth(
         val receiver = try {
             receiverFactory()
         } catch (_: BindException) {
-            return LoginResult.Failed("port $SPOTIFY_REDIRECT_PORT in use")
+            return LoginResult.Failed(LOGIN_FAILED_PORT_IN_USE)
         }
         val code = try {
             openBrowser(authorizeUrl(Pkce.challenge(verifier), state))

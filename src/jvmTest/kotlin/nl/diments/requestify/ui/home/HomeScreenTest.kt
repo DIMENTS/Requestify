@@ -89,7 +89,7 @@ class HomeScreenTest {
         setContent {
             Row {
                 Box(Modifier.width(railWidth).fillMaxHeight()) // e.g. the navigation rail
-                HomeScreen(vm)
+                HomeScreen(vm, albumSeed = null)
             }
         }
         assertTrue(!nowPlayingIsAboveTheQueue(), "1180 dp for Home: side by side")
@@ -106,7 +106,7 @@ class HomeScreenTest {
         setContent {
             Row {
                 Box(Modifier.width(railWidth).fillMaxHeight())
-                HomeScreen(vm)
+                HomeScreen(vm, albumSeed = null)
             }
         }
         onNode(hasSetTextAction()).performTextInput("daft punk")

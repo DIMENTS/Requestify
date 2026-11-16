@@ -57,4 +57,64 @@
     <string name="spotify_status_premium_required">Spotify Premium required</string>
     <string name="spotify_status_rate_limited">Spotify busy, retrying</string>
     <string name="spotify_status_unreachable">Spotify unreachable</string>
+
+    <!-- Navigation -->
+    <string name="nav_add">Add a track</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_connections">Connections</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Connections: Spotify setup -->
+    <string name="setup_intro">Connect Requestify to your own Spotify app. You only need to do this once.</string>
+    <string name="setup_spotify">Spotify</string>
+    <string name="setup_status_connected">Connected</string>
+    <string name="setup_status_not_connected">Not connected</string>
+    <string name="setup_status_login_expired">Login expired</string>
+    <string name="setup_step_dashboard_title">Create a Spotify app</string>
+    <string name="setup_step_dashboard_body">Open the Spotify developer dashboard, create an app with any name and description, and tick “Web API”.</string>
+    <string name="setup_open_dashboard">Open dashboard</string>
+    <string name="setup_step_redirect_title">Add the redirect URI</string>
+    <string name="setup_step_redirect_body">Paste this address under “Redirect URIs” in your app and save.</string>
+    <string name="setup_copy">Copy</string>
+    <string name="setup_copied">Copied</string>
+    <string name="setup_step_client_id_title">Paste the Client ID</string>
+    <string name="setup_step_client_id_body">You find it on your app’s page, under “Basic Information”.</string>
+    <string name="setup_client_id_label">Client ID</string>
+    <string name="setup_client_id_invalid">A Client ID has 32 characters: digits and the letters a–f.</string>
+    <string name="setup_step_login_title">Log in with Spotify</string>
+    <string name="setup_step_login_body">Your browser opens Spotify. Allow Requestify to control your playback.</string>
+    <string name="setup_login">Log in with Spotify</string>
+    <string name="setup_logging_in">Waiting for you to log in in your browser…</string>
+    <string name="setup_browser_failed">Your browser didn’t open. Open this address yourself:</string>
+    <string name="setup_logged_in">Logged in to Spotify</string>
+    <string name="setup_logout">Log out</string>
+    <string name="setup_login_expired">Your Spotify login has expired. Log in again.</string>
+    <string name="setup_login_timed_out">Logging in took too long. Try again.</string>
+    <string name="setup_login_port_in_use">Another app is using port %1$d. Close it and try again.</string>
+    <string name="setup_login_failed">Logging in didn’t work. Check the Client ID and the redirect URI, then try again.</string>
+    <string name="setup_step_check_title">Premium and playback</string>
+    <string name="setup_check_after_login">Shows here once you’re logged in.</string>
+    <string name="setup_premium_checking">Checking Spotify Premium…</string>
+    <string name="setup_premium_ok">You have Spotify Premium</string>
+    <string name="setup_premium_missing">Requestify needs Spotify Premium</string>
+    <string name="setup_premium_unknown">Premium is checked when the first track plays</string>
+    <string name="setup_device_ok">Requests are added to the device Spotify is playing on.</string>
+    <string name="setup_device_hint">Start music in Spotify, on this PC or another device. Requests are added to that device.</string>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_colour">Colour</string>
+    <string name="settings_colour_album">Album art</string>
+    <string name="settings_colour_custom">Custom</string>
+    <string name="settings_colour_album_hint">The whole app takes its colours from the album art.</string>
+    <string name="settings_colour_custom_hint">Your colour for the app. Now Playing still follows the album art.</string>
+    <string name="settings_swatch">Colour %1$d</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_dutch">Nederlands</string>
+    <string name="settings_language_restart">The new language is used after you restart Requestify.</string>
 </resources>

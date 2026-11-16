@@ -159,11 +159,7 @@ private fun Label() {
 private fun Idle(compact: Boolean) {
     val idleArt = @Composable { modifier: Modifier -> AlbumArt(null, modifier.clip(artShape(1f))) }
     val text = @Composable {
-        Text(
-            stringResource(Res.string.now_playing_idle_title),
-            style = MaterialTheme.typography.headlineSmallEmphasized,
-            fontWeight = EmphasizedWeight,
-        )
+        Text(stringResource(Res.string.now_playing_idle_title), style = MaterialTheme.typography.headlineSmallEmphasized)
         Text(
             stringResource(Res.string.now_playing_idle_body),
             style = MaterialTheme.typography.bodyMedium,
@@ -247,7 +243,7 @@ private fun TrackText(track: Track, compact: Boolean) {
             val titleStyle = if (compact) typography.headlineMediumEmphasized else typography.displaySmallEmphasized
             Text(
                 shown.name,
-                style = titleStyle.copy(fontWeight = EmphasizedWeight, lineHeight = 1.15.em),
+                style = titleStyle.copy(lineHeight = 1.15.em),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 autoSize = TextAutoSize.StepBased(minFontSize = 20.sp, maxFontSize = titleStyle.fontSize),

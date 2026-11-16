@@ -57,4 +57,64 @@
     <string name="spotify_status_premium_required">Spotify Premium vereist</string>
     <string name="spotify_status_rate_limited">Spotify is druk, wordt opnieuw geprobeerd</string>
     <string name="spotify_status_unreachable">Spotify onbereikbaar</string>
+
+    <!-- Navigation -->
+    <string name="nav_add">Nummer toevoegen</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_connections">Koppelingen</string>
+    <string name="nav_settings">Instellingen</string>
+
+    <!-- Connections: Spotify setup -->
+    <string name="setup_intro">Koppel Requestify aan je eigen Spotify-app. Dat hoef je maar één keer te doen.</string>
+    <string name="setup_spotify">Spotify</string>
+    <string name="setup_status_connected">Gekoppeld</string>
+    <string name="setup_status_not_connected">Niet gekoppeld</string>
+    <string name="setup_status_login_expired">Login verlopen</string>
+    <string name="setup_step_dashboard_title">Maak een Spotify-app</string>
+    <string name="setup_step_dashboard_body">Open het Spotify-dashboard voor ontwikkelaars, maak een app met een naam en beschrijving naar keuze en vink “Web API” aan.</string>
+    <string name="setup_open_dashboard">Dashboard openen</string>
+    <string name="setup_step_redirect_title">Voeg de redirect-URI toe</string>
+    <string name="setup_step_redirect_body">Plak dit adres bij “Redirect URIs” in je app en sla op.</string>
+    <string name="setup_copy">Kopiëren</string>
+    <string name="setup_copied">Gekopieerd</string>
+    <string name="setup_step_client_id_title">Plak de Client ID</string>
+    <string name="setup_step_client_id_body">Je vindt hem op de pagina van je app, onder “Basic Information”.</string>
+    <string name="setup_client_id_label">Client ID</string>
+    <string name="setup_client_id_invalid">Een Client ID heeft 32 tekens: cijfers en de letters a–f.</string>
+    <string name="setup_step_login_title">Log in met Spotify</string>
+    <string name="setup_step_login_body">Je browser opent Spotify. Geef Requestify toestemming om het afspelen te bedienen.</string>
+    <string name="setup_login">Inloggen met Spotify</string>
+    <string name="setup_logging_in">Wachten tot je inlogt in je browser…</string>
+    <string name="setup_browser_failed">Je browser ging niet open. Open dit adres zelf:</string>
+    <string name="setup_logged_in">Ingelogd bij Spotify</string>
+    <string name="setup_logout">Uitloggen</string>
+    <string name="setup_login_expired">Je Spotify-login is verlopen. Log opnieuw in.</string>
+    <string name="setup_login_timed_out">Inloggen duurde te lang. Probeer het opnieuw.</string>
+    <string name="setup_login_port_in_use">Een andere app gebruikt poort %1$d. Sluit die app en probeer het opnieuw.</string>
+    <string name="setup_login_failed">Inloggen is niet gelukt. Controleer de Client ID en de redirect-URI en probeer het opnieuw.</string>
+    <string name="setup_step_check_title">Premium en afspelen</string>
+    <string name="setup_check_after_login">Zie je hier zodra je bent ingelogd.</string>
+    <string name="setup_premium_checking">Spotify Premium controleren…</string>
+    <string name="setup_premium_ok">Je hebt Spotify Premium</string>
+    <string name="setup_premium_missing">Requestify heeft Spotify Premium nodig</string>
+    <string name="setup_premium_unknown">Premium wordt gecontroleerd zodra het eerste nummer speelt</string>
+    <string name="setup_device_ok">Verzoeken komen op het apparaat waarop Spotify speelt.</string>
+    <string name="setup_device_hint">Start muziek in Spotify, op deze pc of een ander apparaat. Verzoeken komen op dat apparaat.</string>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Weergave</string>
+    <string name="settings_colour">Kleur</string>
+    <string name="settings_colour_album">Albumhoes</string>
+    <string name="settings_colour_custom">Eigen kleur</string>
+    <string name="settings_colour_album_hint">De hele app neemt de kleuren van de albumhoes over.</string>
+    <string name="settings_colour_custom_hint">Jouw kleur voor de app. Nu speelt volgt nog steeds de albumhoes.</string>
+    <string name="settings_swatch">Kleur %1$d</string>
+    <string name="settings_theme">Thema</string>
+    <string name="settings_system">Systeem</string>
+    <string name="settings_theme_light">Licht</string>
+    <string name="settings_theme_dark">Donker</string>
+    <string name="settings_language">Taal</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_dutch">Nederlands</string>
+    <string name="settings_language_restart">De nieuwe taal wordt gebruikt nadat je Requestify opnieuw hebt gestart.</string>
 </resources>
