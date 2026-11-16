@@ -162,6 +162,80 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun newInputClearsTheOldMessageAndMarksResultsAsPending() = runTest {
+        val home = home()
+        home.vm.onAddInput("zzzzzz")
+        settle()
+        assertEquals(AddMessage.NoResults, home.vm.state.value.addMessage)
+
+        home.vm.onAddInput("zzzzzzz")
+        runCurrent()
+        assertNull(home.vm.state.value.addMessage)
+        assertTrue(home.vm.state.value.lookingUp)
+        settle()
+        assertEquals(false, home.vm.state.value.lookingUp)
+    }
+
+    @Test
+    fun submitAddsTheFirstResultForTheSubmittedText() = runTest {
+        val home = home()
+        home.catalog.searchResult = SpotifyResult.Ok(listOf(track("daft"), track("punk")))
+        home.vm.onAddInput("daft")
+        settle()
+        assertTrue(home.vm.onAddSubmit("daft"))
+        settle()
+        assertEquals(listOf(track("daft")), home.controller.queue.value.items.map { it.track })
+        assertTrue(home.vm.state.value.results.isEmpty())
+    }
+
+    @Test
+    fun submitWhileTheNextSearchIsPendingAddsNothing() = runTest {
+        val home = home()
+        home.catalog.searchResult = SpotifyResult.Ok(listOf(track("a")))
+        home.vm.onAddInput("a")
+        settle()
+        home.catalog.searchResult = SpotifyResult.Ok(listOf(track("ab")))
+        home.vm.onAddInput("ab")
+        advanceTimeBy(100) // still within the debounce
+        assertEquals(false, home.vm.onAddSubmit("ab"))
+        settle()
+        assertTrue(home.controller.queue.value.items.isEmpty())
+
+        assertTrue(home.vm.onAddSubmit("ab")) // the fresh results for "ab" do count
+        settle()
+        assertEquals(listOf(track("ab")), home.controller.queue.value.items.map { it.track })
+    }
+
+    @Test
+    fun pastedLinkSubmittedAtOnceNeverAddsAnEarlierResult() = runTest {
+        val home = home()
+        home.catalog.searchResult = SpotifyResult.Ok(listOf(track("daft")))
+        home.vm.onAddInput("daft")
+        settle()
+        val link = "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT"
+        home.vm.onAddInput(link)
+        assertEquals(false, home.vm.onAddSubmit(link))
+        settle()
+        assertTrue(home.controller.queue.value.items.isEmpty())
+
+        assertTrue(home.vm.onAddSubmit(link))
+        settle()
+        assertEquals(listOf("4cOdK2wGLETKBW3PvgPWqT"), home.controller.queue.value.items.map { it.track.id })
+    }
+
+    @Test
+    fun submitIgnoresResultsForOtherText() = runTest {
+        val home = home()
+        home.catalog.searchResult = SpotifyResult.Ok(listOf(track("daft")))
+        home.vm.onAddInput("daft")
+        settle()
+        assertEquals(false, home.vm.onAddSubmit("")) // e.g. a field that was rebuilt empty
+        assertEquals(false, home.vm.onAddSubmit("daft punk"))
+        settle()
+        assertTrue(home.controller.queue.value.items.isEmpty())
+    }
+
+    @Test
     fun addTrackEnqueuesManualFreeRequest() = runTest {
         val home = home()
         home.controller.enqueue(request("r1"))

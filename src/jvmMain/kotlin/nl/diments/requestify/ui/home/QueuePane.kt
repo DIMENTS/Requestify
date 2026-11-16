@@ -96,6 +96,7 @@ private enum class QueueTab { Queue, Played }
 fun QueuePane(
     state: HomeUiState,
     onAddInput: (String) -> Unit,
+    onAddSubmit: (String) -> Boolean,
     onAddTrack: (Track) -> Unit,
     onRemove: (String) -> Unit,
     onMove: (id: String, toIndex: Int) -> Unit,
@@ -134,8 +135,10 @@ fun QueuePane(
         }
         AddTrackField(
             results = state.results,
+            resultsStale = state.lookingUp,
             message = state.addMessage,
             onInput = onAddInput,
+            onSubmit = onAddSubmit,
             onPick = onAddTrack,
             focusRequester = addFieldFocus,
         )

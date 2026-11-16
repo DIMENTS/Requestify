@@ -2,6 +2,7 @@ package nl.diments.requestify.ui.home
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,14 +15,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeImageBitmap
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.SingletonImageLoader
@@ -37,7 +37,7 @@ import nl.diments.requestify.ui.theme.albumSeedFrom
 import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
 
-/** From this window width the panes sit side by side; below it Now Playing moves above the queue. */
+/** From this width of Home the panes sit side by side; below it Now Playing moves above the queue. */
 private val WideLayoutMinWidth = 900.dp
 private val NowPlayingWidth = 320.dp
 
@@ -61,36 +61,42 @@ fun HomeScreen(vm: HomeViewModel, addFieldFocus: FocusRequester = remember { Foc
     val settings by vm.settings.collectAsState()
     val seeds = selectSeeds(settings.themeMode, rememberAlbumSeed(state.nowPlaying?.track))
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
-    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val wide = windowWidth >= WideLayoutMinWidth
 
     RequestifyTheme(seeds.app, dark) {
-        val queuePane = @Composable { modifier: Modifier ->
-            QueuePane(
-                state = state,
-                onAddInput = vm::onAddInput,
-                onAddTrack = vm::onAddTrack,
-                onRemove = vm::onRemove,
-                onMove = vm::onMove,
-                modifier = modifier,
-                addFieldFocus = addFieldFocus,
-            )
-        }
-        val nowPlayingPane = @Composable { modifier: Modifier ->
-            RequestifyTheme(seeds.nowPlaying, dark) {
-                NowPlayingPane(state.nowPlaying, vm::onTogglePause, vm::onSkip, modifier, compact = !wide)
-            }
-        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            if (wide) {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    queuePane(Modifier.weight(1f).fillMaxHeight())
-                    nowPlayingPane(Modifier.width(NowPlayingWidth).fillMaxHeight())
+            // Measured on the space Home gets (the window minus the app's navigation rail), not the window.
+            BoxWithConstraints {
+                val wide = maxWidth >= WideLayoutMinWidth
+                // Movable, so the tab, the typed text and the list position survive a switch between layouts.
+                val queuePane = remember(vm, addFieldFocus) {
+                    movableContentOf { paneState: HomeUiState, modifier: Modifier ->
+                        QueuePane(
+                            state = paneState,
+                            onAddInput = vm::onAddInput,
+                            onAddSubmit = vm::onAddSubmit,
+                            onAddTrack = vm::onAddTrack,
+                            onRemove = vm::onRemove,
+                            onMove = vm::onMove,
+                            modifier = modifier,
+                            addFieldFocus = addFieldFocus,
+                        )
+                    }
                 }
-            } else {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    nowPlayingPane(Modifier.fillMaxWidth())
-                    queuePane(Modifier.weight(1f).fillMaxWidth())
+                val nowPlayingPane = @Composable { modifier: Modifier ->
+                    RequestifyTheme(seeds.nowPlaying, dark) {
+                        NowPlayingPane(state.nowPlaying, vm::onTogglePause, vm::onSkip, modifier, compact = !wide)
+                    }
+                }
+                if (wide) {
+                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        queuePane(state, Modifier.weight(1f).fillMaxHeight())
+                        nowPlayingPane(Modifier.width(NowPlayingWidth).fillMaxHeight())
+                    }
+                } else {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        nowPlayingPane(Modifier.fillMaxWidth())
+                        queuePane(state, Modifier.weight(1f).fillMaxWidth())
+                    }
                 }
             }
         }

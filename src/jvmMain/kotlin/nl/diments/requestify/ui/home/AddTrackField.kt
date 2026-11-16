@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -57,14 +58,18 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * The M3 search bar for adding a track: search text or a pasted Spotify link. Results drop down inside the
- * bar, why there are none shows below it; picking a result, or Enter for the first, adds it and clears the field.
+ * bar, why there are none shows below it. Picking a result adds it; Enter asks [onSubmit] to add the first
+ * result for the typed text. Either clears the field. While [resultsStale] (the next lookup is still running)
+ * the previous results stay visible but dimmed and cannot be picked.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTrackField(
     results: List<Track>,
+    resultsStale: Boolean,
     message: AddMessage?,
     onInput: (String) -> Unit,
+    onSubmit: (String) -> Boolean,
     onPick: (Track) -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester = remember { FocusRequester() },
@@ -86,7 +91,7 @@ fun AddTrackField(
                 SearchBarDefaults.InputField(
                     query = text,
                     onQueryChange = change,
-                    onSearch = { results.firstOrNull()?.let(pick) },
+                    onSearch = { if (onSubmit(text)) text = "" },
                     expanded = expanded,
                     onExpandedChange = {},
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -106,7 +111,7 @@ fun AddTrackField(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
-                results.forEach { track -> ResultRow(track, onClick = { pick(track) }) }
+                results.forEach { track -> ResultRow(track, enabled = !resultsStale, onClick = { pick(track) }) }
             }
         }
         MessageLine(message.takeIf { text.isNotBlank() })
@@ -146,10 +151,16 @@ private fun ClearButton(onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ResultRow(track: Track, onClick: () -> Unit) {
+private fun ResultRow(track: Track, enabled: Boolean, onClick: () -> Unit) {
     ListItem(
         onClick = onClick,
-        leadingContent = { AlbumArt(track.albumArtUrl, Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))) },
+        enabled = enabled,
+        leadingContent = {
+            AlbumArt(
+                track.albumArtUrl,
+                Modifier.size(40.dp).alpha(if (enabled) 1f else DISABLED_ALPHA).clip(RoundedCornerShape(10.dp)),
+            )
+        },
         supportingContent = { Text(track.artists.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         trailingContent = { Text(formatDuration(track.durationMs), style = MaterialTheme.typography.labelLarge) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -177,3 +188,6 @@ private fun kindName(kind: String): StringResource? = when (kind) {
     "show" -> Res.string.spotify_kind_show
     else -> null
 }
+
+/** M3's opacity for disabled content, for the art of a result that is waiting to be replaced. */
+private const val DISABLED_ALPHA = 0.38f

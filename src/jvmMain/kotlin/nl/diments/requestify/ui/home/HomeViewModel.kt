@@ -36,7 +36,8 @@ sealed interface AddMessage {
 
 /**
  * Everything the Home screen shows. [handedOver] is the request Spotify has queued but not started yet (it is
- * not in [queue]); [saveFailing] is true while the queue could not be saved.
+ * not in [queue]); [saveFailing] is true while the queue could not be saved. While [lookingUp], [results] still
+ * answer the previous input and must not be acted on.
  */
 data class HomeUiState(
     val queue: List<Request>,
@@ -48,6 +49,7 @@ data class HomeUiState(
     val addMessage: AddMessage?,
     val handedOver: Request? = null,
     val saveFailing: Boolean = false,
+    val lookingUp: Boolean = false,
 )
 
 /** Runs on the caller's [scope] (an app-lifetime scope); it starts nothing that outlives it. */
@@ -59,7 +61,13 @@ class HomeViewModel(
     private val clock: () -> Long,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    private class AddState(val results: List<Track> = emptyList(), val message: AddMessage? = null)
+    /** [results] and [message] answer [input]; while [lookingUp], the results are the previous input's. */
+    private class AddState(
+        val input: String = "",
+        val results: List<Track> = emptyList(),
+        val message: AddMessage? = null,
+        val lookingUp: Boolean = false,
+    )
 
     private class Playback(
         val queue: List<Request>,
@@ -82,18 +90,33 @@ class HomeViewModel(
         ::uiState,
     ).stateIn(scope, SharingStarted.Eagerly, initialState())
 
-    /** A track link is looked up at once, search text after a [SEARCH_DEBOUNCE_MS] pause in typing. */
+    /**
+     * A track link is looked up at once, search text after a [SEARCH_DEBOUNCE_MS] pause in typing. Until the
+     * answer arrives the previous results stay on screen, marked as stale ([HomeUiState.lookingUp]).
+     */
     fun onAddInput(text: String) {
         lookup?.cancel()
         when (val input = classifySpotifyInput(text)) {
             SpotifyInput.Empty -> add.value = AddState()
-            is SpotifyInput.NotATrack -> add.value = AddState(message = AddMessage.NotATrack(input.kind))
-            is SpotifyInput.TrackId -> lookUp { catalog.track(input.id).valueOrNull()?.let(::listOf) }
-            is SpotifyInput.SearchText -> lookUp {
+            is SpotifyInput.NotATrack -> add.value = AddState(text, message = AddMessage.NotATrack(input.kind))
+            is SpotifyInput.TrackId -> lookUp(text) { catalog.track(input.id).valueOrNull()?.let(::listOf) }
+            is SpotifyInput.SearchText -> lookUp(text) {
                 delay(SEARCH_DEBOUNCE_MS)
                 catalog.searchTracks(input.query, SEARCH_LIMIT).valueOrNull()
             }
         }
+    }
+
+    /**
+     * Enter in the add field: queues the first result, but only when the results answer exactly [input] (so
+     * never a previous search's while the next one is still pending). Returns whether a track was queued.
+     */
+    fun onAddSubmit(input: String): Boolean {
+        val current = add.value
+        val first = current.results.firstOrNull()
+        if (input.isBlank() || current.lookingUp || current.input != input || first == null) return false
+        onAddTrack(first)
+        return true
     }
 
     /** Queues [track] as the streamer's own free request, at the end, and clears the results. */
@@ -124,15 +147,16 @@ class HomeViewModel(
         scope.launch { controller.togglePause() }
     }
 
-    /** [find] returns null when Spotify could not answer. */
-    private fun lookUp(find: suspend () -> List<Track>?) {
+    /** Looks up the results for [input]; [find] returns null when Spotify could not answer. */
+    private fun lookUp(input: String, find: suspend () -> List<Track>?) {
+        add.value = AddState(input, results = add.value.results, lookingUp = true)
         lookup = scope.launch {
             val found = find()
             ensureActive() // newer input replaced this lookup while it ran
             add.value = when {
-                found == null -> AddState(message = AddMessage.SpotifyUnavailable)
-                found.isEmpty() -> AddState(message = AddMessage.NoResults)
-                else -> AddState(found)
+                found == null -> AddState(input, message = AddMessage.SpotifyUnavailable)
+                found.isEmpty() -> AddState(input, message = AddMessage.NoResults)
+                else -> AddState(input, results = found)
             }
         }
     }
@@ -159,6 +183,7 @@ class HomeViewModel(
         addMessage = add.message,
         handedOver = playback.handedOver,
         saveFailing = persistError != null,
+        lookingUp = add.lookingUp,
     )
 
     private companion object {

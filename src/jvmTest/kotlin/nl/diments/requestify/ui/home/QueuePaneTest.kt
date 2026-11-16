@@ -53,6 +53,7 @@ class QueuePaneTest {
                 QueuePane(
                     state = stateWith(listOf(r1)),
                     onAddInput = {},
+                    onAddSubmit = { false },
                     onAddTrack = {},
                     onRemove = { removed = it },
                     onMove = { _, _ -> },
@@ -78,7 +79,14 @@ class QueuePaneTest {
         val moves = mutableListOf<Pair<String, Int>>()
         setContent {
             RequestifyTheme(BrandSeed, dark = true) {
-                QueuePane(stateWith(queue), onAddInput = {}, onAddTrack = {}, onRemove = {}, onMove = { id, to -> moves += id to to })
+                QueuePane(
+                    state = stateWith(queue),
+                    onAddInput = {},
+                    onAddSubmit = { false },
+                    onAddTrack = {},
+                    onRemove = {},
+                    onMove = { id, to -> moves += id to to },
+                )
             }
         }
         // Drag the third row's handle up past the first row, in small steps like a real mouse.
