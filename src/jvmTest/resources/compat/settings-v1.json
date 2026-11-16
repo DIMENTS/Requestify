@@ -1,0 +1,7 @@
+{
+  "spotifyClientId": "0123456789abcdef0123456789abcdef",
+  "themeMode": { "type": "custom", "seedArgb": -10011977 },
+  "darkMode": "Dark",
+  "language": "Dutch",
+  "paidPriority": false
+}

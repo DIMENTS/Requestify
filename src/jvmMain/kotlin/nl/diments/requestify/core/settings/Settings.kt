@@ -4,6 +4,7 @@ import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import nl.diments.requestify.core.storage.JsonFileStore
 
@@ -16,12 +17,15 @@ data class Settings(
     val paidPriority: Boolean = true,
 )
 
+/** Saved in settings.json under the stable names below: never change them, or saved settings are lost. */
 @Serializable
 sealed interface ThemeMode {
     @Serializable
+    @SerialName("album")
     data object Album : ThemeMode
 
     @Serializable
+    @SerialName("custom")
     data class Custom(val seedArgb: Int) : ThemeMode
 }
 

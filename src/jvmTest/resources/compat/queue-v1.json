@@ -1,0 +1,80 @@
+{
+  "queue": {
+    "items": [
+      {
+        "id": "paid-bits",
+        "track": {
+          "id": "t1",
+          "uri": "spotify:track:t1",
+          "name": "Blinding Lights",
+          "artists": ["The Weeknd"],
+          "durationMs": 200040,
+          "explicit": false,
+          "albumArtUrl": "https://i.scdn.co/image/a1"
+        },
+        "requester": { "displayName": "kaasboer", "login": "kaasboer" },
+        "source": "BITS",
+        "payment": { "type": "bits", "count": 500 },
+        "createdAtEpochMs": 1763290000000,
+        "sourceRef": "cheer-1"
+      },
+      {
+        "id": "paid-money",
+        "track": {
+          "id": "t2",
+          "uri": "spotify:track:t2",
+          "name": "Midnight City",
+          "artists": ["M83"],
+          "durationMs": 243000,
+          "explicit": true,
+          "albumArtUrl": null
+        },
+        "requester": { "displayName": "Viewer Two", "login": null },
+        "source": "DONOLINK",
+        "payment": { "type": "money", "amountCents": 500, "currency": "EUR" },
+        "createdAtEpochMs": 1763290001000,
+        "sourceRef": null
+      }
+    ]
+  },
+  "handedOver": {
+    "id": "free",
+    "track": {
+      "id": "t3",
+      "uri": "spotify:track:t3",
+      "name": "Song Three",
+      "artists": ["Artist A", "Artist B"],
+      "durationMs": 180000,
+      "explicit": false,
+      "albumArtUrl": null
+    },
+    "requester": { "displayName": "", "login": null },
+    "source": "MANUAL",
+    "payment": null,
+    "createdAtEpochMs": 1763290002000,
+    "sourceRef": null
+  },
+  "playing": null,
+  "history": [
+    {
+      "request": {
+        "id": "played",
+        "track": {
+          "id": "t4",
+          "uri": "spotify:track:t4",
+          "name": "Song Four",
+          "artists": ["Artist C"],
+          "durationMs": 210000,
+          "explicit": false,
+          "albumArtUrl": null
+        },
+        "requester": { "displayName": "Viewer Four", "login": "viewer4" },
+        "source": "STREAMELEMENTS",
+        "payment": { "type": "money", "amountCents": 250, "currency": "USD" },
+        "createdAtEpochMs": 1763289000000,
+        "sourceRef": "se-tip-9"
+      },
+      "playedAtEpochMs": 1763289500000
+    }
+  ]
+}

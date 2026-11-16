@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -16,12 +17,15 @@ data class Track(
 @Serializable
 enum class RequestSource { MANUAL, CHAT, CHANNEL_POINTS, BITS, STREAMELEMENTS, DONOLINK }
 
+/** Saved in queue.json under the stable names below: never change them, or saved paid requests are lost. */
 @Serializable
 sealed interface Payment {
     @Serializable
+    @SerialName("bits")
     data class Bits(val count: Int) : Payment
 
     @Serializable
+    @SerialName("money")
     data class Money(val amountCents: Long, val currency: String) : Payment
 }
 
