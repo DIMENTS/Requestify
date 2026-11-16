@@ -55,7 +55,7 @@ class AppGraph(
         receiverFactory = { LoopbackReceiver() },
     )
 
-    private val spotify = SpotifyApi(http, token = { force -> auth.accessToken(force)?.value })
+    private val spotify = SpotifyApi(http, token = { force -> auth.token(force) })
 
     private val controller = PlaybackController(
         player = spotify,

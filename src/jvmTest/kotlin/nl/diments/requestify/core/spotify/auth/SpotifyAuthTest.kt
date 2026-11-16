@@ -33,6 +33,7 @@ import kotlinx.coroutines.withContext
 import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
+import nl.diments.requestify.core.spotify.TokenResult
 
 class SpotifyAuthTest {
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
@@ -189,6 +190,121 @@ class SpotifyAuthTest {
         assertNull(a.accessToken())
         assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
         assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
+    }
+
+    @Test
+    fun neverLoggedInIsLoggedOutWithoutRequest() = runBlocking {
+        var calls = 0
+        val a = auth(InMemorySecretStore()) { calls++; ok("a1") }
+        assertEquals(TokenResult.LoggedOut, a.token())
+        assertEquals(0, calls)
+        assertEquals(SpotifyAuthStatus.LoggedOut, a.status.value)
+    }
+
+    @Test
+    fun tokenIsOkAfterARefresh() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val a = auth(secrets) { ok("a1") }
+        assertEquals(TokenResult.Ok("a1"), a.token())
+    }
+
+    @Test
+    fun networkErrorIsUnavailableNotLoginNeeded() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val a = auth(secrets) { throw IOException("offline") }
+        assertEquals(TokenResult.Unavailable, a.token())
+        assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+        assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
+    }
+
+    @Test
+    fun hungRefreshIsUnavailable() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val a = auth(secrets, requestTimeoutMs = 50) { awaitCancellation() }
+        assertEquals(TokenResult.Unavailable, a.token())
+        assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
+    }
+
+    @Test
+    fun rateLimitAndServerErrorsAreUnavailableAndKeepTheLogin() = runBlocking {
+        for (code in listOf(408, 429, 500, 502, 503)) {
+            val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+            val a = auth(secrets) { respond("{\"error\":\"server_error\"}", HttpStatusCode.fromValue(code), json) }
+            assertEquals(TokenResult.Unavailable, a.token(), "HTTP $code")
+            assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN), "HTTP $code")
+            assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value, "HTTP $code")
+        }
+    }
+
+    @Test
+    fun invalidClientNeedsLoginAndIsNotRetried() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        var calls = 0
+        val a = auth(secrets) {
+            calls++
+            respond("{\"error\":\"invalid_client\",\"error_description\":\"Invalid client\"}", HttpStatusCode.BadRequest, json)
+        }
+        assertEquals(TokenResult.LoginNeeded, a.token())
+        assertNull(secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+        assertTrue(a.status.value is SpotifyAuthStatus.LoginNeeded)
+        assertEquals(TokenResult.LoginNeeded, a.token(forceRefresh = true))
+        assertEquals(1, calls, "a dead login is not sent to Spotify again")
+    }
+
+    @Test
+    fun everyOtherClientErrorNeedsLogin() = runBlocking {
+        for (code in listOf(400, 401, 403, 404)) {
+            val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+            val a = auth(secrets) { respond("", HttpStatusCode.fromValue(code)) }
+            assertEquals(TokenResult.LoginNeeded, a.token(), "HTTP $code")
+            assertNull(secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN), "HTTP $code")
+            assertTrue(a.status.value is SpotifyAuthStatus.LoginNeeded, "HTTP $code")
+        }
+    }
+
+    @Test
+    fun deadLoginWhoseSecretCannotBeRemovedStillNeedsLogin() = runBlocking {
+        val stored = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val secrets = object : SecretStore by stored {
+            override fun remove(key: String) {
+                throw IOException("secrets file in use")
+            }
+        }
+        var calls = 0
+        val a = auth(secrets) { calls++; respond("{\"error\":\"invalid_grant\"}", HttpStatusCode.BadRequest, json) }
+        assertEquals(TokenResult.LoginNeeded, a.token())
+        assertTrue(a.status.value is SpotifyAuthStatus.LoginNeeded)
+        assertEquals(TokenResult.LoginNeeded, a.token())
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun aNewLoginAfterADeadOneWorksAgain() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "old") }
+        var receiver: LoopbackReceiver? = null
+        val a = auth(
+            secrets,
+            openBrowser = { url ->
+                val state = Url(url).parameters["state"]!!
+                val port = receiver!!.boundPort
+                Thread {
+                    java.net.http.HttpClient.newHttpClient().send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/callback?code=c1&state=$state")).build(),
+                        HttpResponse.BodyHandlers.discarding(),
+                    )
+                }.start()
+            },
+            receiverFactory = { LoopbackReceiver(0).also { receiver = it } },
+        ) { req ->
+            if (form(req)["grant_type"] == "refresh_token" && form(req)["refresh_token"] == "old") {
+                respond("{\"error\":\"invalid_grant\"}", HttpStatusCode.BadRequest, json)
+            } else {
+                ok("a2", "new")
+            }
+        }
+        assertEquals(TokenResult.LoginNeeded, a.token())
+        assertEquals(LoginResult.Success, withContext(Dispatchers.Default) { a.login() })
+        assertEquals(TokenResult.Ok("a2"), a.token())
     }
 
     @Test

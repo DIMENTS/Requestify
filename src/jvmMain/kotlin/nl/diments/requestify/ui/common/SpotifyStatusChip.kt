@@ -26,6 +26,7 @@ import nl.diments.requestify.core.playback.SpotifyHealth
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.spotify_status_login_needed
 import nl.diments.requestify.resources.spotify_status_no_device
+import nl.diments.requestify.resources.spotify_status_not_connected
 import nl.diments.requestify.resources.spotify_status_nothing_playing
 import nl.diments.requestify.resources.spotify_status_ok
 import nl.diments.requestify.resources.spotify_status_premium_required
@@ -43,6 +44,7 @@ private fun SpotifyHealth.look(): StatusLook = when (this) {
     SpotifyHealth.NothingPlaying -> StatusLook(Res.string.spotify_status_nothing_playing, AppIcons.MusicNote, Tone.Neutral)
     SpotifyHealth.NoActiveDevice -> StatusLook(Res.string.spotify_status_no_device, AppIcons.Warning, Tone.Problem)
     SpotifyHealth.LoginNeeded -> StatusLook(Res.string.spotify_status_login_needed, AppIcons.Warning, Tone.Problem)
+    SpotifyHealth.LoggedOut -> StatusLook(Res.string.spotify_status_not_connected, AppIcons.Link, Tone.Neutral)
     SpotifyHealth.PremiumRequired -> StatusLook(Res.string.spotify_status_premium_required, AppIcons.Warning, Tone.Problem)
     is SpotifyHealth.RateLimited -> StatusLook(Res.string.spotify_status_rate_limited, AppIcons.Sync, Tone.Neutral)
     is SpotifyHealth.Unreachable -> StatusLook(Res.string.spotify_status_unreachable, AppIcons.CloudOff, Tone.Problem)

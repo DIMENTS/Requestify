@@ -54,6 +54,7 @@
     <string name="spotify_status_nothing_playing">Spotify speelt niet</string>
     <string name="spotify_status_no_device">Open Spotify op een apparaat</string>
     <string name="spotify_status_login_needed">Log opnieuw in bij Spotify</string>
+    <string name="spotify_status_not_connected">Koppel Spotify</string>
     <string name="spotify_status_premium_required">Spotify Premium vereist</string>
     <string name="spotify_status_rate_limited">Spotify is druk, wordt opnieuw geprobeerd</string>
     <string name="spotify_status_unreachable">Spotify onbereikbaar</string>

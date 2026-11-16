@@ -24,9 +24,31 @@ sealed interface SpotifyResult<out T> {
     data object NoActiveDevice : SpotifyResult<Nothing>
     data object PremiumRequired : SpotifyResult<Nothing>
     data class RateLimited(val retryAfterMs: Long) : SpotifyResult<Nothing>
+
+    /** The saved login stopped working (expired, revoked, or the Spotify app is gone): log in again. */
     data object LoginNeeded : SpotifyResult<Nothing>
+
+    /** Not logged in to Spotify at all (never, or logged out). */
+    data object LoggedOut : SpotifyResult<Nothing>
     data class Failed(val message: String) : SpotifyResult<Nothing>
 }
+
+/** What the token provider answers for an API call. */
+sealed interface TokenResult {
+    data class Ok(val token: String) : TokenResult
+
+    /** Not logged in (never, or logged out). */
+    data object LoggedOut : TokenResult
+
+    /** The saved login is dead (Spotify refused it): only a new login helps. */
+    data object LoginNeeded : TokenResult
+
+    /** No token right now (offline, Spotify down or busy); the login is kept and a later call tries again. */
+    data object Unavailable : TokenResult
+}
+
+/** The [SpotifyResult.Failed.message] when the login is fine but no access token could be had right now. */
+const val TOKEN_UNAVAILABLE = "token unavailable"
 
 /** [track] is null while an ad or a podcast episode plays. */
 data class CurrentlyPlaying(val track: Track?, val progressMs: Long, val isPlaying: Boolean)
@@ -52,13 +74,14 @@ interface SpotifyCatalog {
 }
 
 /**
- * Spotify Web API client. [token] returns the bearer token (or null when logged out); it is called with
- * `forceRefresh = true` once after a 401. Every failure is returned as a [SpotifyResult], never thrown
+ * Spotify Web API client. [token] returns the bearer token or why there is none; it is called with
+ * `forceRefresh = true` once after a 401. A token that is only unavailable for now is a [SpotifyResult.Failed]
+ * (a network problem), never a login problem. Every failure is returned as a [SpotifyResult], never thrown
  * (except coroutine cancellation).
  */
 class SpotifyApi(
     private val http: HttpClient,
-    private val token: suspend (forceRefresh: Boolean) -> String?,
+    private val token: suspend (forceRefresh: Boolean) -> TokenResult,
     private val baseUrl: String = "https://api.spotify.com/v1",
     private val requestTimeoutMs: Long = 15_000,
 ) : SpotifyPlayer, SpotifyCatalog {
@@ -135,22 +158,17 @@ class SpotifyApi(
         params: List<Pair<String, String>> = emptyList(),
         onSuccess: (body: String) -> T,
     ): SpotifyResult<T> = try {
-        val initial = token(false)
-        if (initial == null) {
-            SpotifyResult.LoginNeeded
-        } else {
-            var raw = send(method, segments.toList(), params, initial)
-            var loggedOut = false
-            if (raw.status == 401) {
-                val refreshed = token(true)
-                if (refreshed == null) {
-                    loggedOut = true
-                } else {
-                    raw = send(method, segments.toList(), params, refreshed)
-                    loggedOut = raw.status == 401
+        val path = segments.toList()
+        withToken(token(false)) { bearer ->
+            val raw = send(method, path, params, bearer)
+            if (raw.status != 401) {
+                map(raw, onSuccess)
+            } else {
+                withToken(token(true)) { refreshed ->
+                    val retried = send(method, path, params, refreshed)
+                    if (retried.status == 401) SpotifyResult.LoginNeeded else map(retried, onSuccess)
                 }
             }
-            if (loggedOut) SpotifyResult.LoginNeeded else map(raw, onSuccess)
         }
     } catch (e: TimeoutCancellationException) {
         SpotifyResult.Failed("timeout")
@@ -159,6 +177,15 @@ class SpotifyApi(
     } catch (e: Exception) {
         SpotifyResult.Failed(e.message ?: e::class.simpleName ?: "error")
     }
+
+    /** Runs [call] with the bearer token, or answers why there is none. */
+    private inline fun <T> withToken(result: TokenResult, call: (bearer: String) -> SpotifyResult<T>): SpotifyResult<T> =
+        when (result) {
+            is TokenResult.Ok -> call(result.token)
+            TokenResult.LoggedOut -> SpotifyResult.LoggedOut
+            TokenResult.LoginNeeded -> SpotifyResult.LoginNeeded
+            TokenResult.Unavailable -> SpotifyResult.Failed(TOKEN_UNAVAILABLE)
+        }
 
     private fun <T> map(raw: Raw, onSuccess: (String) -> T): SpotifyResult<T> = when (raw.status) {
         200, 201, 202, 204 -> SpotifyResult.Ok(onSuccess(raw.body))

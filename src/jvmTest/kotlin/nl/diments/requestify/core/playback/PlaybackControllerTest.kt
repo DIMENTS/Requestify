@@ -308,6 +308,7 @@ class PlaybackControllerTest {
         val steps = listOf<Pair<SpotifyResult<CurrentlyPlaying?>, SpotifyHealth>>(
             SpotifyResult.NoActiveDevice to SpotifyHealth.NoActiveDevice,
             SpotifyResult.LoginNeeded to SpotifyHealth.LoginNeeded,
+            SpotifyResult.LoggedOut to SpotifyHealth.LoggedOut,
             SpotifyResult.PremiumRequired to SpotifyHealth.PremiumRequired,
             SpotifyResult.Ok(null) to SpotifyHealth.NothingPlaying,
             SpotifyResult.Ok(CurrentlyPlaying(track = null, progressMs = 0, isPlaying = true)) to SpotifyHealth.Ok,
@@ -317,7 +318,7 @@ class PlaybackControllerTest {
             advance(3_000)
             assertEquals(expected, controller.health.value)
         }
-        assertEquals(listOf(0L, 3_000L, 6_000L, 9_000L, 12_000L, 15_000L), player.pollTimes())
+        assertEquals(listOf(0L, 3_000L, 6_000L, 9_000L, 12_000L, 15_000L, 18_000L), player.pollTimes())
         assertEquals(listOf(r1), controller.queue.value.items)
     }
 

@@ -31,7 +31,7 @@ class SpotifyApiTest {
     private fun MockRequestHandleScope.fixtureOk(name: String) = respond(fixture(name), HttpStatusCode.OK, json)
 
     private fun api(
-        token: suspend (Boolean) -> String? = { "tok" },
+        token: suspend (Boolean) -> TokenResult = { TokenResult.Ok("tok") },
         requestTimeoutMs: Long = 15_000,
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) = SpotifyApi(
@@ -99,7 +99,7 @@ class SpotifyApiTest {
     fun unauthorizedRefreshesAndRetriesOnce() = runBlocking<Unit> {
         val forced = mutableListOf<Boolean>()
         val auths = mutableListOf<String?>()
-        val api = api(token = { force -> forced += force; if (force) "new" else "old" }) { req ->
+        val api = api(token = { force -> forced += force; TokenResult.Ok(if (force) "new" else "old") }) { req ->
             auths += req.headers[HttpHeaders.Authorization]
             if (auths.size == 1) respond("", HttpStatusCode.Unauthorized) else fixtureOk("track.json")
         }
@@ -118,18 +118,43 @@ class SpotifyApiTest {
     }
 
     @Test
-    fun nullTokenIsLoginNeededWithoutRequest() = runBlocking<Unit> {
+    fun deadLoginIsLoginNeededWithoutRequest() = runBlocking<Unit> {
         var calls = 0
-        val result = api(token = { null }) { calls++; respond("", HttpStatusCode.OK) }.pause()
+        val result = api(token = { TokenResult.LoginNeeded }) { calls++; respond("", HttpStatusCode.OK) }.pause()
         assertEquals(SpotifyResult.LoginNeeded, result)
         assertEquals(0, calls)
     }
 
     @Test
-    fun nullTokenAfterRefreshIsLoginNeeded() = runBlocking<Unit> {
-        val result = api(token = { force -> if (force) null else "old" }) { respond("", HttpStatusCode.Unauthorized) }
-            .pause()
+    fun loggedOutIsLoggedOutWithoutRequest() = runBlocking<Unit> {
+        var calls = 0
+        val result = api(token = { TokenResult.LoggedOut }) { calls++; respond("", HttpStatusCode.OK) }.pause()
+        assertEquals(SpotifyResult.LoggedOut, result)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun unavailableTokenIsAFailureNotALogin() = runBlocking<Unit> {
+        var calls = 0
+        val result = api(token = { TokenResult.Unavailable }) { calls++; respond("", HttpStatusCode.OK) }.pause()
+        assertEquals(SpotifyResult.Failed("token unavailable"), result)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun deadLoginAfterRefreshIsLoginNeeded() = runBlocking<Unit> {
+        val result = api(token = { force -> if (force) TokenResult.LoginNeeded else TokenResult.Ok("old") }) {
+            respond("", HttpStatusCode.Unauthorized)
+        }.pause()
         assertEquals(SpotifyResult.LoginNeeded, result)
+    }
+
+    @Test
+    fun unavailableTokenAfterRefreshIsAFailure() = runBlocking<Unit> {
+        val result = api(token = { force -> if (force) TokenResult.Unavailable else TokenResult.Ok("old") }) {
+            respond("", HttpStatusCode.Unauthorized)
+        }.pause()
+        assertEquals(SpotifyResult.Failed("token unavailable"), result)
     }
 
     @Test

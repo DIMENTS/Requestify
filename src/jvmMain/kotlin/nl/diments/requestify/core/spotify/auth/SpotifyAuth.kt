@@ -5,6 +5,7 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
+import java.io.IOException
 import java.net.BindException
 import java.net.URLEncoder
 import java.security.SecureRandom
@@ -22,6 +23,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
+import nl.diments.requestify.core.spotify.TokenResult
 
 data class AccessToken(val value: String, val expiresAtEpochMs: Long)
 
@@ -43,9 +45,6 @@ private data class TokenResponse(
     @SerialName("expires_in") val expiresIn: Long,
     @SerialName("refresh_token") val refreshToken: String? = null,
 )
-
-@Serializable
-private data class TokenError(val error: String? = null)
 
 private const val REFRESH_MARGIN_MS = 60_000L
 
@@ -154,16 +153,36 @@ class SpotifyAuth(
         return LoginResult.Success
     }
 
-    /** Returns null when login is needed or the refresh failed transiently (status tells which). */
-    suspend fun accessToken(forceRefresh: Boolean = false): AccessToken? {
+    /**
+     * The access token for an API call, or why there is none. A network problem, a timeout, a rate limit or a
+     * Spotify server error is [TokenResult.Unavailable]: the login is kept and the next call tries again. Only
+     * an answer that the login itself is refused (any other 4xx, e.g. `invalid_grant` or `invalid_client` when
+     * the Spotify app was deleted) forgets it and is [TokenResult.LoginNeeded]; it is not sent again until the
+     * next login.
+     */
+    suspend fun token(forceRefresh: Boolean = false): TokenResult = when (val got = obtain(forceRefresh)) {
+        is Obtained.Token -> TokenResult.Ok(got.token.value)
+        is Obtained.Missing -> got.why
+    }
+
+    /** Like [token] with the expiry; null when there is no token ([status] and [token] tell why). */
+    suspend fun accessToken(forceRefresh: Boolean = false): AccessToken? = (obtain(forceRefresh) as? Obtained.Token)?.token
+
+    /** A usable token, or why there is none. */
+    private sealed interface Obtained {
+        class Token(val token: AccessToken) : Obtained
+        class Missing(val why: TokenResult) : Obtained
+    }
+
+    private suspend fun obtain(forceRefresh: Boolean): Obtained {
         val seen = cached
-        if (!forceRefresh) seen?.takeIf { isFresh(it) }?.let { return it }
+        if (!forceRefresh) seen?.takeIf { isFresh(it) }?.let { return Obtained.Token(it) }
         return mutex.withLock {
             val current = cached
             if (current != null) {
                 // A concurrent caller already refreshed while we waited for the lock.
-                if (forceRefresh) { if (current !== seen) return@withLock current }
-                else if (isFresh(current)) return@withLock current
+                if (forceRefresh) { if (current !== seen) return@withLock Obtained.Token(current) }
+                else if (isFresh(current)) return@withLock Obtained.Token(current)
             }
             refresh()
         }
@@ -171,9 +190,10 @@ class SpotifyAuth(
 
     private fun isFresh(t: AccessToken) = t.expiresAtEpochMs - clock() > REFRESH_MARGIN_MS
 
-    private suspend fun refresh(): AccessToken? {
+    private suspend fun refresh(): Obtained {
         val startGeneration = synchronized(stateLock) { generation }
-        val id = clientId()
+        // Spotify already refused this login: asking again cannot help, only a new login can.
+        if (_status.value is SpotifyAuthStatus.LoginNeeded) return Obtained.Missing(TokenResult.LoginNeeded)
         val refreshToken = secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN)
         if (refreshToken == null) {
             synchronized(stateLock) {
@@ -182,9 +202,11 @@ class SpotifyAuth(
                     if (_status.value == SpotifyAuthStatus.LoggedIn) _status.value = SpotifyAuthStatus.LoggedOut
                 }
             }
-            return null
+            return Obtained.Missing(TokenResult.LoggedOut)
         }
-        if (id.isNullOrBlank()) return null
+        // Without a Client ID (the settings were lost) nothing can refresh: Spotify must be set up again.
+        val id = clientId()
+        if (id.isNullOrBlank()) return Obtained.Missing(TokenResult.LoggedOut)
         val response = try {
             withTimeout(requestTimeoutMs) {
                 val r = http.submitForm(
@@ -198,42 +220,59 @@ class SpotifyAuth(
                 r.status to r.bodyAsText()
             }
         } catch (_: TimeoutCancellationException) {
-            return null // hung connection: transient, keep the login
+            return Obtained.Missing(TokenResult.Unavailable) // hung connection: transient, keep the login
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            return null // network blip: keep the login
+            return Obtained.Missing(TokenResult.Unavailable) // network blip: keep the login
         }
         val (code, body) = response
         // Apply the result only if no logout()/login() happened while the request was in flight.
-        if (code == HttpStatusCode.OK) {
-            val token = try {
-                json.decodeFromString<TokenResponse>(body)
-            } catch (_: Exception) {
-                return null
+        return when {
+            code == HttpStatusCode.OK -> {
+                val token = try {
+                    json.decodeFromString<TokenResponse>(body)
+                } catch (_: Exception) {
+                    return Obtained.Missing(TokenResult.Unavailable)
+                }
+                synchronized(stateLock) {
+                    if (generation != startGeneration) return@synchronized superseded()
+                    // Persist a rotated refresh token BEFORE the new access token is used.
+                    token.refreshToken?.let { secrets.put(SecretKeys.SPOTIFY_REFRESH_TOKEN, it) }
+                    val access = AccessToken(token.accessToken, clock() + token.expiresIn * 1000)
+                    cached = access
+                    _status.value = SpotifyAuthStatus.LoggedIn
+                    Obtained.Token(access)
+                }
             }
-            return synchronized(stateLock) {
-                if (generation != startGeneration) return@synchronized null
-                // Persist a rotated refresh token BEFORE the new access token is used.
-                token.refreshToken?.let { secrets.put(SecretKeys.SPOTIFY_REFRESH_TOKEN, it) }
-                val access = AccessToken(token.accessToken, clock() + token.expiresIn * 1000)
-                cached = access
-                _status.value = SpotifyAuthStatus.LoggedIn
-                access
-            }
-        }
-        val invalidGrant = code == HttpStatusCode.Unauthorized ||
-            (code == HttpStatusCode.BadRequest && runCatching { json.decodeFromString<TokenError>(body).error }.getOrNull() == "invalid_grant")
-        if (invalidGrant) {
-            synchronized(stateLock) {
-                if (generation != startGeneration) return null
-                secrets.remove(SecretKeys.SPOTIFY_REFRESH_TOKEN)
+            isLoginRefused(code) -> synchronized(stateLock) {
+                if (generation != startGeneration) return@synchronized superseded()
+                try {
+                    secrets.remove(SecretKeys.SPOTIFY_REFRESH_TOKEN)
+                } catch (_: IOException) {
+                    // Left on disk for now; the status below stops it being used, and a new login replaces it.
+                } catch (_: SecurityException) {
+                }
                 cached = null
-                _status.value = SpotifyAuthStatus.LoginNeeded("Spotify login expired or was revoked")
+                _status.value = SpotifyAuthStatus.LoginNeeded("Spotify refused the saved login (HTTP ${code.value})")
+                Obtained.Missing(TokenResult.LoginNeeded)
             }
+            else -> Obtained.Missing(TokenResult.Unavailable) // rate limit or Spotify trouble: keep the login
         }
-        return null
     }
+
+    /** A 4xx other than a timeout or rate limit: Spotify refuses this login (revoked, expired, app deleted). */
+    private fun isLoginRefused(code: HttpStatusCode): Boolean =
+        code.value in 400..499 && code != HttpStatusCode.RequestTimeout && code != HttpStatusCode.TooManyRequests
+
+    /** A logout or login happened while a refresh was in flight: its answer is dropped. Caller holds [stateLock]. */
+    private fun superseded(): Obtained.Missing = Obtained.Missing(
+        when (_status.value) {
+            SpotifyAuthStatus.LoggedOut -> TokenResult.LoggedOut
+            is SpotifyAuthStatus.LoginNeeded -> TokenResult.LoginNeeded
+            SpotifyAuthStatus.LoggedIn -> TokenResult.Unavailable // a new login: the next call uses its token
+        },
+    )
 
     /**
      * Forgets the login. The saved refresh token is removed first: when that throws (the secrets file cannot be

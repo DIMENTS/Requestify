@@ -36,7 +36,12 @@ sealed interface SpotifyHealth {
     data object Ok : SpotifyHealth
     data object NothingPlaying : SpotifyHealth
     data object NoActiveDevice : SpotifyHealth
+
+    /** The saved login stopped working: log in again. */
     data object LoginNeeded : SpotifyHealth
+
+    /** Spotify was never connected (or was logged out). */
+    data object LoggedOut : SpotifyHealth
     data object PremiumRequired : SpotifyHealth
     data class RateLimited(val untilEpochMs: Long) : SpotifyHealth
     data class Unreachable(val message: String) : SpotifyHealth
@@ -308,6 +313,7 @@ class PlaybackController(
         SpotifyResult.NoActiveDevice -> SpotifyHealth.NoActiveDevice
         SpotifyResult.PremiumRequired -> SpotifyHealth.PremiumRequired
         SpotifyResult.LoginNeeded -> SpotifyHealth.LoginNeeded
+        SpotifyResult.LoggedOut -> SpotifyHealth.LoggedOut
         is SpotifyResult.RateLimited -> SpotifyHealth.RateLimited(clock() + retryAfterMs(result))
         is SpotifyResult.Failed -> SpotifyHealth.Unreachable(result.message)
     }
