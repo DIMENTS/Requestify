@@ -46,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -90,6 +91,7 @@ private val ArtCorners = listOf(36.dp, 36.dp, 12.dp, 36.dp)
 /**
  * Right side of Home: what Spotify plays now, who asked for it, live progress and the play/pause + skip group.
  * [compact] lays it out as a row (art beside the details) for narrow windows, where it sits above the queue.
+ * [clock] is wall time, the clock [NowPlaying.sampledAtEpochMs] is on.
  */
 @Composable
 fun NowPlayingPane(
@@ -98,6 +100,7 @@ fun NowPlayingPane(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    clock: () -> Long = System::currentTimeMillis,
 ) {
     Surface(modifier, shape = RoundedCornerShape(PaneCorner), color = MaterialTheme.colorScheme.surfaceContainer) {
         when {
@@ -109,7 +112,7 @@ fun NowPlayingPane(
             ) {
                 PoppingArt(nowPlaying.track, Modifier.size(136.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Details(nowPlaying, onTogglePause, onSkip, compact = true)
+                    Details(nowPlaying, onTogglePause, onSkip, compact = true, clock)
                 }
             }
             else -> Column(
@@ -118,7 +121,7 @@ fun NowPlayingPane(
             ) {
                 Label()
                 PoppingArt(nowPlaying.track, Modifier.fillMaxWidth().aspectRatio(1f))
-                Details(nowPlaying, onTogglePause, onSkip, compact = false)
+                Details(nowPlaying, onTogglePause, onSkip, compact = false, clock)
             }
         }
     }
@@ -130,11 +133,12 @@ private fun ColumnScope.Details(
     onTogglePause: () -> Unit,
     onSkip: () -> Unit,
     compact: Boolean,
+    clock: () -> Long,
 ) {
     if (compact) Label()
     TrackText(nowPlaying.track, compact)
     RequestLine(nowPlaying.request)
-    Progress(nowPlaying)
+    Progress(nowPlaying, clock)
     Controls(
         isPlaying = nowPlaying.isPlaying,
         onTogglePause = onTogglePause,
@@ -292,9 +296,9 @@ private fun RequestLine(request: Request?) {
 /** The wavy bar flattens while paused; between polls the position runs on locally. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Progress(nowPlaying: NowPlaying) {
+private fun Progress(nowPlaying: NowPlaying, clock: () -> Long) {
     val durationMs = nowPlaying.track.durationMs
-    val position = rememberLivePosition(nowPlaying)
+    val position = rememberLivePosition(nowPlaying, clock)
     val elapsed by remember { derivedStateOf { formatDuration(position.longValue) } }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         LinearWavyProgressIndicator(
@@ -312,21 +316,20 @@ private fun Progress(nowPlaying: NowPlaying) {
 }
 
 /**
- * The polled position, run forward every [PROGRESS_TICK_MS] on the frame clock while playing, never past the
- * track's end. (The bar moves about a pixel per second, so ticking every frame would look no smoother.)
+ * The position on [clock] (see [NowPlaying.positionAt]), updated every [PROGRESS_TICK_MS] on the frame clock while
+ * playing, until the track's end. It runs from when Spotify sampled it, so a new poll moves the bar only as far
+ * as Spotify really differs, and a pause stops it where it is. (The bar moves about a pixel per second, so
+ * ticking every frame would look no smoother.)
  */
 @Composable
-private fun rememberLivePosition(nowPlaying: NowPlaying): LongState {
-    val position = remember { mutableLongStateOf(nowPlaying.progressMs) }
+private fun rememberLivePosition(nowPlaying: NowPlaying, clock: () -> Long): LongState {
+    val now by rememberUpdatedState(clock)
+    val position = remember { mutableLongStateOf(nowPlaying.positionAt(now())) }
     LaunchedEffect(nowPlaying) {
-        val durationMs = nowPlaying.track.durationMs.coerceAtLeast(0)
-        val polledMs = nowPlaying.progressMs.coerceIn(0, durationMs)
-        position.longValue = polledMs
-        if (!nowPlaying.isPlaying) return@LaunchedEffect
-        val startMs = withFrameMillis { it }
-        while (position.longValue < durationMs) {
+        position.longValue = nowPlaying.positionAt(now())
+        while (nowPlaying.isPlaying && position.longValue < nowPlaying.track.durationMs) {
             delay(PROGRESS_TICK_MS)
-            withFrameMillis { nowMs -> position.longValue = (polledMs + nowMs - startMs).coerceAtMost(durationMs) }
+            withFrameMillis { position.longValue = nowPlaying.positionAt(now()) }
         }
     }
     return position

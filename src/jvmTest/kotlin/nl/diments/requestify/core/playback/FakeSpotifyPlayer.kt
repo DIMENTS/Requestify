@@ -24,6 +24,23 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     /** When set, [addToQueue] waits for it before answering, like a slow Spotify. */
     var addToQueueGate: CompletableDeferred<Unit>? = null
 
+    /** When set, [currentlyPlaying] waits for it before answering, like a slow Spotify. */
+    var currentlyPlayingGate: CompletableDeferred<Unit>? = null
+
+    /** Answers for the next [pause] and [resume] calls, in order; `Ok` once used up. */
+    val playCommandResults = ArrayDeque<SpotifyResult<Unit>>()
+
+    /** When set, [pause] and [resume] wait for it before answering, like a slow Spotify. */
+    var playCommandGate: CompletableDeferred<Unit>? = null
+
+    /**
+     * After a [pause] or [resume] that worked, this many polls still report the play state from before it, like
+     * Spotify's Web API, which takes a moment to catch up.
+     */
+    var stalePollsAfterPlayCommand = 0
+    private var stalePollsLeft = 0
+    private var staleIsPlaying = false
+
     fun plays(track: Track?, progressMs: Long = 0, isPlaying: Boolean = true) {
         currentlyPlayingResult = SpotifyResult.Ok(CurrentlyPlaying(track, progressMs, isPlaying))
     }
@@ -32,7 +49,13 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
 
     override suspend fun currentlyPlaying(): SpotifyResult<CurrentlyPlaying?> {
         record("currentlyPlaying")
+        currentlyPlayingGate?.await()
         currentlyPlayingError?.let { throw it }
+        val current = (currentlyPlayingResult as? SpotifyResult.Ok)?.value
+        if (stalePollsLeft > 0 && current != null) {
+            stalePollsLeft--
+            return SpotifyResult.Ok(current.copy(isPlaying = staleIsPlaying))
+        }
         return currentlyPlayingResult
     }
 
@@ -52,20 +75,22 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
         return SpotifyResult.Ok(Unit)
     }
 
-    override suspend fun pause(): SpotifyResult<Unit> {
-        record("pause")
-        setIsPlaying(false)
-        return SpotifyResult.Ok(Unit)
-    }
+    override suspend fun pause(): SpotifyResult<Unit> = playCommand("pause", isPlaying = false)
 
-    override suspend fun resume(): SpotifyResult<Unit> {
-        record("resume")
-        setIsPlaying(true)
-        return SpotifyResult.Ok(Unit)
+    override suspend fun resume(): SpotifyResult<Unit> = playCommand("resume", isPlaying = true)
+
+    private suspend fun playCommand(name: String, isPlaying: Boolean): SpotifyResult<Unit> {
+        record(name)
+        playCommandGate?.await()
+        val result = playCommandResults.removeFirstOrNull() ?: SpotifyResult.Ok(Unit)
+        if (result is SpotifyResult.Ok) setIsPlaying(isPlaying)
+        return result
     }
 
     private fun setIsPlaying(isPlaying: Boolean) {
         val current = (currentlyPlayingResult as? SpotifyResult.Ok)?.value ?: return
+        staleIsPlaying = current.isPlaying
+        stalePollsLeft = stalePollsAfterPlayCommand
         currentlyPlayingResult = SpotifyResult.Ok(current.copy(isPlaying = isPlaying))
     }
 

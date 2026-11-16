@@ -21,6 +21,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -103,6 +104,26 @@ class PlaybackControllerTest {
     }
 
     private fun FakeSpotifyPlayer.pollTimes() = callsTo("currentlyPlaying").map { it.atMs }
+
+    private fun FakeSpotifyPlayer.playCommands() = calls.map { it.name }.filter { it == "pause" || it == "resume" }
+
+    /** Spotify plays (or has paused) track A at 60 s, and the first poll has shown it. */
+    private fun TestScope.startAt60s(player: FakeSpotifyPlayer, isPlaying: Boolean = true): PlaybackController {
+        player.plays(trackA, progressMs = 60_000, isPlaying = isPlaying)
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+        assertEquals(isPlaying, controller.nowPlaying.value?.isPlaying)
+        return controller
+    }
+
+    /** Presses play/pause the way Home does, on a coroutine of its own, so a slow Spotify does not hold the test. */
+    private fun TestScope.click(controller: PlaybackController) {
+        launch { controller.togglePause() }
+        runCurrent()
+    }
+
+    private fun PlaybackController.shownPlaying() = nowPlaying.value?.isPlaying
 
     @Test
     fun handsOverHeadWithin15Seconds() = runTest {
@@ -430,6 +451,155 @@ class PlaybackControllerTest {
         runCurrent()
         assertEquals(true, controller.nowPlaying.value?.isPlaying)
         assertEquals(listOf("pause", "resume"), player.calls.map { it.name }.filter { it == "pause" || it == "resume" })
+    }
+
+    @Test
+    fun pausePublishesPausedBeforeSpotifyAnswers() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        val gate = CompletableDeferred<Unit>()
+        player.playCommandGate = gate
+
+        click(controller)
+        assertEquals(listOf("pause"), player.playCommands()) // still in flight
+        assertEquals(false, controller.shownPlaying())
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(false, controller.shownPlaying())
+    }
+
+    @Test
+    fun pauseIsShownImmediatelyEvenWhileATickIsInFlight() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        val gate = CompletableDeferred<Unit>()
+        player.currentlyPlayingGate = gate
+        advance(3_000)
+        assertEquals(listOf(0L, 3_000L), player.pollTimes()) // the second poll is still in flight
+
+        click(controller)
+        assertEquals(false, controller.shownPlaying())
+        assertTrue(player.playCommands().isEmpty(), "the pause waits for the poll")
+
+        gate.complete(Unit) // the poll answers from before the pause: Spotify still plays
+        runCurrent()
+        assertEquals(listOf("pause"), player.playCommands())
+        assertEquals(false, controller.shownPlaying())
+    }
+
+    @Test
+    fun staleSpotifyStateAfterPauseDoesNotResumeTheBar() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        player.stalePollsAfterPlayCommand = 2
+
+        controller.togglePause()
+        runCurrent() // polled again at once: Spotify still says playing
+        assertEquals(false, controller.shownPlaying())
+        advance(1_000) // still says playing
+        assertEquals(false, controller.shownPlaying())
+        advance(1_000) // says paused now
+        assertEquals(false, controller.shownPlaying())
+        assertEquals(listOf(0L, 0L, 1_000L, 2_000L), player.pollTimes())
+    }
+
+    @Test
+    fun intentExpiresWhenSpotifyNeverConfirms() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        player.stalePollsAfterPlayCommand = Int.MAX_VALUE // Spotify keeps playing whatever it answered
+        val settleMs = PlaybackConfig().playIntentSettleMs
+
+        controller.togglePause()
+        runCurrent()
+        advance(settleMs - 1_000)
+        assertEquals(false, controller.shownPlaying())
+        advance(1_000) // the intent has expired: Spotify is trusted again
+        assertEquals(true, controller.shownPlaying())
+    }
+
+    @Test
+    fun failedPauseRevertsAndReportsHealth() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        player.playCommandResults.add(SpotifyResult.NoActiveDevice)
+        val gate = CompletableDeferred<Unit>()
+        player.playCommandGate = gate
+        click(controller)
+        assertEquals(false, controller.shownPlaying())
+
+        player.currentlyPlayingGate = CompletableDeferred() // holds the poll that follows, so only the pause answers
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(true, controller.shownPlaying())
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+    }
+
+    @Test
+    fun pauseFreezesPositionWhereItWas() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        player.plays(trackA, progressMs = 63_000)
+        advance(3_000) // Spotify samples 63 s at 3 s
+        player.stalePollsAfterPlayCommand = 2
+        advance(2_000)
+
+        controller.togglePause() // at 5 s, so at 65 s into the track
+        fun assertFrozenAt65s() {
+            val shown = assertNotNull(controller.nowPlaying.value)
+            assertEquals(false, shown.isPlaying)
+            assertEquals(65_000, shown.progressMs)
+            assertEquals(65_000, shown.positionAt(testScheduler.currentTime))
+        }
+        assertFrozenAt65s()
+        runCurrent() // Spotify still says playing at 63 s
+        assertFrozenAt65s()
+        advance(1_000) // and again
+        assertFrozenAt65s()
+        player.plays(trackA, progressMs = 65_000, isPlaying = false)
+        advance(1_000) // Spotify confirms
+        assertFrozenAt65s()
+    }
+
+    @Test
+    fun resumeIsShownImmediately() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player, isPlaying = false)
+        player.stalePollsAfterPlayCommand = 2
+        val gate = CompletableDeferred<Unit>()
+        player.playCommandGate = gate
+
+        click(controller)
+        assertEquals(listOf("resume"), player.playCommands()) // still in flight
+        assertEquals(true, controller.shownPlaying())
+
+        gate.complete(Unit)
+        runCurrent() // polled again at once: Spotify still says paused at 60 s
+        assertEquals(true, controller.shownPlaying())
+        advance(1_000) // and again: the bar runs on from where it resumed
+        val shown = assertNotNull(controller.nowPlaying.value)
+        assertEquals(true, shown.isPlaying)
+        assertEquals(61_000, shown.positionAt(testScheduler.currentTime))
+    }
+
+    @Test
+    fun quickClicksToggleWhatIsShownAndReachSpotifyInOrder() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        val gate = CompletableDeferred<Unit>()
+        player.playCommandGate = gate
+
+        click(controller)
+        assertEquals(false, controller.shownPlaying())
+        click(controller) // before Spotify answered the pause
+        assertEquals(true, controller.shownPlaying())
+        assertEquals(listOf("pause"), player.playCommands())
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("pause", "resume"), player.playCommands())
+        assertEquals(true, controller.shownPlaying())
     }
 
     @Test

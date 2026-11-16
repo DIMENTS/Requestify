@@ -29,8 +29,26 @@ import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.spotify.SpotifyPlayer
 import nl.diments.requestify.core.spotify.SpotifyResult
 
-/** What Spotify plays right now. [request] is null for the streamer's own music. */
-data class NowPlaying(val track: Track, val progressMs: Long, val isPlaying: Boolean, val request: Request?)
+/**
+ * What Spotify plays right now. [request] is null for the streamer's own music. [progressMs] is the position at
+ * [sampledAtEpochMs] (wall time); [positionAt] tells where it is later.
+ */
+data class NowPlaying(
+    val track: Track,
+    val progressMs: Long,
+    val isPlaying: Boolean,
+    val request: Request?,
+    val sampledAtEpochMs: Long,
+) {
+    /**
+     * The position at [nowEpochMs], within the track: it runs on from [progressMs] while playing and stays put
+     * while paused.
+     */
+    fun positionAt(nowEpochMs: Long): Long {
+        val sinceSampleMs = if (isPlaying) nowEpochMs - sampledAtEpochMs else 0
+        return (progressMs + sinceSampleMs).coerceIn(0, track.durationMs.coerceAtLeast(0))
+    }
+}
 
 sealed interface SpotifyHealth {
     data object Ok : SpotifyHealth
@@ -47,21 +65,27 @@ sealed interface SpotifyHealth {
     data class Unreachable(val message: String) : SpotifyHealth
 }
 
+/**
+ * [playIntentSettleMs]: how long a pause or resume is shown while Spotify still reports the state from before
+ * it (its Web API takes a moment to catch up).
+ */
 data class PlaybackConfig(
     val handoverLeadMs: Long = 15_000,
     val idlePollMs: Long = 3_000,
     val nearEndPollMs: Long = 1_000,
     val nearEndWindowMs: Long = 20_000,
+    val playIntentSettleMs: Long = 4_000,
 )
 
 /**
  * Owns the request queue and hands its head to Spotify shortly before the current track ends. With an
  * empty queue or closed requests nothing is handed over, so Spotify keeps playing the streamer's own music.
  *
- * Two locks, always taken in this order. [spotifyMutex] lets one Spotify sequence (a tick, [skip] or
- * [togglePause]) run at a time and is held across its network calls. [stateMutex] guards all state and every
- * save; it is held only for in-memory work and the save, never across a Spotify call, so queue edits show and
- * are saved at once even while Spotify is slow. A Spotify answer is applied to the state as it is by then.
+ * Two locks, always taken in this order. [spotifyMutex] lets one Spotify sequence (a tick, [skip] or the
+ * command of [togglePause]) run at a time and is held across its network calls. [stateMutex] guards all state
+ * and every save; it is held only for in-memory work and the save, never across a Spotify call, so queue edits
+ * and play/pause show (and edits are saved) at once even while Spotify is slow. A Spotify answer is applied to
+ * the state as it is by then.
  * A failed Spotify call never drops a request: it stays where it was and the next tick tries again.
  *
  * Nothing is handed over or saved before the saved state has been read. While it cannot be read ([loadError]),
@@ -116,6 +140,9 @@ class PlaybackController(
     private var playing: Request? = null
     private var lastTrackId: String? = null
     private var lastSaved: PersistedPlayback? = null
+
+    /** The pause or resume Spotify has not confirmed yet. Guarded by [stateMutex]; never saved. */
+    private var playIntent: PlayIntent? = null
 
     /** Edits made before the saved state could be read, in order. Guarded by [stateMutex]. */
     private val waitingEdits = mutableListOf<() -> Unit>()
@@ -179,16 +206,49 @@ class PlaybackController(
         }
     }
 
+    /**
+     * Shows paused or playing at once, then tells Spotify. Each call flips what is shown, so quick clicks each
+     * count, and their commands reach Spotify in click order. Polls keep showing it until Spotify reports it too
+     * (it lags behind a command) or [PlaybackConfig.playIntentSettleMs] has passed. When Spotify refuses, the
+     * state flips back and [health] says why.
+     */
     suspend fun togglePause() {
+        // Only [nowPlaying] and the intent change here, and neither is saved: no loaded state is needed, and the
+        // change shows without waiting for a Spotify sequence in flight.
+        val intent = stateMutex.withLock { showToggled() }
         spotifyMutex.withLock {
-            val ready = syncState()
-            val wasPlaying = ready && withState { _nowPlaying.value?.isPlaying == true }
-            val result = if (wasPlaying) player.pause() else player.resume()
-            if (ready && result is SpotifyResult.Ok) {
-                withState { _nowPlaying.value = _nowPlaying.value?.copy(isPlaying = !wasPlaying) }
-            }
+            // With nothing shown there is nothing to pause: ask Spotify to play.
+            val result = if (intent != null && !intent.shown.isPlaying) player.pause() else player.resume()
+            if (result !is SpotifyResult.Ok) stateMutex.withLock { refused(intent, result) }
             wake.trySend(Unit)
         }
+    }
+
+    /**
+     * Shows [nowPlaying] flipped between paused and playing, from where it is now, and keeps that as the intent
+     * Spotify has to confirm. Null when nothing is shown. Caller holds [stateMutex].
+     */
+    private fun showToggled(): PlayIntent? {
+        val current = _nowPlaying.value ?: return null
+        val now = clock()
+        val toggled = current.copy(progressMs = current.positionAt(now), isPlaying = !current.isPlaying, sampledAtEpochMs = now)
+        _nowPlaying.value = toggled
+        return PlayIntent(toggled, untilEpochMs = now + config.playIntentSettleMs).also { playIntent = it }
+    }
+
+    /**
+     * Spotify did not take [intent]'s command: unless a later click or Spotify itself replaced the intent, it
+     * ends and the state flips back. Caller holds [stateMutex].
+     */
+    private fun refused(intent: PlayIntent?, result: SpotifyResult<*>) {
+        if (intent != null && intent === playIntent) {
+            playIntent = null
+            val now = clock()
+            _nowPlaying.value = _nowPlaying.value?.let {
+                it.copy(progressMs = it.positionAt(now), isPlaying = !intent.shown.isPlaying, sampledAtEpochMs = now)
+            }
+        }
+        _health.value = healthOf(result)
     }
 
     /**
@@ -282,11 +342,12 @@ class PlaybackController(
         val head = withState {
             wake.tryReceive()
             if (track?.id != lastTrackId) settleTrackChange(track?.id, spotifyQueue)
-            _nowPlaying.value = if (cp != null && track != null) {
-                NowPlaying(track, cp.progressMs, cp.isPlaying, playing?.takeIf { it.track.id == track.id })
+            val polled = if (cp != null && track != null) {
+                NowPlaying(track, cp.progressMs, cp.isPlaying, playing?.takeIf { it.track.id == track.id }, clock())
             } else {
                 null
             }
+            _nowPlaying.value = withPlayIntent(polled)
             if (remainingMs != null && remainingMs <= config.handoverLeadMs) handOverCandidate(track?.id) else null
         }
         val handOverResult = head?.let { player.addToQueue(it.track.uri) }
@@ -299,9 +360,32 @@ class PlaybackController(
             }
             when {
                 handOverResult is SpotifyResult.RateLimited -> NextTick(retryAfterMs(handOverResult), wakeable = false)
+                playIntent != null -> NextTick(config.nearEndPollMs) // soon picks up Spotify's confirmation
                 remainingMs != null && remainingMs <= config.nearEndWindowMs -> NextTick(config.nearEndPollMs)
                 else -> NextTick(config.idlePollMs)
             }
+        }
+    }
+
+    /**
+     * What to show for a poll. Right after a pause or resume Spotify can still report the state from before it, so
+     * while it reports the opposite of [playIntent] for the same track, and the intent has not expired, the intent
+     * is shown: a pause stays frozen where it was, a resume runs on from when it was clicked. Otherwise the intent
+     * ends and Spotify is trusted again. Caller holds [stateMutex].
+     */
+    private fun withPlayIntent(polled: NowPlaying?): NowPlaying? {
+        val intent = playIntent ?: return polled
+        val shown = intent.shown
+        if (polled == null || polled.track.id != shown.track.id || polled.isPlaying == shown.isPlaying ||
+            clock() >= intent.untilEpochMs
+        ) {
+            playIntent = null
+            return polled
+        }
+        return if (shown.isPlaying) {
+            polled.copy(isPlaying = true, sampledAtEpochMs = shown.sampledAtEpochMs)
+        } else {
+            polled.copy(isPlaying = false, progressMs = shown.progressMs, sampledAtEpochMs = shown.sampledAtEpochMs)
         }
     }
 
@@ -417,4 +501,7 @@ class PlaybackController(
 
     /** When the loop polls again; a rate-limit wait is not cut short by wake-ups. */
     private class NextTick(val afterMs: Long, val wakeable: Boolean = true)
+
+    /** A pause or resume Spotify has not confirmed yet: [shown] is what it showed, until [untilEpochMs]. */
+    private class PlayIntent(val shown: NowPlaying, val untilEpochMs: Long)
 }
