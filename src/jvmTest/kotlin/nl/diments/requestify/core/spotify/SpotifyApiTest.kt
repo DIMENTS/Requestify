@@ -292,8 +292,45 @@ class SpotifyApiTest {
         assertEquals("https://i.scdn.co/image/medium", track.albumArtUrl)
     }
 
+    private val localFile =
+        """{"id":null,"uri":"spotify:local:a:b:c:1","name":"Local","type":"track","is_local":true,"artists":[{"name":null}],"album":{"images":[]}}"""
+
     @Test
-    fun albumArtNullWithoutImages() = runBlocking<Unit> {
+    fun localFileCurrentlyPlayingHasNullTrack() = runBlocking<Unit> {
+        val result = api { respond("""{"progress_ms":9,"is_playing":true,"item":$localFile}""", HttpStatusCode.OK, json) }
+            .currentlyPlaying().ok()
+        assertNull(checkNotNull(result).track)
+        assertEquals(9L, result.progressMs)
+    }
+
+    @Test
+    fun trackMissingUriHasNullTrack() = runBlocking<Unit> {
+        val body = """{"is_playing":true,"item":{"id":"x","name":"N","type":"track"}}"""
+        val result = api { respond(body, HttpStatusCode.OK, json) }.currentlyPlaying().ok()
+        assertNull(checkNotNull(result).track)
+    }
+
+    @Test
+    fun queueDropsNullAndMissingIds() = runBlocking<Unit> {
+        val body = """{"queue":[{"id":"q1","type":"track"},$localFile,{"type":"track"},{"id":"q2","type":"track"}]}"""
+        assertEquals(listOf("q1", "q2"), api { respond(body, HttpStatusCode.OK, json) }.userQueueTrackIds().ok())
+    }
+
+    @Test
+    fun searchDropsUnusableItems() = runBlocking<Unit> {
+        val body = """{"tracks":{"items":[$localFile,null,{"id":"a","uri":"spotify:track:a","name":"A","artists":[]}]}}"""
+        val tracks = api { respond(body, HttpStatusCode.OK, json) }.searchTracks("x").ok()
+        assertEquals(listOf("A"), tracks.map(Track::name))
+    }
+
+    @Test
+    fun trackWithoutUsableIdIsFailed() = runBlocking<Unit> {
+        val result = api { respond(localFile, HttpStatusCode.OK, json) }.track("whatever")
+        assertIs<SpotifyResult.Failed>(result)
+    }
+
+    @Test
+    fun albumArtNullWithoutImages()= runBlocking<Unit> {
         val tracks = api { fixtureOk("search.json") }.searchTracks("x").ok()
         assertNull(tracks[0].albumArtUrl)
         assertEquals("https://i.scdn.co/image/b2", tracks[1].albumArtUrl)

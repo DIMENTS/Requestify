@@ -69,13 +69,13 @@ class SpotifyApi(
         execute(HttpMethod.Get, "me", "player", "currently-playing") { body ->
             if (body.isBlank()) return@execute null
             val dto = json.decodeFromString<CurrentlyPlayingDto>(body)
-            val track = dto.item?.takeIf { it.type == "track" }?.toTrack()
+            val track = dto.item?.takeIf { it.type == "track" }?.toTrackOrNull()
             CurrentlyPlaying(track, dto.progressMs ?: 0L, dto.isPlaying)
         }
 
     override suspend fun userQueueTrackIds(): SpotifyResult<List<String>> =
         execute(HttpMethod.Get, "me", "player", "queue") { body ->
-            json.decodeFromString<QueueDto>(body).queue.filter { it.type == "track" }.map { it.id }
+            json.decodeFromString<QueueDto>(body).queue.filter { it.type == "track" }.mapNotNull { it.id?.takeIf(String::isNotBlank) }
         }
 
     override suspend fun addToQueue(trackUri: String): SpotifyResult<Unit> =
@@ -96,11 +96,11 @@ class SpotifyApi(
             "search",
             params = listOf("q" to query, "type" to "track", "limit" to limit.coerceIn(1, 10).toString()),
         ) { body ->
-            json.decodeFromString<SearchDto>(body).tracks.items.mapNotNull { it?.toTrack() }
+            json.decodeFromString<SearchDto>(body).tracks.items.mapNotNull { it?.toTrackOrNull() }
         }
 
     override suspend fun track(id: String): SpotifyResult<Track> =
-        execute(HttpMethod.Get, "tracks", id) { body -> json.decodeFromString<TrackDto>(body).toTrack() }
+        execute(HttpMethod.Get, "tracks", id) { body -> json.decodeFromString<TrackDto>(body).toTrackOrNull() ?: error("track has no usable id, uri or name") }
 
     override suspend fun isPremium(): SpotifyResult<Boolean?> =
         execute(HttpMethod.Get, "me") { body ->
@@ -203,7 +203,7 @@ class SpotifyApi(
     private class QueueDto(val queue: List<QueueItemDto> = emptyList())
 
     @Serializable
-    private class QueueItemDto(val id: String = "", val type: String? = null)
+    private class QueueItemDto(val id: String? = null, val type: String? = null)
 
     @Serializable
     private class SearchDto(val tracks: TracksPage = TracksPage())
@@ -216,28 +216,33 @@ class SpotifyApi(
 
     @Serializable
     private class TrackDto(
-        val id: String = "",
-        val uri: String = "",
-        val name: String = "",
+        val id: String? = null,
+        val uri: String? = null,
+        val name: String? = null,
         val type: String? = null,
         @SerialName("duration_ms") val durationMs: Long = 0L,
         val explicit: Boolean = false,
         val artists: List<ArtistDto> = emptyList(),
         val album: AlbumDto? = null,
     ) {
-        fun toTrack() = Track(
-            id = id,
-            uri = uri,
-            name = name,
-            artists = artists.map { it.name },
-            durationMs = durationMs,
-            explicit = explicit,
-            albumArtUrl = album?.images?.minByOrNull { abs((it.width ?: Int.MAX_VALUE / 2) - ART_TARGET_WIDTH) }?.url,
-        )
+        /** Null for items without a usable id, uri or name (e.g. local files, episodes). */
+        fun toTrackOrNull(): Track? {
+            if (id.isNullOrBlank() || uri.isNullOrBlank() || name.isNullOrBlank()) return null
+            return Track(
+                id = id,
+                uri = uri,
+                name = name,
+                artists = artists.mapNotNull { it.name },
+                durationMs = durationMs,
+                explicit = explicit,
+                albumArtUrl = album?.images
+                    ?.minByOrNull { abs((it.width ?: Int.MAX_VALUE / 2) - ART_TARGET_WIDTH) }?.url,
+            )
+        }
     }
 
     @Serializable
-    private class ArtistDto(val name: String)
+    private class ArtistDto(val name: String? = null)
 
     @Serializable
     private class AlbumDto(val images: List<ImageDto> = emptyList())
