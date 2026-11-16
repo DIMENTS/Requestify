@@ -65,4 +65,26 @@ class JsonFileStoreTest {
         path.writeText("{\"paidPriority\":false,\"futureField\":1}")
         assertEquals(Settings(paidPriority = false), store(path).read())
     }
+
+    @Test fun invalidUtf8FallsBackToDefaultAndIsKept() {
+        val path = dir.resolve("settings.json")
+        Files.write(path, byteArrayOf('{'.code.toByte(), 0xC3.toByte()))
+        assertEquals(Settings(), store(path).read())
+        assertEquals(1, dir.listDirectoryEntries("settings.json.corrupt-*").size)
+        assertFalse(path.exists())
+    }
+
+    @Test fun emptyFileFallsBackToDefaultAndIsKept() {
+        val path = dir.resolve("settings.json")
+        path.writeText("")
+        assertEquals(Settings(), store(path).read())
+        assertEquals(1, dir.listDirectoryEntries("settings.json.corrupt-*").size)
+    }
+
+    @Test fun overwriteReplacesPreviousValue() {
+        val store = store()
+        store.write(Settings(paidPriority = false))
+        store.write(Settings(spotifyClientId = "x"))
+        assertEquals(Settings(spotifyClientId = "x"), store.read())
+    }
 }
