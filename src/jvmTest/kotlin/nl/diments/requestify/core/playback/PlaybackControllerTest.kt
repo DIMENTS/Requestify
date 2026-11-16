@@ -2,14 +2,18 @@ package nl.diments.requestify.core.playback
 
 import java.nio.file.Path
 import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.createDirectory
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -23,6 +27,7 @@ import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.queue.PersistedPlayback
+import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.spotify.CurrentlyPlaying
 import nl.diments.requestify.core.spotify.SpotifyResult
@@ -420,5 +425,108 @@ class PlaybackControllerTest {
         restarted.start()
         runCurrent()
         assertEquals(listOf(r2, paid), restarted.queue.value.items)
+    }
+
+    @Test
+    fun queueStaysEditableWhileSpotifyIsSlow() = runTest {
+        val player = fakePlayer()
+        val gate = CompletableDeferred<Unit>()
+        player.addToQueueGate = gate
+        player.plays(trackA, progressMs = 190_000)
+        val r2 = request("r2")
+        val r3 = request("r3")
+        val controller = controller(player)
+        controller.enqueue(r1)
+        controller.enqueue(r2)
+        controller.start()
+        runCurrent()
+        assertEquals(listOf(r1.track.uri), player.callsTo("addToQueue").map { it.arg }) // still in flight
+
+        controller.enqueue(r3)
+        controller.remove("r1")
+        controller.move("r3", 0)
+        runCurrent()
+        assertEquals(listOf(r3, r2), controller.queue.value.items)
+        assertEquals(listOf(r3, r2), store().load().queue.items)
+
+        gate.complete(Unit) // Spotify has R1, so it counts as handed over even though it was removed meanwhile
+        runCurrent()
+        assertEquals(listOf(r3, r2), controller.queue.value.items)
+        val saved = store().load()
+        assertEquals(r1, saved.handedOver)
+        assertEquals(listOf(r3, r2), saved.queue.items)
+    }
+
+    @Test
+    fun healthIsPublishedOncePerTick() = runTest {
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 186_000)
+        player.addToQueueResults.add(SpotifyResult.NoActiveDevice)
+        val controller = controller(player)
+        controller.enqueue(r1)
+        controller.start()
+        runCurrent()
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+
+        val gate = CompletableDeferred<Unit>()
+        player.addToQueueGate = gate
+        advance(1_000) // the retry is in flight: no brief "Ok" before Spotify answers
+        assertEquals(2, player.callsTo("addToQueue").size)
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(SpotifyHealth.Ok, controller.health.value)
+    }
+
+    @Test
+    fun failedSaveIsReportedAndRetriedByTheNextTick() = runTest {
+        val player = fakePlayer()
+        player.currentlyPlayingResult = SpotifyResult.Failed("HTTP 503")
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+        assertNull(controller.persistError.value)
+
+        val blocker = dir.resolve("queue.json.tmp").createDirectory() // the store cannot write its temp file
+        controller.enqueue(r1)
+        runCurrent()
+        assertNotNull(controller.persistError.value)
+        assertEquals(listOf(r1), controller.queue.value.items)
+        assertEquals(PersistedPlayback(), store().load())
+
+        blocker.deleteExisting()
+        advance(3_000) // this tick fails at currentlyPlaying, yet still retries the save
+        assertNull(controller.persistError.value)
+        assertEquals(listOf(r1), store().load().queue.items)
+    }
+
+    @Test
+    fun rateLimitedWithZeroRetryAfterStillWaits() = runTest {
+        val player = fakePlayer()
+        player.currentlyPlayingResult = SpotifyResult.RateLimited(0)
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+        assertEquals(SpotifyHealth.RateLimited(untilEpochMs = 1_000), controller.health.value)
+        advance(999)
+        assertEquals(listOf(0L), player.pollTimes())
+        advance(1)
+        assertEquals(listOf(0L, 1_000L), player.pollTimes())
+    }
+
+    @Test
+    fun historyKeepsThe50Newest() = runTest {
+        val older = (1..50).map { PlayedEntry(request("old$it"), playedAtEpochMs = it.toLong()) }.reversed()
+        store().save(PersistedPlayback(playing = r1, history = older))
+        val player = fakePlayer()
+        player.plays(trackB, progressMs = 0)
+        val controller = controller(player)
+        advanceTimeBy(1_000) // R1 ends after every older entry
+        controller.start()
+        runCurrent()
+        val history = controller.history.value
+        assertEquals(50, history.size)
+        assertEquals(r1, history.first().request)
+        assertEquals(history, store().load().history)
     }
 }

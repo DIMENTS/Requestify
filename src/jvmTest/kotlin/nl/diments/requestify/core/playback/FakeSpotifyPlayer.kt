@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.playback
 
+import kotlinx.coroutines.CompletableDeferred
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.spotify.CurrentlyPlaying
 import nl.diments.requestify.core.spotify.SpotifyPlayer
@@ -20,6 +21,9 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     /** Answers for the next [addToQueue] calls, in order; `Ok` once used up. */
     val addToQueueResults = ArrayDeque<SpotifyResult<Unit>>()
 
+    /** When set, [addToQueue] waits for it before answering, like a slow Spotify. */
+    var addToQueueGate: CompletableDeferred<Unit>? = null
+
     fun plays(track: Track?, progressMs: Long = 0, isPlaying: Boolean = true) {
         currentlyPlayingResult = SpotifyResult.Ok(CurrentlyPlaying(track, progressMs, isPlaying))
     }
@@ -39,6 +43,7 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
 
     override suspend fun addToQueue(trackUri: String): SpotifyResult<Unit> {
         record("addToQueue", trackUri)
+        addToQueueGate?.await()
         return addToQueueResults.removeFirstOrNull() ?: SpotifyResult.Ok(Unit)
     }
 

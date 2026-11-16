@@ -24,7 +24,8 @@ class QueueStore(private val file: JsonFileStore<PersistedPlayback>) {
         file.write(p.copy(history = capped))
     }
 
-    private companion object {
+    companion object {
+        /** How many played entries are kept. */
         const val MAX_HISTORY = 50
     }
 }
