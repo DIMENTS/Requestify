@@ -1,0 +1,30 @@
+package nl.diments.requestify.core.queue
+
+import kotlinx.serialization.Serializable
+import nl.diments.requestify.core.model.Request
+import nl.diments.requestify.core.storage.JsonFileStore
+
+@Serializable
+data class PlayedEntry(val request: Request, val playedAtEpochMs: Long)
+
+@Serializable
+data class PersistedPlayback(
+    val queue: RequestQueue = RequestQueue(),
+    val handedOver: Request? = null,
+    val playing: Request? = null,
+    val history: List<PlayedEntry> = emptyList(),
+)
+
+class QueueStore(private val file: JsonFileStore<PersistedPlayback>) {
+    fun load(): PersistedPlayback = file.read()
+
+    /** Keeps only the [MAX_HISTORY] most recently played history entries. */
+    fun save(p: PersistedPlayback) {
+        val capped = p.history.sortedByDescending { it.playedAtEpochMs }.take(MAX_HISTORY)
+        file.write(p.copy(history = capped))
+    }
+
+    private companion object {
+        const val MAX_HISTORY = 50
+    }
+}
