@@ -66,6 +66,7 @@ import nl.diments.requestify.core.spotify.auth.SPOTIFY_REDIRECT_URI
 import nl.diments.requestify.core.spotify.auth.SpotifyAuthStatus
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.nav_connections
+import nl.diments.requestify.resources.save_failed
 import nl.diments.requestify.resources.setup_browser_failed
 import nl.diments.requestify.resources.setup_check_after_login
 import nl.diments.requestify.resources.setup_client_id_invalid
@@ -159,7 +160,9 @@ private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                 CopyableText(SPOTIFY_REDIRECT_URI)
             }
             Step(3, Res.string.setup_step_client_id_title, Res.string.setup_step_client_id_body, done = state.clientIdValid) {
-                ClientIdField(state.clientId, enabled = !loggedIn, onChange = vm::onClientIdChange)
+                // Locked while logging in too: a login started with one ID must keep refreshing with that ID.
+                ClientIdField(state.clientId, enabled = !loggedIn && !state.loggingIn, onChange = vm::onClientIdChange)
+                if (state.saveFailure == SaveFailure.ClientId) ErrorText(stringResource(Res.string.save_failed))
             }
             Step(4, Res.string.setup_step_login_title, Res.string.setup_step_login_body, done = loggedIn) {
                 LoginControls(state, vm)
@@ -273,10 +276,12 @@ private fun CopyableText(text: String) {
         OutlinedButton(
             onClick = {
                 scope.launch {
-                    clipboard.setClipEntry(ClipEntry(StringSelection(text)))
-                    copied = true
-                    delay(COPIED_CONFIRMATION_MS)
-                    copied = false
+                    // The system clipboard throws while another program holds it; then there is simply no "Copied".
+                    if (runCatching { clipboard.setClipEntry(ClipEntry(StringSelection(text))) }.isSuccess) {
+                        copied = true
+                        delay(COPIED_CONFIRMATION_MS)
+                        copied = false
+                    }
                 }
             },
             shapes = ButtonDefaults.shapes(),
@@ -398,6 +403,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                 },
             )
         }
+        if (state.saveFailure == SaveFailure.Logout) ErrorText(stringResource(Res.string.save_failed))
     }
 }
 

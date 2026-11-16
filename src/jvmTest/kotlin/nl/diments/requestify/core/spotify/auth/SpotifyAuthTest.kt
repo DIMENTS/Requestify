@@ -19,6 +19,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -31,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.secrets.SecretKeys
+import nl.diments.requestify.core.secrets.SecretStore
 
 class SpotifyAuthTest {
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
@@ -50,7 +52,7 @@ class SpotifyAuthTest {
         )
 
     private fun auth(
-        secrets: InMemorySecretStore,
+        secrets: SecretStore,
         clock: () -> Long = { 0L },
         openBrowser: (String) -> Unit = {},
         receiverFactory: () -> LoopbackReceiver = { LoopbackReceiver(0) },
@@ -210,6 +212,31 @@ class SpotifyAuthTest {
         assertNull(secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
         assertEquals(SpotifyAuthStatus.LoggedOut, a.status.value)
         assertNull(a.accessToken())
+    }
+
+    @Test
+    fun logoutThatCannotRemoveTheSecretChangesNothing() = runBlocking {
+        val stored = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val secrets = object : SecretStore by stored {
+            override fun remove(key: String) {
+                throw IOException("secrets file in use")
+            }
+        }
+        val inFlight = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val a = auth(secrets) {
+            inFlight.complete(Unit)
+            release.await()
+            ok("a1")
+        }
+        val refresh = async(Dispatchers.Default) { a.accessToken() }
+        inFlight.await()
+
+        assertFailsWith<IOException> { a.logout() }
+        release.complete(Unit)
+        assertEquals("a1", refresh.await()?.value, "a refresh in flight is still applied")
+        assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
+        assertEquals("r1", stored.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
     }
 
     @Test

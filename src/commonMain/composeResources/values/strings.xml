@@ -117,4 +117,5 @@
     <string name="settings_language_english">English</string>
     <string name="settings_language_dutch">Nederlands</string>
     <string name="settings_language_restart">The new language is used after you restart Requestify.</string>
+    <string name="save_failed">Couldn’t save the change. Try again.</string>
 </resources>

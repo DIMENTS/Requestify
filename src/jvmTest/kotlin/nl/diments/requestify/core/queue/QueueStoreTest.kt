@@ -1,12 +1,16 @@
 package nl.diments.requestify.core.queue
 
 import java.nio.file.Path
+import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -68,5 +72,17 @@ class QueueStoreTest {
         val expected = Settings(themeMode = ThemeMode.Custom(0xFF112233.toInt()), darkMode = DarkMode.Dark)
         assertEquals(expected, store.settings.value)
         assertEquals(expected, SettingsStore(file).settings.value)
+    }
+
+    @Test fun settingsStoreTryUpdateReportsAFailedSaveAndChangesNothing() {
+        // A file where the settings folder should be: every write fails, like a file held by another program.
+        val blocker = dir.resolve("blocker").createFile()
+        val store = SettingsStore(JsonFileStore(blocker.resolve("settings.json"), Settings.serializer()) { Settings() })
+        assertFalse(store.tryUpdate { it.copy(darkMode = DarkMode.Dark) })
+        assertEquals(Settings(), store.settings.value)
+
+        blocker.deleteExisting()
+        assertTrue(store.tryUpdate { it.copy(darkMode = DarkMode.Dark) })
+        assertEquals(DarkMode.Dark, store.settings.value.darkMode)
     }
 }

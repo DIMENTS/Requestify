@@ -35,6 +35,9 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,10 +51,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.settings.DarkMode
+import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.settings.ThemeMode
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.nav_settings
+import nl.diments.requestify.resources.save_failed
 import nl.diments.requestify.resources.settings_appearance
 import nl.diments.requestify.resources.settings_colour
 import nl.diments.requestify.resources.settings_colour_album
@@ -89,10 +94,19 @@ private val SwatchSize = 48.dp
 
 private enum class ColourSource { Album, Custom }
 
-/** Settings → Appearance. Every change is saved at once; colour and theme apply at once, language at next start. */
+/**
+ * Settings → Appearance. Every change is saved at once; colour and theme apply at once, language at next start.
+ * A change that cannot be saved is not applied, and the screen says so until a later change saves.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(settings: SettingsStore) {
     val current by settings.settings.collectAsState()
+    var saveFailed by remember { mutableStateOf(false) }
+    fun save(change: (Settings) -> Settings) {
+        saveFailed = !settings.tryUpdate(change)
+    }
+    val motion = MaterialTheme.motionScheme
     Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth().padding(24.dp),
@@ -106,7 +120,14 @@ fun SettingsScreen(settings: SettingsStore) {
             ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     Text(stringResource(Res.string.settings_appearance), style = MaterialTheme.typography.titleLargeEmphasized)
-                    ColourSetting(current.themeMode) { mode -> settings.update { it.copy(themeMode = mode) } }
+                    AnimatedVisibility(
+                        visible = saveFailed,
+                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                        exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                    ) {
+                        SaveFailedBanner()
+                    }
+                    ColourSetting(current.themeMode) { mode -> save { it.copy(themeMode = mode) } }
                     Setting(Res.string.settings_theme) {
                         ChoiceGroup(
                             options = DarkMode.entries,
@@ -118,7 +139,7 @@ fun SettingsScreen(settings: SettingsStore) {
                                     DarkMode.Dark -> Res.string.settings_theme_dark
                                 }
                             },
-                            onSelect = { mode -> settings.update { it.copy(darkMode = mode) } },
+                            onSelect = { mode -> save { it.copy(darkMode = mode) } },
                         )
                     }
                     Setting(Res.string.settings_language, hint = Res.string.settings_language_restart) {
@@ -132,7 +153,7 @@ fun SettingsScreen(settings: SettingsStore) {
                                     AppLanguage.Dutch -> Res.string.settings_language_dutch
                                 }
                             },
-                            onSelect = { language -> settings.update { it.copy(language = language) } },
+                            onSelect = { language -> save { it.copy(language = language) } },
                         )
                     }
                 }
@@ -219,6 +240,24 @@ private fun Swatch(colour: Color, selected: Boolean, label: String, onClick: () 
                 contentDescription = null,
                 tint = if (colour.luminance() > 0.5f) Color.Black else Color.White,
             )
+        }
+    }
+}
+
+@Composable
+private fun SaveFailedBanner() {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(AppIcons.Warning, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(stringResource(Res.string.save_failed), style = MaterialTheme.typography.labelLarge)
         }
     }
 }

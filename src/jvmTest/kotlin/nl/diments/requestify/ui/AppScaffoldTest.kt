@@ -17,6 +17,7 @@ import io.ktor.http.HttpStatusCode
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
@@ -29,6 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import nl.diments.requestify.AppGraph
 import nl.diments.requestify.core.secrets.InMemorySecretStore
+import nl.diments.requestify.core.settings.DarkMode
 import nl.diments.requestify.core.settings.ThemeMode
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.ui.settings.CustomSeedPresets
@@ -52,8 +54,22 @@ class AppScaffoldTest {
     }
 
     /** A graph that is never started and never reaches the network. */
-    private fun graph() =
-        AppGraph(AppPaths(dir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+    private fun graph(dataDir: Path = dir) =
+        AppGraph(AppPaths(dataDir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+
+    @Test
+    fun aSettingThatCannotBeSavedSaysSoAndIsNotApplied() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        // A file where the data folder should be: every save fails, like a file held by another program.
+        val graph = graph(dataDir = dir.resolve("blocker").createFile())
+        setContent { AppScaffold(graph) }
+        onNode(hasText("Settings") and hasClickAction()).performClick()
+        waitForIdle()
+
+        onNodeWithText("Dark").performClick()
+        waitForIdle()
+        onNodeWithText("Couldn’t save the change. Try again.").assertIsDisplayed()
+        assertEquals(DarkMode.System, graph.settings.settings.value.darkMode)
+    }
 
     @Test
     fun firstRunOpensTheSpotifySetup() = runDesktopComposeUiTest(width = 1180, height = 760) {

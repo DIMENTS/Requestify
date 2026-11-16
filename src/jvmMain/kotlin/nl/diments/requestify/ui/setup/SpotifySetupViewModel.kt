@@ -1,5 +1,6 @@
 package nl.diments.requestify.ui.setup
 
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,9 @@ sealed interface PremiumCheck {
 /** Why the last login did not succeed. The screen shows its own message for each, never Spotify's text. */
 enum class LoginError { TimedOut, PortInUse, Failed }
 
+/** What could not be saved just now (e.g. another program held the file); nothing changed, so it can be retried. */
+enum class SaveFailure { ClientId, Logout }
+
 /**
  * Everything the Spotify setup shows. [premium] is null while it is being checked or when not logged in.
  * [pendingLoginUrl] is the login page while a login runs and the browser could not be opened for it.
@@ -49,6 +53,7 @@ data class SpotifySetupState(
     val premium: PremiumCheck?,
     val health: SpotifyHealth,
     val pendingLoginUrl: String? = null,
+    val saveFailure: SaveFailure? = null,
 )
 
 /** Runs on the caller's [scope] (an app-lifetime scope on the UI thread). */
@@ -64,6 +69,7 @@ class SpotifySetupViewModel(
         val loggingIn: Boolean = false,
         val loginError: LoginError? = null,
         val pendingLoginUrl: String? = null,
+        val saveFailure: SaveFailure? = null,
     )
 
     private val local = MutableStateFlow(Local(settings.settings.value.spotifyClientId.orEmpty()))
@@ -85,14 +91,12 @@ class SpotifySetupViewModel(
     /** Shows the typed text; saves it (trimmed) only when it is a valid Client ID. */
     fun onClientIdChange(s: String) {
         local.update { it.copy(clientId = s) }
-        val id = s.trim()
-        if (isValidSpotifyClientId(id) && settings.settings.value.spotifyClientId != id) {
-            settings.update { it.copy(spotifyClientId = id) }
-        }
+        saveClientId()
     }
 
+    /** Saves the typed Client ID first when an earlier save of it failed, then logs in. */
     fun onLogin() {
-        if (local.value.loggingIn) return
+        if (local.value.loggingIn || !saveClientId()) return
         local.update { it.copy(loggingIn = true, loginError = null, pendingLoginUrl = null) }
         scope.launch {
             val error = try {
@@ -106,9 +110,33 @@ class SpotifySetupViewModel(
         }
     }
 
+    /** When the saved login cannot be removed, Spotify stays logged in and the screen says the change failed. */
     fun onLogout() {
-        auth.logout()
-        local.update { it.copy(loginError = null) }
+        val loggedOut = try {
+            auth.logout()
+            true
+        } catch (_: IOException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
+        local.update { it.copy(loginError = null, saveFailure = if (loggedOut) null else SaveFailure.Logout) }
+    }
+
+    /** Saves the typed Client ID when it is valid and new. False when that save failed; nothing changed then. */
+    private fun saveClientId(): Boolean {
+        val id = local.value.clientId.trim()
+        val saved = !isValidSpotifyClientId(id) ||
+            settings.settings.value.spotifyClientId == id ||
+            settings.tryUpdate { it.copy(spotifyClientId = id) }
+        local.update {
+            when {
+                !saved -> it.copy(saveFailure = SaveFailure.ClientId)
+                it.saveFailure == SaveFailure.ClientId -> it.copy(saveFailure = null)
+                else -> it
+            }
+        }
+        return saved
     }
 
     /** The browser could not be opened for [url]: show it so the streamer can open it by hand. */
@@ -142,5 +170,6 @@ class SpotifySetupViewModel(
             premium = premium,
             health = health,
             pendingLoginUrl = local.pendingLoginUrl,
+            saveFailure = local.saveFailure,
         )
 }

@@ -7,13 +7,16 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.headersOf
+import java.io.IOException
 import java.net.BindException
 import java.net.URI
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Path
 import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -44,6 +47,8 @@ import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.secrets.InMemorySecretStore
+import nl.diments.requestify.core.secrets.SecretKeys
+import nl.diments.requestify.core.secrets.SecretStore
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.SpotifyCatalog
@@ -77,6 +82,7 @@ class SpotifySetupViewModelTest {
         settings: SettingsStore,
         openBrowser: (url: String, receiver: LoopbackReceiver) -> Unit = { _, _ -> },
         receiverFactory: (() -> LoopbackReceiver)? = null,
+        secrets: SecretStore = InMemorySecretStore(),
     ): SpotifyAuth {
         var receiver: LoopbackReceiver? = null
         return SpotifyAuth(
@@ -89,7 +95,7 @@ class SpotifySetupViewModelTest {
                     )
                 },
             ),
-            secrets = InMemorySecretStore(),
+            secrets = secrets,
             clientId = { settings.settings.value.spotifyClientId },
             clock = { 0L },
             openBrowser = { url -> openBrowser(url, receiver!!) },
@@ -240,6 +246,49 @@ class SpotifySetupViewModelTest {
         advanceTimeBy(5.minutes + 1.seconds)
         runCurrent()
         assertNull(vm.state.value.pendingLoginUrl, "gone once the login ended")
+    }
+
+    @Test
+    fun clientIdThatCannotBeSavedSaysSoAndIsSavedAgainOnLogin() = runTest {
+        // A file where the settings folder should be: every write fails, like a file held by another program.
+        val blocker = dir.resolve("blocker").createFile()
+        val settings = SettingsStore(JsonFileStore(blocker.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val vm = viewModel(settings, auth(settings), backgroundScope)
+        vm.onClientIdChange(VALID_ID)
+        runCurrent()
+        assertNull(settings.settings.value.spotifyClientId)
+        assertEquals(SaveFailure.ClientId, vm.state.value.saveFailure)
+
+        vm.onLogin()
+        runCurrent()
+        assertFalse(vm.state.value.loggingIn, "no login while the Client ID is not saved")
+
+        blocker.deleteExisting() // the other program let go
+        vm.onLogin()
+        runCurrent()
+        assertEquals(VALID_ID, settings.settings.value.spotifyClientId)
+        assertNull(vm.state.value.saveFailure)
+        assertTrue(vm.state.value.loggingIn)
+    }
+
+    @Test
+    fun logoutThatCannotBeSavedStaysLoggedIn() = runTest {
+        val stored = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val secrets = object : SecretStore by stored {
+            override fun remove(key: String) {
+                throw IOException("secrets file in use")
+            }
+        }
+        val settings = settingsStore()
+        val vm = viewModel(settings, auth(settings, secrets = secrets), backgroundScope)
+        runCurrent()
+        assertEquals(SpotifyAuthStatus.LoggedIn, vm.state.value.auth)
+
+        vm.onLogout()
+        runCurrent()
+        assertEquals(SpotifyAuthStatus.LoggedIn, vm.state.value.auth)
+        assertEquals(SaveFailure.Logout, vm.state.value.saveFailure)
+        assertEquals("r1", stored.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
     }
 
     private companion object {

@@ -235,9 +235,13 @@ class SpotifyAuth(
         return null
     }
 
+    /**
+     * Forgets the login. The saved refresh token is removed first: when that throws (the secrets file cannot be
+     * written), nothing has changed and the login stays.
+     */
     fun logout() = synchronized(stateLock) {
-        generation++
         secrets.remove(SecretKeys.SPOTIFY_REFRESH_TOKEN)
+        generation++
         cached = null
         _status.value = SpotifyAuthStatus.LoggedOut
     }

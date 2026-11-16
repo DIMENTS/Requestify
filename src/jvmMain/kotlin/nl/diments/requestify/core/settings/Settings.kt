@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.settings
 
+import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,11 +35,24 @@ class SettingsStore(private val file: JsonFileStore<Settings>) {
     private val state = MutableStateFlow(file.read())
     val settings: StateFlow<Settings> = state.asStateFlow()
 
-    /** Applies [f], persists immediately, then emits the new value. */
+    /** Applies [f], persists immediately, then emits the new value. Throws when the file cannot be written. */
     @Synchronized
     fun update(f: (Settings) -> Settings) {
         val next = f(state.value)
         file.write(next)
         state.value = next
+    }
+
+    /**
+     * Like [update] for UI actions: returns false instead of throwing when the file cannot be written (e.g. another
+     * program holds it for a moment). Nothing changes then, so the caller can say so and the user can try again.
+     */
+    fun tryUpdate(f: (Settings) -> Settings): Boolean = try {
+        update(f)
+        true
+    } catch (_: IOException) {
+        false
+    } catch (_: SecurityException) {
+        false
     }
 }
