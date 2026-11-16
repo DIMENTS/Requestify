@@ -74,7 +74,10 @@ class AppGraph(
     /** Starts polling Spotify. */
     fun start() = controller.start()
 
-    /** Stops polling Spotify; every queue change has already been saved. */
+    /**
+     * Stops polling Spotify. A queue save still in flight when the app exits right after can be cut off; the
+     * atomic write then keeps the previous file, so at most the last change is lost.
+     */
     fun stop() = controller.stop()
 
     /** Opens the Spotify login page in the default browser, or shows its address when that is not possible. */

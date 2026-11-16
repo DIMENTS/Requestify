@@ -21,7 +21,6 @@ kotlin {
             implementation(libs.materialkolor)
             implementation(libs.serialization.json)
             implementation(libs.coroutines.core)
-            implementation(libs.lifecycle.viewmodel.compose)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.ktor3)
             implementation(libs.reorderable)
@@ -34,6 +33,7 @@ kotlin {
             implementation(libs.coroutines.swing)
             implementation(libs.ktor.client.cio)
             implementation(libs.jna.platform)
+            runtimeOnly(libs.slf4j.nop)
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))

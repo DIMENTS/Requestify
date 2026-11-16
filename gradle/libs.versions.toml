@@ -11,7 +11,8 @@ serialization-json = "1.13.0"
 coil = "3.6.3"
 reorderable = "3.1.0"
 jna = "5.19.1"
-lifecycle = "2.11.0"
+# The no-op SLF4J provider, matching the slf4j-api that Ktor brings: silences "No SLF4J providers were found".
+slf4j = "2.0.19"
 
 [libraries]
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material3" }
@@ -29,7 +30,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

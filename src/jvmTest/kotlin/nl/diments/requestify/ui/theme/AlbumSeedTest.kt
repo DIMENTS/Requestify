@@ -8,9 +8,13 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.geometry.Rect
 import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 
 class AlbumSeedTest {
     private fun solid(color: Color): ImageBitmap {
@@ -28,4 +32,16 @@ class AlbumSeedTest {
     }
 
     @Test fun greyImageGivesNull() = assertNull(albumSeedFrom(solid(Color(0xFF808080))))
+
+    @Test fun artThatCannotBeDecodedKeepsThePreviousSeed() = runBlocking {
+        val previous = Color(0xFF1E88E5)
+        assertEquals(previous, albumSeedOrPrevious(previous) { error("art cannot be decoded") })
+        assertEquals(Color.Red, albumSeedOrPrevious(previous) { Color.Red })
+        assertNull(albumSeedOrPrevious(previous) { null }, "art without a usable colour still gives no seed")
+    }
+
+    @Test fun cancellingTheSeedIsNotSwallowed() {
+        val outcome = runCatching { runBlocking { albumSeedOrPrevious(null) { throw CancellationException("track changed") } } }
+        assertIs<CancellationException>(outcome.exceptionOrNull())
+    }
 }

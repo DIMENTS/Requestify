@@ -528,6 +528,44 @@ class PlaybackControllerTest {
     }
 
     @Test
+    fun revertingToTheSavedQueueClearsTheSaveError() = runTest {
+        val player = fakePlayer()
+        player.currentlyPlayingResult = SpotifyResult.Failed("HTTP 503")
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+
+        dir.resolve("queue.json.tmp").createDirectory() // the store cannot write its temp file
+        controller.enqueue(r1)
+        runCurrent()
+        assertNotNull(controller.persistError.value)
+        controller.remove("r1") // back to exactly what is saved: nothing is unsaved any more
+        runCurrent()
+        assertNull(controller.persistError.value)
+    }
+
+    @Test
+    fun aRequestIdThatIsQueuedHandedOverOrPlayingIsNotAddedAgain() = runTest {
+        val player = fakePlayer()
+        val controller = startWithR1HandedOver(player)
+        val r2 = request("r2")
+        controller.enqueue(r1) // handed over
+        controller.enqueue(r2)
+        controller.enqueue(r2) // queued
+        runCurrent()
+        assertEquals(listOf(r2), controller.queue.value.items)
+        assertEquals(r1, controller.handedOver.value)
+
+        player.plays(r1.track, progressMs = 1_000)
+        advance(1_000)
+        assertEquals(r1, controller.nowPlaying.value?.request)
+        controller.enqueue(r1) // playing
+        runCurrent()
+        assertEquals(listOf(r2), controller.queue.value.items)
+        assertEquals(listOf(r2), store().load().queue.items)
+    }
+
+    @Test
     fun rateLimitedWithZeroRetryAfterStillWaits() = runTest {
         val player = fakePlayer()
         player.currentlyPlayingResult = SpotifyResult.RateLimited(0)

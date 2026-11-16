@@ -1,0 +1,12 @@
+Requestify
+Copyright (c) 2026 DIMENTS
+Licensed under the MIT License (see LICENSE).
+
+This product includes third-party material:
+
+Material Icons
+  The icon path data in src/jvmMain/kotlin/nl/diments/requestify/ui/common/Icons.kt
+  comes from Google's Material Icons (https://github.com/google/material-design-icons).
+  Copyright Google LLC.
+  Licensed under the Apache License, Version 2.0:
+  https://www.apache.org/licenses/LICENSE-2.0

@@ -70,6 +70,7 @@ import nl.diments.requestify.ui.setup.SpotifySetupScreen
 import nl.diments.requestify.ui.setup.isValidSpotifyClientId
 import nl.diments.requestify.ui.theme.RequestifyTheme
 import nl.diments.requestify.ui.theme.albumSeedFrom
+import nl.diments.requestify.ui.theme.albumSeedOrPrevious
 import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
 import org.jetbrains.compose.resources.StringResource
@@ -198,7 +199,8 @@ private fun AppRail(selected: Destination, onSelect: (Destination) -> Unit, onAd
 
 /**
  * The seed colour of [track]'s album art, picked off the main thread once per track. Until the new art is
- * ready the previous colour stays, so the scheme moves straight from album to album. Null without art.
+ * ready the previous colour stays, so the scheme moves straight from album to album; it also stays when the
+ * art cannot be decoded. Null without art.
  */
 @Composable
 private fun rememberAlbumSeed(track: Track?): Color? {
@@ -208,9 +210,11 @@ private fun rememberAlbumSeed(track: Track?): Color? {
         value = if (url == null) {
             null
         } else {
-            val request = ImageRequest.Builder(context).data(url).size(SEED_ART_SIZE_PX).build()
-            val image = (SingletonImageLoader.get(context).execute(request) as? SuccessResult)?.image
-            image?.let { withContext(Dispatchers.Default) { albumSeedFrom(it.toBitmap().asComposeImageBitmap()) } }
+            albumSeedOrPrevious(value) {
+                val request = ImageRequest.Builder(context).data(url).size(SEED_ART_SIZE_PX).build()
+                val image = (SingletonImageLoader.get(context).execute(request) as? SuccessResult)?.image
+                image?.let { withContext(Dispatchers.Default) { albumSeedFrom(it.toBitmap().asComposeImageBitmap()) } }
+            }
         }
     }
     return seed

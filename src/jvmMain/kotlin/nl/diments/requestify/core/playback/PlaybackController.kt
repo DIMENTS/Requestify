@@ -95,7 +95,10 @@ class PlaybackController(
     val history: StateFlow<List<PlayedEntry>> = _history.asStateFlow()
     val health: StateFlow<SpotifyHealth> = _health.asStateFlow()
 
-    /** Why the last save failed, or null when it succeeded. A failed save is retried by the next change or tick. */
+    /**
+     * Why the last save failed, or null when everything is saved. A failed save is retried by the next change or
+     * tick.
+     */
     val persistError: StateFlow<String?> = _persistError.asStateFlow()
 
     /**
@@ -132,14 +135,24 @@ class PlaybackController(
         }
     }
 
-    /** Stops polling. Every change has already been saved. */
+    /**
+     * Stops polling. Every accepted change has been saved or is being saved; when the app exits right after, a
+     * save still in flight can be cut off. The atomic write keeps the previous file then, so at most the last
+     * change is lost.
+     */
     fun stop() {
         loop?.cancel()
         loop = null
     }
 
+    /** Adds [request] unless a request with its id is already queued, handed over or playing. */
     fun enqueue(request: Request) {
-        change { _queue.value = _queue.value.add(request, paidPriority()) }
+        change {
+            val known = _queue.value.items.any { it.id == request.id } ||
+                _handedOver.value?.id == request.id ||
+                playing?.id == request.id
+            if (!known) _queue.value = _queue.value.add(request, paidPriority())
+        }
     }
 
     fun remove(id: String) {
@@ -387,7 +400,10 @@ class PlaybackController(
     /** Saves when the state differs from the last successful save; a failure shows in [persistError]. */
     private suspend fun persistIfChanged() {
         val snapshot = PersistedPlayback(_queue.value, _handedOver.value, playing, _history.value)
-        if (snapshot == lastSaved) return
+        if (snapshot == lastSaved) {
+            _persistError.value = null // e.g. an unsaved edit was undone: nothing is left unsaved
+            return
+        }
         try {
             withContext(ioDispatcher + NonCancellable) { store.save(snapshot) }
             lastSaved = snapshot

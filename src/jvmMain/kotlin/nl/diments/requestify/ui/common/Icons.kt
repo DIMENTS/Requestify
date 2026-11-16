@@ -1,3 +1,8 @@
+/*
+ * The icon path data in this file comes from Google's Material Icons
+ * (https://github.com/google/material-design-icons), Copyright Google LLC, licensed under the
+ * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). See NOTICE.
+ */
 package nl.diments.requestify.ui.common
 
 import androidx.compose.ui.graphics.Color
