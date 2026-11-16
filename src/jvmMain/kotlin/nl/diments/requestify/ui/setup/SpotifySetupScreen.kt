@@ -68,6 +68,7 @@ import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.nav_connections
 import nl.diments.requestify.resources.save_failed
 import nl.diments.requestify.resources.setup_browser_failed
+import nl.diments.requestify.resources.setup_cancel_login
 import nl.diments.requestify.resources.setup_check_after_login
 import nl.diments.requestify.resources.setup_client_id_invalid
 import nl.diments.requestify.resources.setup_client_id_label
@@ -370,6 +371,9 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                 ) {
                     LoadingIndicator(Modifier.size(40.dp))
                     Text(stringResource(Res.string.setup_logging_in), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = vm::onCancelLogin, shapes = ButtonDefaults.shapes()) {
+                        Text(stringResource(Res.string.setup_cancel_login))
+                    }
                 }
                 LoginPhase.LoggedIn -> Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),

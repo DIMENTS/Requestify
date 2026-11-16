@@ -9,6 +9,8 @@ import io.ktor.http.Url
 import io.ktor.http.headersOf
 import java.io.IOException
 import java.net.BindException
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -99,7 +101,7 @@ class SpotifySetupViewModelTest {
             clientId = { settings.settings.value.spotifyClientId },
             clock = { 0L },
             openBrowser = { url -> openBrowser(url, receiver!!) },
-            receiverFactory = receiverFactory ?: { LoopbackReceiver(0).also { receiver = it } },
+            receiverFactory = { (receiverFactory ?: { LoopbackReceiver(0) })().also { receiver = it } },
         )
     }
 
@@ -221,6 +223,28 @@ class SpotifySetupViewModelTest {
         assertEquals(LoginError.TimedOut, vm.state.value.loginError)
         assertFalse(vm.state.value.loggingIn)
         assertEquals(SpotifyAuthStatus.LoggedOut, vm.state.value.auth)
+    }
+
+    @Test
+    fun cancellingALoginEndsItAndFreesThePort() = runTest {
+        var made: LoopbackReceiver? = null
+        val settings = settingsStore()
+        val vm = viewModel(settings, auth(settings, receiverFactory = { LoopbackReceiver(0).also { made = it } }), backgroundScope)
+        vm.onClientIdChange(VALID_ID)
+        vm.onLogin()
+        runCurrent()
+        assertTrue(vm.state.value.loggingIn)
+        val port = checkNotNull(made).boundPort
+
+        vm.onCancelLogin()
+        runCurrent()
+        assertFalse(vm.state.value.loggingIn)
+        assertNull(vm.state.value.loginError, "cancelling is not an error")
+        ServerSocket(port, 0, InetAddress.getByName("127.0.0.1")).close() // the redirect port is free again
+
+        vm.onLogin()
+        runCurrent()
+        assertTrue(vm.state.value.loggingIn, "a new login can start right away")
     }
 
     @Test

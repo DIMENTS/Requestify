@@ -87,11 +87,12 @@
     <string name="setup_step_login_body">Je browser opent Spotify. Geef Requestify toestemming om het afspelen te bedienen.</string>
     <string name="setup_login">Inloggen met Spotify</string>
     <string name="setup_logging_in">Wachten tot je inlogt in je browser…</string>
+    <string name="setup_cancel_login">Annuleren</string>
     <string name="setup_browser_failed">Je browser ging niet open. Open dit adres zelf:</string>
     <string name="setup_logged_in">Ingelogd bij Spotify</string>
     <string name="setup_logout">Uitloggen</string>
     <string name="setup_login_expired">Je Spotify-login is verlopen. Log opnieuw in.</string>
-    <string name="setup_login_timed_out">Inloggen duurde te lang. Probeer het opnieuw.</string>
+    <string name="setup_login_timed_out">Inloggen duurde te lang. Controleer de Client ID en de redirect-URI en probeer het opnieuw.</string>
     <string name="setup_login_port_in_use">Een andere app gebruikt poort %1$d. Sluit die app en probeer het opnieuw.</string>
     <string name="setup_login_failed">Inloggen is niet gelukt. Controleer de Client ID en de redirect-URI en probeer het opnieuw.</string>
     <string name="setup_step_check_title">Premium en afspelen</string>

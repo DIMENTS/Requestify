@@ -10,6 +10,8 @@ import java.net.BindException
 import java.net.URLEncoder
 import java.security.SecureRandom
 import java.util.Base64
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +62,8 @@ class SpotifyAuth(
     private val receiverFactory: () -> LoopbackReceiver,
     private val accountsBaseUrl: String = "https://accounts.spotify.com",
     private val requestTimeoutMs: Long = 15_000,
+    /** How long a login waits for the browser to come back before it is [LoginResult.TimedOut]. */
+    private val loginTimeout: Duration = 5.minutes,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
@@ -108,7 +112,7 @@ class SpotifyAuth(
         }
         val code = try {
             openBrowser(authorizeUrl(Pkce.challenge(verifier), state))
-            receiver.awaitCode(state)
+            receiver.awaitCode(state, loginTimeout)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

@@ -3,6 +3,7 @@ package nl.diments.requestify.ui.setup
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +75,7 @@ class SpotifySetupViewModel(
 
     private val local = MutableStateFlow(Local(settings.settings.value.spotifyClientId.orEmpty()))
     private val premiumCheck = MutableStateFlow<PremiumCheck?>(null)
+    private var loginJob: Job? = null
 
     val state: StateFlow<SpotifySetupState> = combine(local, auth.status, premiumCheck, controller.health, ::toState)
         .stateIn(scope, SharingStarted.Eagerly, toState(local.value, auth.status.value, premiumCheck.value, controller.health.value))
@@ -98,16 +100,28 @@ class SpotifySetupViewModel(
     fun onLogin() {
         if (local.value.loggingIn || !saveClientId()) return
         local.update { it.copy(loggingIn = true, loginError = null, pendingLoginUrl = null) }
-        scope.launch {
-            val error = try {
-                errorOf(auth.login())
+        loginJob = scope.launch {
+            var error: LoginError? = LoginError.Failed
+            try {
+                error = errorOf(auth.login())
             } catch (e: CancellationException) {
+                error = null // cancelled by the streamer: not an error
                 throw e
             } catch (_: Exception) {
-                LoginError.Failed
+                // error stays Failed
+            } finally {
+                // Whatever happened, the spinner ends.
+                local.update { it.copy(loggingIn = false, loginError = error, pendingLoginUrl = null) }
             }
-            local.update { it.copy(loggingIn = false, loginError = error, pendingLoginUrl = null) }
         }
+    }
+
+    /**
+     * Stops a running login, e.g. when Spotify shows an error page and never comes back (a wrong Client ID or a
+     * redirect URI that was not saved). The redirect port is freed at once, so a new login can start.
+     */
+    fun onCancelLogin() {
+        loginJob?.cancel()
     }
 
     /** When the saved login cannot be removed, Spotify stays logged in and the screen says the change failed. */
