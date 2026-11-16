@@ -21,9 +21,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -52,6 +54,7 @@ class SpotifyAuthTest {
         clock: () -> Long = { 0L },
         openBrowser: (String) -> Unit = {},
         receiverFactory: () -> LoopbackReceiver = { LoopbackReceiver(0) },
+        requestTimeoutMs: Long = 15_000,
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) = SpotifyAuth(
         http = HttpClient(MockEngine(handler)),
@@ -60,6 +63,7 @@ class SpotifyAuthTest {
         clock = clock,
         openBrowser = openBrowser,
         receiverFactory = receiverFactory,
+        requestTimeoutMs = requestTimeoutMs,
     )
 
     @Test
@@ -206,5 +210,94 @@ class SpotifyAuthTest {
         assertNull(secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
         assertEquals(SpotifyAuthStatus.LoggedOut, a.status.value)
         assertNull(a.accessToken())
+    }
+
+    @Test
+    fun hungRefreshTimesOutTransientlyAndReleasesLock() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        var calls = 0
+        val a = auth(secrets, requestTimeoutMs = 100) {
+            if (calls++ == 0) awaitCancellation() else ok("a1")
+        }
+        assertNull(a.accessToken())
+        assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+        assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
+        // lock was released: a later caller can refresh
+        assertEquals("a1", a.accessToken(forceRefresh = true)?.value)
+    }
+
+    @Test
+    fun hungExchangeFailsWithTimeout() = runBlocking {
+        val secrets = InMemorySecretStore()
+        var receiver: LoopbackReceiver? = null
+        val a = auth(
+            secrets,
+            requestTimeoutMs = 100,
+            openBrowser = { url ->
+                val state = Url(url).parameters["state"]!!
+                val port = receiver!!.boundPort
+                Thread {
+                    java.net.http.HttpClient.newHttpClient().send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/callback?code=c1&state=$state")).build(),
+                        HttpResponse.BodyHandlers.discarding(),
+                    )
+                }.start()
+            },
+            receiverFactory = { LoopbackReceiver(0).also { receiver = it } },
+        ) { awaitCancellation() }
+        assertEquals(LoginResult.Failed("timeout"), a.login())
+        assertNull(secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+    }
+
+    @Test
+    fun refreshInFlightDuringLogoutIsDiscarded() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val a = auth(secrets) { entered.complete(Unit); release.await(); ok("a1", "r2") }
+        val pending = async(Dispatchers.Default) { a.accessToken() }
+        entered.await()
+        a.logout()
+        release.complete(Unit)
+        assertNull(pending.await())
+        assertNull(secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+        assertEquals(SpotifyAuthStatus.LoggedOut, a.status.value)
+    }
+
+    @Test
+    fun lateInvalidGrantAfterNewLoginKeepsNewSecret() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "old") }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var receiver: LoopbackReceiver? = null
+        val a = auth(
+            secrets,
+            openBrowser = { url ->
+                val state = Url(url).parameters["state"]!!
+                val port = receiver!!.boundPort
+                Thread {
+                    java.net.http.HttpClient.newHttpClient().send(
+                        HttpRequest.newBuilder(URI("http://127.0.0.1:$port/callback?code=c1&state=$state")).build(),
+                        HttpResponse.BodyHandlers.discarding(),
+                    )
+                }.start()
+            },
+            receiverFactory = { LoopbackReceiver(0).also { receiver = it } },
+        ) { req ->
+            if (form(req)["grant_type"] == "refresh_token") {
+                entered.complete(Unit)
+                release.await()
+                respond("{\"error\":\"invalid_grant\"}", HttpStatusCode.BadRequest, json)
+            } else {
+                ok("a2", "new")
+            }
+        }
+        val pending = async(Dispatchers.Default) { a.accessToken() }
+        entered.await()
+        assertEquals(LoginResult.Success, withContext(Dispatchers.Default) { a.login() })
+        release.complete(Unit)
+        assertNull(pending.await())
+        assertEquals("new", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+        assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
     }
 }
