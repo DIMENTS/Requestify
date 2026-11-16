@@ -13,13 +13,17 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
+import com.sun.nio.file.ExtendedOpenOption
 import io.ktor.http.HttpStatusCode
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.util.Locale
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
+import kotlin.io.path.readText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -31,8 +35,10 @@ import kotlinx.coroutines.cancel
 import nl.diments.requestify.AppGraph
 import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.settings.DarkMode
+import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.ThemeMode
 import nl.diments.requestify.core.storage.AppPaths
+import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.ui.settings.CustomSeedPresets
 import nl.diments.requestify.ui.theme.BrandSeed
 
@@ -69,6 +75,25 @@ class AppScaffoldTest {
         waitForIdle()
         onNodeWithText("Couldn’t save the change. Try again.").assertIsDisplayed()
         assertEquals(DarkMode.System, graph.settings.settings.value.darkMode)
+    }
+
+    @Test
+    fun settingsThatCannotBeReadStillOpenTheAppAndSaySo() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        val settingsFile = AppPaths(dir).settingsFile
+        JsonFileStore(settingsFile, Settings.serializer()) { Settings() }
+            .write(Settings(spotifyClientId = "0123456789abcdef0123456789abcdef", darkMode = DarkMode.Dark))
+        val text = settingsFile.readText()
+        // Another program holds settings.json and denies reading it (a Windows sharing violation).
+        Files.newByteChannel(settingsFile, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ).use {
+            val graph = graph()
+            setContent { AppScaffold(graph) }
+            waitForIdle()
+            onNodeWithText(
+                "Couldn’t read your settings, so Requestify uses the defaults for now. Restart Requestify to try again.",
+            ).assertIsDisplayed()
+            assertEquals(Settings(), graph.settings.settings.value)
+        }
+        assertEquals(text, settingsFile.readText(), "the saved settings are untouched")
     }
 
     @Test

@@ -71,6 +71,23 @@ class QueuePaneTest {
     }
 
     @Test
+    fun aQueueThatCannotBeReadSaysSo() = runComposeUiTest {
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                QueuePane(
+                    state = stateWith(emptyList()).copy(loadFailing = true),
+                    onAddInput = {},
+                    onAddSubmit = { false },
+                    onAddTrack = {},
+                    onRemove = {},
+                    onMove = { _, _ -> },
+                )
+            }
+        }
+        onNodeWithText("Couldn’t read the saved queue — retrying").assertIsDisplayed()
+    }
+
+    @Test
     fun draggedRowIsMovedOnceWhenDropped() = runComposeUiTest {
         val queue = (1..3).map {
             val track = Track("t$it", "spotify:track:t$it", "Song $it", listOf("Artist"), 200_000, false, null)

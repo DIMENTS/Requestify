@@ -63,6 +63,9 @@ data class PlaybackConfig(
  * save; it is held only for in-memory work and the save, never across a Spotify call, so queue edits show and
  * are saved at once even while Spotify is slow. A Spotify answer is applied to the state as it is by then.
  * A failed Spotify call never drops a request: it stays where it was and the next tick tries again.
+ *
+ * Nothing is handed over or saved before the saved state has been read. While it cannot be read ([loadError]),
+ * edits wait in order and are applied on top of it once a later tick or edit reads it.
  */
 class PlaybackController(
     private val player: SpotifyPlayer,
@@ -79,6 +82,7 @@ class PlaybackController(
     private val _history = MutableStateFlow<List<PlayedEntry>>(emptyList())
     private val _health = MutableStateFlow<SpotifyHealth>(SpotifyHealth.NothingPlaying)
     private val _persistError = MutableStateFlow<String?>(null)
+    private val _loadError = MutableStateFlow<String?>(null)
     private val _handedOver = MutableStateFlow<Request?>(null)
 
     val queue: StateFlow<RequestQueue> = _queue.asStateFlow()
@@ -94,6 +98,12 @@ class PlaybackController(
     /** Why the last save failed, or null when it succeeded. A failed save is retried by the next change or tick. */
     val persistError: StateFlow<String?> = _persistError.asStateFlow()
 
+    /**
+     * Why the saved state could not be read, or null once it is loaded. Until then nothing is handed over or
+     * saved; the next tick or edit tries again.
+     */
+    val loadError: StateFlow<String?> = _loadError.asStateFlow()
+
     private val spotifyMutex = Mutex()
     private val stateMutex = Mutex()
 
@@ -103,6 +113,9 @@ class PlaybackController(
     private var playing: Request? = null
     private var lastTrackId: String? = null
     private var lastSaved: PersistedPlayback? = null
+
+    /** Edits made before the saved state could be read, in order. Guarded by [stateMutex]. */
+    private val waitingEdits = mutableListOf<() -> Unit>()
 
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var loop: Job? = null
@@ -137,10 +150,13 @@ class PlaybackController(
         change { _queue.value = _queue.value.move(id, toIndex) }
     }
 
-    /** Hands the next request over first (when it may go), so it starts right away, then skips. */
+    /**
+     * Hands the next request over first (when it may go), so it starts right away, then skips. While the saved
+     * queue cannot be read nothing is handed over, but the skip still happens.
+     */
     suspend fun skip() {
         spotifyMutex.withLock {
-            val head = withState { handOverCandidate(_nowPlaying.value?.track?.id) }
+            val head = if (syncState()) withState { handOverCandidate(_nowPlaying.value?.track?.id) } else null
             if (head != null) {
                 val result = player.addToQueue(head.track.uri)
                 withState { if (result is SpotifyResult.Ok) markHandedOver(head) else _health.value = healthOf(result) }
@@ -152,9 +168,10 @@ class PlaybackController(
 
     suspend fun togglePause() {
         spotifyMutex.withLock {
-            val wasPlaying = withState { _nowPlaying.value?.isPlaying == true }
+            val ready = syncState()
+            val wasPlaying = ready && withState { _nowPlaying.value?.isPlaying == true }
             val result = if (wasPlaying) player.pause() else player.resume()
-            if (result is SpotifyResult.Ok) {
+            if (ready && result is SpotifyResult.Ok) {
                 withState { _nowPlaying.value = _nowPlaying.value?.copy(isPlaying = !wasPlaying) }
             }
             wake.trySend(Unit)
@@ -162,27 +179,48 @@ class PlaybackController(
     }
 
     /**
-     * Applies [update], saves it and wakes the loop. The coroutine starts undispatched, so edits take the lock
-     * in call order and show at once when the lock is free. Once accepted, an edit is applied and saved even
-     * if [scope] is cancelled meanwhile.
+     * Applies [update], saves it and wakes the loop; before the saved state could be read, the edit waits for it
+     * (see [syncLocked]). The coroutine starts undispatched, so edits take the lock in call order and show at once
+     * when the lock is free. Once accepted, an edit is applied and saved even if [scope] is cancelled meanwhile.
      */
     private fun change(update: () -> Unit) {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             withContext(NonCancellable) {
-                withState {
-                    update()
-                    wake.trySend(Unit) // under the lock, so a tick that reads the queue after this drains it
+                stateMutex.withLock {
+                    waitingEdits += update
+                    syncLocked()
                 }
             }
         }
     }
 
+    /** [syncLocked] under [stateMutex]. */
+    private suspend fun syncState(): Boolean = stateMutex.withLock { syncLocked() }
+
     /**
-     * Runs [block] under [stateMutex] on the loaded state, then saves the state if it changed, so every exit
-     * also retries a failed save. [block] cannot suspend, so it can never call Spotify while holding the lock.
+     * Reads the saved state the first time, applies the edits that waited for it and saves when the state changed
+     * (so it also retries a failed save). False while the saved state cannot be read: nothing is applied or saved
+     * then, so the saved file is never replaced by an empty queue. Caller holds [stateMutex].
+     */
+    private suspend fun syncLocked(): Boolean {
+        if (!loaded && !load()) return false
+        if (waitingEdits.isNotEmpty()) {
+            val edits = waitingEdits.toList()
+            waitingEdits.clear()
+            edits.forEach { it() }
+            wake.trySend(Unit) // under the lock, so a tick that reads the queue after this drains it
+        }
+        persistIfChanged()
+        return true
+    }
+
+    /**
+     * Runs [block] under [stateMutex] on the loaded state (only after [syncState] returned true), then saves the
+     * state if it changed, so every exit also retries a failed save. [block] cannot suspend, so it can never call
+     * Spotify while holding the lock.
      */
     private suspend fun <T> withState(block: () -> T): T = stateMutex.withLock {
-        ensureLoaded()
+        check(loaded) { "the saved state is not loaded" }
         try {
             block()
         } finally {
@@ -191,6 +229,8 @@ class PlaybackController(
     }
 
     private suspend fun tickSafely(): NextTick = spotifyMutex.withLock {
+        // Without the saved state nothing can be handed over safely: the next poll tries to read it again.
+        if (!syncState()) return@withLock NextTick(config.idlePollMs)
         try {
             tick()
         } catch (e: CancellationException) {
@@ -321,16 +361,27 @@ class PlaybackController(
     /** Never shorter than [PlaybackConfig.nearEndPollMs], so a `Retry-After: 0` cannot make the loop spin. */
     private fun retryAfterMs(result: SpotifyResult.RateLimited): Long = maxOf(result.retryAfterMs, config.nearEndPollMs)
 
-    /** Loads the saved state before the first change or tick, so nothing written earlier is overwritten. */
-    private suspend fun ensureLoaded() {
-        if (loaded) return
-        val saved = withContext(ioDispatcher) { store.load() }
+    /**
+     * Reads the saved state before the first change or tick, so nothing written earlier is overwritten. False
+     * (with [loadError] set) when it cannot be read for now. Caller holds [stateMutex].
+     */
+    private suspend fun load(): Boolean {
+        val saved = try {
+            withContext(ioDispatcher) { store.load() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _loadError.value = e.toString()
+            return false
+        }
         _queue.value = saved.queue
         _handedOver.value = saved.handedOver
         playing = saved.playing
         _history.value = saved.history
         lastSaved = saved
         loaded = true
+        _loadError.value = null
+        return true
     }
 
     /** Saves when the state differs from the last successful save; a failure shows in [persistError]. */

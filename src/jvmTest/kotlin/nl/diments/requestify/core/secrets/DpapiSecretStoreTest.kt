@@ -1,6 +1,10 @@
 package nl.diments.requestify.core.secrets
 
+import com.sun.nio.file.ExtendedOpenOption
+import java.io.IOException
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.readText
@@ -9,6 +13,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
@@ -51,6 +56,21 @@ class DpapiSecretStoreTest {
         store.remove("a")
         assertNull(store.get("a"))
         assertEquals("2", store.get("b"))
+    }
+
+    @Test fun unreadableFileGivesNoSecretAndIsNeverOverwritten() {
+        val store = DpapiSecretStore(file)
+        store.put("a", "1")
+        store.put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "tok-123")
+        // Another program holds the file and denies reading it (a Windows sharing violation).
+        Files.newByteChannel(file, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ).use {
+            assertNull(store.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+            assertFailsWith<IOException> { store.put("b", "2") }
+            assertFailsWith<IOException> { store.remove("a") }
+        }
+        assertEquals("1", store.get("a"))
+        assertEquals("tok-123", store.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+        assertNull(store.get("b"))
     }
 
     @Test fun inMemoryStoreBehaves() {

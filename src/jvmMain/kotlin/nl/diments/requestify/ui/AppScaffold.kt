@@ -1,14 +1,20 @@
 package nl.diments.requestify.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -36,6 +42,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -54,7 +61,9 @@ import nl.diments.requestify.resources.nav_add
 import nl.diments.requestify.resources.nav_connections
 import nl.diments.requestify.resources.nav_home
 import nl.diments.requestify.resources.nav_settings
+import nl.diments.requestify.resources.settings_load_failed
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.home.HomeScreen
 import nl.diments.requestify.ui.settings.SettingsScreen
 import nl.diments.requestify.ui.setup.SpotifySetupScreen
@@ -92,6 +101,7 @@ private const val SEED_ART_SIZE_PX = 128
 @Composable
 fun AppScaffold(graph: AppGraph) {
     val settings by graph.settings.settings.collectAsState()
+    val settingsUnreadable by graph.settings.loadFailed.collectAsState()
     val track by remember(graph) { graph.home.state.map { it.nowPlaying?.track }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.nowPlaying?.track)
     val albumSeed = rememberAlbumSeed(track)
@@ -114,27 +124,40 @@ fun AppScaffold(graph: AppGraph) {
                     },
                 )
                 val motion = MaterialTheme.motionScheme
-                AnimatedContent(
-                    targetState = destination,
-                    transitionSpec = {
-                        (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
-                            .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                    },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                ) { shown ->
-                    screens.SaveableStateProvider(shown.name) {
-                        when (shown) {
-                            Destination.Home -> {
-                                HomeScreen(graph.home, albumSeed, addFieldFocus)
-                                LaunchedEffect(focusAddField) {
-                                    if (focusAddField) {
-                                        addFieldFocus.requestFocus()
-                                        focusAddField = false
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    // The defaults are in use and nothing is saved over the file; a later change reads it again.
+                    AnimatedVisibility(
+                        visible = settingsUnreadable,
+                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                        exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                    ) {
+                        ProblemBanner(
+                            stringResource(Res.string.settings_load_failed),
+                            Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
+                        )
+                    }
+                    AnimatedContent(
+                        targetState = destination,
+                        transitionSpec = {
+                            (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
+                                .togetherWith(fadeOut(motion.fastEffectsSpec()))
+                        },
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    ) { shown ->
+                        screens.SaveableStateProvider(shown.name) {
+                            when (shown) {
+                                Destination.Home -> {
+                                    HomeScreen(graph.home, albumSeed, addFieldFocus)
+                                    LaunchedEffect(focusAddField) {
+                                        if (focusAddField) {
+                                            addFieldFocus.requestFocus()
+                                            focusAddField = false
+                                        }
                                     }
                                 }
+                                Destination.Connections -> SpotifySetupScreen(graph.spotifySetup)
+                                Destination.Settings -> SettingsScreen(graph.settings)
                             }
-                            Destination.Connections -> SpotifySetupScreen(graph.spotifySetup)
-                            Destination.Settings -> SettingsScreen(graph.settings)
                         }
                     }
                 }

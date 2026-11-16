@@ -1,6 +1,9 @@
 package nl.diments.requestify.ui.home
 
+import com.sun.nio.file.ExtendedOpenOption
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectory
 import kotlin.io.path.createTempDirectory
@@ -26,6 +29,7 @@ import nl.diments.requestify.core.playback.FakeSpotifyPlayer
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
+import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.SpotifyCatalog
@@ -66,7 +70,11 @@ class HomeViewModelTest {
     private fun TestScope.home(catalog: FakeCatalog = FakeCatalog()): Home {
         val controller = PlaybackController(
             player = FakeSpotifyPlayer { testScheduler.currentTime },
-            store = QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }),
+            store = QueueStore(
+                JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer(), retryDelaysMs = emptyList()) {
+                    PersistedPlayback()
+                },
+            ),
             requestsOpen = MutableStateFlow(true),
             paidPriority = { true },
             scope = backgroundScope,
@@ -276,5 +284,23 @@ class HomeViewModelTest {
         home.controller.enqueue(request("r1"))
         settle()
         assertEquals(true, home.vm.state.value.saveFailing)
+    }
+
+    @Test
+    fun unreadableQueueIsFlaggedUntilItLoads() = runTest {
+        QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() })
+            .save(PersistedPlayback(RequestQueue(listOf(request("saved")))))
+        val home = home()
+        // Another program holds queue.json and denies reading it (a Windows sharing violation).
+        Files.newByteChannel(dir.resolve("queue.json"), StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ).use {
+            home.controller.enqueue(request("r1"))
+            settle()
+            assertEquals(true, home.vm.state.value.loadFailing)
+            assertEquals(emptyList(), home.vm.state.value.queue)
+        }
+        home.controller.enqueue(request("r2"))
+        settle()
+        assertEquals(false, home.vm.state.value.loadFailing)
+        assertEquals(listOf("saved", "r1", "r2"), home.vm.state.value.queue.map { it.id })
     }
 }

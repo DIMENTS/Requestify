@@ -16,6 +16,7 @@ data class PersistedPlayback(
 )
 
 class QueueStore(private val file: JsonFileStore<PersistedPlayback>) {
+    /** Throws [nl.diments.requestify.core.storage.StoreReadException] while the file cannot be read; never save then. */
     fun load(): PersistedPlayback = file.read()
 
     /** Keeps only the [MAX_HISTORY] most recently played history entries. */

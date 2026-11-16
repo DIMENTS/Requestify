@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.StoreReadException
 
 @Serializable
 data class Settings(
@@ -35,13 +36,34 @@ enum class DarkMode { System, Light, Dark }
 @Serializable
 enum class AppLanguage { System, English, Dutch }
 
+/**
+ * The app's settings. When the saved file cannot be read at start (e.g. another program holds it), the app runs
+ * on the defaults and [loadFailed] is true; the defaults are never written over the saved file.
+ */
 class SettingsStore(private val file: JsonFileStore<Settings>) {
-    private val state = MutableStateFlow(file.read())
+    private val loaded: Settings? = try {
+        file.read()
+    } catch (_: StoreReadException) {
+        null
+    }
+    private val state = MutableStateFlow(loaded ?: Settings())
+    private val _loadFailed = MutableStateFlow(loaded == null)
+
     val settings: StateFlow<Settings> = state.asStateFlow()
 
-    /** Applies [f], persists immediately, then emits the new value. Throws when the file cannot be written. */
+    /** True while the saved settings could not be read and the defaults are used instead. */
+    val loadFailed: StateFlow<Boolean> = _loadFailed.asStateFlow()
+
+    /**
+     * Applies [f], persists immediately, then emits the new value. Throws when the file cannot be written, or when
+     * the saved settings still cannot be read: a change is only ever applied to (and saved over) what was saved.
+     */
     @Synchronized
     fun update(f: (Settings) -> Settings) {
+        if (_loadFailed.value) {
+            state.value = file.read()
+            _loadFailed.value = false
+        }
         val next = f(state.value)
         file.write(next)
         state.value = next

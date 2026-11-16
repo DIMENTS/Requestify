@@ -14,6 +14,7 @@
     <string name="home_played_empty">Er is nog niets gespeeld.</string>
     <string name="home_up_next_in_spotify">Volgende in Spotify</string>
     <string name="home_save_failing">Wachtrij opslaan mislukt — wordt opnieuw geprobeerd</string>
+    <string name="home_load_failing">Opgeslagen wachtrij lezen mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_remove_request">%1$s verwijderen</string>
     <string name="home_drag_to_reorder">Sleep om te verplaatsen</string>
     <string name="home_paid_request">Betaald verzoek</string>
@@ -119,4 +120,5 @@
     <string name="settings_language_dutch">Nederlands</string>
     <string name="settings_language_restart">De nieuwe taal wordt gebruikt nadat je Requestify opnieuw hebt gestart.</string>
     <string name="save_failed">De wijziging kon niet worden opgeslagen. Probeer het opnieuw.</string>
+    <string name="settings_load_failed">Je instellingen konden niet worden gelezen, dus Requestify gebruikt voorlopig de standaardinstellingen. Start Requestify opnieuw om het nog eens te proberen.</string>
 </resources>

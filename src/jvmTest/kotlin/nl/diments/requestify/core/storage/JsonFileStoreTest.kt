@@ -1,7 +1,10 @@
 package nl.diments.requestify.core.storage
 
+import com.sun.nio.file.ExtendedOpenOption
+import java.nio.channels.SeekableByteChannel
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
@@ -13,6 +16,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import nl.diments.requestify.core.settings.Settings
 
@@ -80,6 +84,47 @@ class JsonFileStoreTest {
         assertEquals(Settings(), store(path).read())
         assertEquals(1, dir.listDirectoryEntries("settings.json.corrupt-*").size)
     }
+
+    @Test fun fileLockedByAnotherProgramIsRetriedThenFailsAndIsKept() {
+        val path = dir.resolve("settings.json")
+        val saved = Settings(spotifyClientId = "a".repeat(32), paidPriority = false)
+        store(path).write(saved)
+        val text = path.readText()
+        val slept = mutableListOf<Long>()
+        val store = JsonFileStore(path, Settings.serializer(), sleep = { slept += it }) { Settings() }
+
+        lockedForReading(path).use {
+            assertFailsWith<StoreReadException> { store.read() }
+        }
+        assertEquals(listOf(50L, 100L, 200L), slept)
+        assertEquals(text, path.readText(), "the file is left as it was")
+        assertEquals(emptyList(), dir.listDirectoryEntries("settings.json.corrupt-*"))
+        assertEquals(saved, store.read())
+    }
+
+    @Test fun fileUnlockedDuringTheRetriesIsRead() {
+        val path = dir.resolve("settings.json")
+        val saved = Settings(spotifyClientId = "a".repeat(32))
+        store(path).write(saved)
+        val lock = lockedForReading(path)
+        val store = JsonFileStore(path, Settings.serializer(), sleep = { lock.close() }) { Settings() }
+        lock.use { assertEquals(saved, store.read()) }
+    }
+
+    @Test fun corruptFileThatCannotBeMovedIsCopiedAside() {
+        val path = dir.resolve("settings.json")
+        val text = "{\"spotifyClientId\":"
+        path.writeText(text)
+        // Another program has it open without delete sharing: it can be read and copied, but not moved.
+        Files.newByteChannel(path, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_DELETE).use {
+            assertEquals(Settings(), store(path).read())
+        }
+        assertEquals(text, dir.listDirectoryEntries("settings.json.corrupt-*").single().readText())
+    }
+
+    /** Opens [path] the way a program that denies others reading does (a Windows sharing violation for them). */
+    private fun lockedForReading(path: Path): SeekableByteChannel =
+        Files.newByteChannel(path, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ)
 
     @Test fun overwriteReplacesPreviousValue() {
         val store = store()

@@ -59,6 +59,7 @@ import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.home_drag_to_reorder
+import nl.diments.requestify.resources.home_load_failing
 import nl.diments.requestify.resources.home_paid_request
 import nl.diments.requestify.resources.home_played_empty
 import nl.diments.requestify.resources.home_played_tab
@@ -71,6 +72,7 @@ import nl.diments.requestify.resources.home_save_failing
 import nl.diments.requestify.resources.home_up_next_in_spotify
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.common.SpotifyStatusChip
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
@@ -123,11 +125,18 @@ fun QueuePane(
             }
         }
         AnimatedVisibility(
+            visible = state.loadFailing,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
+            ProblemBanner(stringResource(Res.string.home_load_failing))
+        }
+        AnimatedVisibility(
             visible = state.saveFailing,
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
-            SaveFailingBanner()
+            ProblemBanner(stringResource(Res.string.home_save_failing))
         }
         AddTrackField(
             results = state.results,
@@ -171,24 +180,6 @@ private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -
             modifier = Modifier.semantics { role = Role.RadioButton },
         ) {
             Text(stringResource(Res.string.home_played_tab))
-        }
-    }
-}
-
-@Composable
-private fun SaveFailingBanner() {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(AppIcons.Warning, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(stringResource(Res.string.home_save_failing), style = MaterialTheme.typography.labelLarge)
         }
     }
 }

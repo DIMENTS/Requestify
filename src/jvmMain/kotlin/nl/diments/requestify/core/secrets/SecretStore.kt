@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.StoreReadException
 
 interface SecretStore {
     fun get(key: String): String?
@@ -18,7 +19,10 @@ object SecretKeys {
     const val SPOTIFY_REFRESH_TOKEN = "spotify.refresh_token"
 }
 
-/** Stores secrets as base64(DPAPI(utf8)) per key, scoped to the current Windows user. */
+/**
+ * Stores secrets as base64(DPAPI(utf8)) per key, scoped to the current Windows user. While the file cannot be read
+ * (e.g. another program holds it), [get] finds nothing and [put] and [remove] throw instead of writing over it.
+ */
 class DpapiSecretStore(file: Path) : SecretStore {
     private val store = JsonFileStore<Map<String, String>>(
         file,
@@ -26,7 +30,12 @@ class DpapiSecretStore(file: Path) : SecretStore {
     ) { emptyMap() }
 
     override fun get(key: String): String? {
-        val encoded = store.read()[key] ?: return null
+        val saved = try {
+            store.read()
+        } catch (_: StoreReadException) {
+            return null
+        }
+        val encoded = saved[key] ?: return null
         return try {
             val encrypted = Base64.getDecoder().decode(encoded)
             Crypt32Util.cryptUnprotectData(encrypted).toString(Charsets.UTF_8)

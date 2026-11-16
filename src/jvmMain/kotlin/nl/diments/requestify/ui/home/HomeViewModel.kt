@@ -36,8 +36,9 @@ sealed interface AddMessage {
 
 /**
  * Everything the Home screen shows. [handedOver] is the request Spotify has queued but not started yet (it is
- * not in [queue]); [saveFailing] is true while the queue could not be saved. While [lookingUp], [results] still
- * answer the previous input and must not be acted on.
+ * not in [queue]); [saveFailing] is true while the queue could not be saved, [loadFailing] while the saved queue
+ * could not be read yet (it is retried). While [lookingUp], [results] still answer the previous input and must
+ * not be acted on.
  */
 data class HomeUiState(
     val queue: List<Request>,
@@ -50,6 +51,7 @@ data class HomeUiState(
     val handedOver: Request? = null,
     val saveFailing: Boolean = false,
     val lookingUp: Boolean = false,
+    val loadFailing: Boolean = false,
 )
 
 /** Runs on the caller's [scope] (an app-lifetime scope); it starts nothing that outlives it. */
@@ -77,6 +79,8 @@ class HomeViewModel(
         val nowPlaying: NowPlaying?,
     )
 
+    private class Storage(val persistError: String?, val loadError: String?)
+
     private val add = MutableStateFlow(AddState())
     private var lookup: Job? = null
 
@@ -85,7 +89,7 @@ class HomeViewModel(
     val state: StateFlow<HomeUiState> = combine(
         combine(controller.queue, controller.handedOver, controller.history, controller.nowPlaying, ::playback),
         controller.health,
-        controller.persistError,
+        combine(controller.persistError, controller.loadError, ::Storage),
         add,
         ::uiState,
     ).stateIn(scope, SharingStarted.Eagerly, initialState())
@@ -166,14 +170,14 @@ class HomeViewModel(
     private fun initialState() = uiState(
         playback(controller.queue.value, controller.handedOver.value, controller.history.value, controller.nowPlaying.value),
         controller.health.value,
-        controller.persistError.value,
+        Storage(controller.persistError.value, controller.loadError.value),
         add.value,
     )
 
     private fun playback(queue: RequestQueue, handedOver: Request?, history: List<PlayedEntry>, nowPlaying: NowPlaying?) =
         Playback(queue.items, queue.totalDurationMs, handedOver, history, nowPlaying)
 
-    private fun uiState(playback: Playback, health: SpotifyHealth, persistError: String?, add: AddState) = HomeUiState(
+    private fun uiState(playback: Playback, health: SpotifyHealth, storage: Storage, add: AddState) = HomeUiState(
         queue = playback.queue,
         queueDurationMs = playback.queueDurationMs,
         history = playback.history,
@@ -182,8 +186,9 @@ class HomeViewModel(
         results = add.results,
         addMessage = add.message,
         handedOver = playback.handedOver,
-        saveFailing = persistError != null,
+        saveFailing = storage.persistError != null,
         lookingUp = add.lookingUp,
+        loadFailing = storage.loadError != null,
     )
 
     private companion object {

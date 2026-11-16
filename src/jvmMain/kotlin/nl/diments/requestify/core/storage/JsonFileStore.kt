@@ -3,6 +3,7 @@ package nl.diments.requestify.core.storage
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.charset.CharacterCodingException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -11,30 +12,56 @@ import java.nio.file.StandardOpenOption
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 
-/** JSON file store that writes atomically and durably, and never loses an unreadable file. */
+/**
+ * The file exists but could not be read, even after a few tries (e.g. another program holds it, or access is
+ * denied). Unlike a corrupt file it is left where it is, and nothing may be written over it until a read succeeds.
+ */
+class StoreReadException(path: Path, cause: IOException) : IOException("Couldn't read $path: $cause", cause)
+
+/**
+ * JSON file store that writes atomically and durably, and never loses an unreadable file. A read that fails for
+ * another reason than a missing or corrupt file is tried again after each of [retryDelaysMs] ([sleep] waits).
+ */
 class JsonFileStore<T>(
     private val path: Path,
     private val serializer: KSerializer<T>,
+    private val retryDelaysMs: List<Long> = listOf(50, 100, 200),
+    private val sleep: (Long) -> Unit = { Thread.sleep(it) },
     private val default: () -> T,
 ) {
+    /**
+     * The saved value, or the default when there is no file yet. A corrupt file (not UTF-8, or not the expected
+     * JSON) is moved aside and the default is returned. Throws [StoreReadException] when the file cannot be read
+     * for now: callers must then not write, or they would replace a good file.
+     */
     fun read(): T {
         val text = try {
-            // Strict UTF-8 decode: invalid bytes (e.g. truncation mid character) throw.
-            Files.readString(path)
+            readWithRetries()
         } catch (_: NoSuchFileException) {
             return default()
-        } catch (_: IOException) {
-            quarantine()
-            return default()
+        } catch (_: CharacterCodingException) {
+            return quarantined()
         }
         return try {
             AppJson.instance.decodeFromString(serializer, text)
         } catch (_: SerializationException) {
-            quarantine()
-            default()
+            quarantined()
         } catch (_: IllegalArgumentException) {
-            quarantine()
-            default()
+            quarantined()
+        }
+    }
+
+    /** Strict UTF-8: invalid bytes (e.g. truncation mid character) throw [CharacterCodingException]. */
+    private fun readWithRetries(): String {
+        var attempt = 0
+        while (true) {
+            try {
+                return Files.readString(path)
+            } catch (e: IOException) {
+                if (e is NoSuchFileException || e is CharacterCodingException) throw e
+                val delay = retryDelaysMs.getOrNull(attempt++) ?: throw StoreReadException(path, e)
+                sleep(delay)
+            }
         }
     }
 
@@ -55,12 +82,22 @@ class JsonFileStore<T>(
         Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     }
 
-    /** Best effort: if the file cannot be moved aside (e.g. locked), still fall back to the default. */
-    private fun quarantine() {
+    /**
+     * Keeps a corrupt file as `<name>.corrupt-<time>` and returns the default. When it cannot be moved (e.g. held
+     * open by another program) it is copied instead; when that fails too, the read fails, so nothing replaces it.
+     */
+    private fun quarantined(): T {
         val target = path.resolveSibling("${path.fileName}.corrupt-${System.currentTimeMillis()}")
         try {
             Files.move(path, target, StandardCopyOption.REPLACE_EXISTING)
-        } catch (_: IOException) {
+        } catch (moveFailed: IOException) {
+            try {
+                Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING)
+            } catch (copyFailed: IOException) {
+                moveFailed.addSuppressed(copyFailed)
+                throw StoreReadException(path, moveFailed)
+            }
         }
+        return default()
     }
 }

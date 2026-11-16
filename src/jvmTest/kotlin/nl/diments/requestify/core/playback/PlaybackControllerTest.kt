@@ -1,11 +1,16 @@
 package nl.diments.requestify.core.playback
 
+import com.sun.nio.file.ExtendedOpenOption
+import java.nio.channels.SeekableByteChannel
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectory
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteRecursively
+import kotlin.io.path.readText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -29,6 +34,7 @@ import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.QueueStore
+import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.spotify.CurrentlyPlaying
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
@@ -56,12 +62,22 @@ class PlaybackControllerTest {
 
     private fun TestScope.fakePlayer() = FakeSpotifyPlayer { testScheduler.currentTime }
 
+    /** Like [store], but a read that fails is not tried again (no real sleeps in virtual-time tests). */
+    private fun storeWithoutReadRetries() = QueueStore(
+        JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer(), retryDelaysMs = emptyList()) { PersistedPlayback() },
+    )
+
+    /** Another program holds queue.json and denies reading it (a Windows sharing violation). */
+    private fun lockQueueFile(): SeekableByteChannel =
+        Files.newByteChannel(dir.resolve("queue.json"), StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ)
+
     private fun TestScope.controller(
         player: FakeSpotifyPlayer,
         requestsOpen: MutableStateFlow<Boolean> = MutableStateFlow(true),
+        store: QueueStore = store(),
     ) = PlaybackController(
         player = player,
-        store = store(),
+        store = store,
         requestsOpen = requestsOpen,
         paidPriority = { true },
         scope = backgroundScope,
@@ -523,6 +539,50 @@ class PlaybackControllerTest {
         assertEquals(listOf(0L), player.pollTimes())
         advance(1)
         assertEquals(listOf(0L, 1_000L), player.pollTimes())
+    }
+
+    @Test
+    fun unreadableQueueIsNeitherOverwrittenNorHandedOverAndLoadsOnceReadable() = runTest {
+        val r2 = request("r2")
+        store().save(PersistedPlayback(queue = RequestQueue(listOf(r1))))
+        val text = dir.resolve("queue.json").readText()
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 190_000) // a hand-over would be due at once
+        val controller = controller(player, store = storeWithoutReadRetries())
+
+        val lock = lockQueueFile()
+        controller.start()
+        controller.enqueue(r2)
+        runCurrent()
+        assertNotNull(controller.loadError.value)
+        assertTrue(controller.queue.value.items.isEmpty())
+        advance(3_000) // tried again on the next tick: still held
+        assertNotNull(controller.loadError.value)
+        assertTrue(player.calls.isEmpty(), "nothing is handed over without the saved queue")
+        lock.close()
+        assertEquals(text, dir.resolve("queue.json").readText(), "the saved queue is untouched")
+
+        advance(3_000)
+        assertNull(controller.loadError.value)
+        assertEquals(listOf(r1.track.uri), player.callsTo("addToQueue").map { it.arg })
+        assertEquals(listOf(r2), controller.queue.value.items, "the edit made meanwhile is kept")
+        val saved = store().load()
+        assertEquals(r1, saved.handedOver)
+        assertEquals(listOf(r2), saved.queue.items)
+    }
+
+    @Test
+    fun skipStillSkipsWhileTheQueueCannotBeRead() = runTest {
+        store().save(PersistedPlayback(queue = RequestQueue(listOf(r1))))
+        val player = fakePlayer()
+        val controller = controller(player, store = storeWithoutReadRetries())
+        lockQueueFile().use {
+            controller.skip()
+            controller.togglePause()
+        }
+        assertEquals(listOf("skipNext", "resume"), player.calls.map { it.name })
+        assertNotNull(controller.loadError.value)
+        assertEquals(listOf(r1), store().load().queue.items)
     }
 
     @Test

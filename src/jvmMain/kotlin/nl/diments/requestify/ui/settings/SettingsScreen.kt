@@ -73,6 +73,7 @@ import nl.diments.requestify.resources.settings_theme
 import nl.diments.requestify.resources.settings_theme_dark
 import nl.diments.requestify.resources.settings_theme_light
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.theme.BrandSeed
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -125,7 +126,7 @@ fun SettingsScreen(settings: SettingsStore) {
                         enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
                         exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
                     ) {
-                        SaveFailedBanner()
+                        ProblemBanner(stringResource(Res.string.save_failed))
                     }
                     ColourSetting(current.themeMode) { mode -> save { it.copy(themeMode = mode) } }
                     Setting(Res.string.settings_theme) {
@@ -240,24 +241,6 @@ private fun Swatch(colour: Color, selected: Boolean, label: String, onClick: () 
                 contentDescription = null,
                 tint = if (colour.luminance() > 0.5f) Color.Black else Color.White,
             )
-        }
-    }
-}
-
-@Composable
-private fun SaveFailedBanner() {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(AppIcons.Warning, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(stringResource(Res.string.save_failed), style = MaterialTheme.typography.labelLarge)
         }
     }
 }
