@@ -1,6 +1,8 @@
 package nl.diments.requestify.ui.home
 
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,6 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import kotlin.test.assertTrue
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -94,5 +103,49 @@ class NowPlayingPaneTest {
         wallMs = 118_000
         mainClock.advanceTimeBy(1_000)
         onNodeWithText("1:08").assertExists()
+    }
+
+    private val longTitle = "Een heel erg lange titel die zeker over twee regels heen loopt in de kaart"
+    private val bitsRequest by lazy {
+        Request("r1", midnightCity, Requester("streamfan"), RequestSource.BITS, Payment.Bits(500), createdAtEpochMs = 1L)
+    }
+
+    /** The wide card as on Home in a 900×560 window: 320 dp wide, 472 dp high. */
+    private fun ComposeUiTest.wideCard(fontScale: Float) {
+        val nowPlaying = NowPlaying(
+            midnightCity.copy(name = longTitle), 60_000, isPlaying = true, request = bitsRequest, sampledAtEpochMs = 0L,
+        )
+        setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
+                RequestifyTheme(BrandSeed, dark = true) {
+                    NowPlayingPane(
+                        nowPlaying, onTogglePause = {}, onSkip = {},
+                        modifier = Modifier.width(320.dp).height(472.dp), clock = { 0L },
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun aShortWideCardWithATwoLineTitleKeepsItsControlsInsideIt() = runComposeUiTest {
+        wideCard(fontScale = 1f)
+        val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
+        val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
+        val requester = onNodeWithText("streamfan").getBoundsInRoot()
+
+        assertTrue(skip.bottom <= card.bottom, "skip ${skip.bottom} below the card's bottom ${card.bottom}")
+        assertTrue(requester.top >= card.top)
+    }
+
+    @Test
+    fun whenTheDetailsNeedMoreThanTheCardHasTheCardScrollsToTheControls() = runComposeUiTest {
+        wideCard(fontScale = 1.6f)
+        onNodeWithContentDescription("Skip").performScrollTo()
+        val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
+        val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
+
+        assertTrue(skip.bottom <= card.bottom && skip.top >= card.top, "skip $skip outside the card $card after scrolling")
     }
 }

@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
@@ -51,17 +53,18 @@ import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
-import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.delay
@@ -89,6 +92,9 @@ import org.jetbrains.compose.resources.stringResource
 internal const val NOW_PLAYING_PANE_TAG = "now-playing"
 
 private val PaneCorner = 32.dp
+
+/** The smallest the wide card's art gets before the card scrolls instead. */
+private val MinArtSide = 64.dp
 
 /** Asymmetric art corners (top-start, top-end, bottom-end, bottom-start). */
 private val ArtCorners = listOf(36.dp, 36.dp, 12.dp, 36.dp)
@@ -149,19 +155,46 @@ fun NowPlayingPane(
                 }
             }
         } else {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(Spacing.xl),
-                verticalArrangement = Arrangement.spacedBy(Spacing.l, Alignment.CenterVertically),
-            ) {
-                BoxWithConstraints(Modifier.weight(1f, fill = false)) {
-                    art(Modifier.size(min(maxWidth, maxHeight)))
-                }
-                info()
-                if (nowPlaying != null) {
-                    Progress(nowPlaying, clock)
-                    controls(nowPlaying)
+            BoxWithConstraints(Modifier.fillMaxSize().padding(Spacing.xl)) {
+                val available = constraints.maxHeight
+                Box(Modifier.verticalScroll(rememberScrollState())) {
+                    ArtOverDetails(available) {
+                        art(Modifier)
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
+                            info()
+                            if (nowPlaying != null) {
+                                Progress(nowPlaying, clock)
+                                controls(nowPlaying)
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The wide card's stack: the art (first child) over the details (second child), left-aligned. The details keep
+ * their natural height and the art takes what is left of [availableHeight] (px), square and at most the width, so
+ * the art is the one that gives way; the stack is centred when the art is as wide as it can get. The art shrinks
+ * down to [MinArtSide]; if the details need more than that leaves, the stack grows taller than [availableHeight]
+ * and the enclosing scroll container reaches the rest.
+ */
+@Composable
+private fun ArtOverDetails(availableHeight: Int, content: @Composable () -> Unit) {
+    Layout(content) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val gap = Spacing.l.roundToPx()
+        val details = measurables[1].measure(Constraints(maxWidth = width))
+        val side = minOf(width, maxOf(MinArtSide.roundToPx(), availableHeight - details.height - gap))
+        val art = measurables[0].measure(Constraints.fixed(side, side))
+        val stack = art.height + gap + details.height
+        val height = maxOf(stack, availableHeight)
+        layout(width, height) {
+            val top = (height - stack) / 2
+            art.place(0, top)
+            details.place(0, top + art.height + gap)
         }
     }
 }
