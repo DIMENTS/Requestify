@@ -112,8 +112,9 @@ class PlaybackControllerTest {
 
     private fun FakeSpotifyPlayer.playCommands() = calls.map { it.name }.filter { it == "pause" || it == "resume" }
 
-    /** What was sent to Spotify, without the polls and the refreshes of its upcoming tracks. */
-    private fun FakeSpotifyPlayer.commands() = calls.filter { it.name != "currentlyPlaying" && it.name != "userQueue" }
+    /** What was sent to Spotify, without the reads: polls, queue checks and refreshes, recently played. */
+    private fun FakeSpotifyPlayer.commands() =
+        calls.filter { it.name !in setOf("currentlyPlaying", "userQueueTrackIds", "userQueue", "recentlyPlayed") }
 
     /** Spotify plays (or has paused) track A at 60 s, and the first poll has shown it. */
     private fun TestScope.startAt60s(player: FakeSpotifyPlayer, isPlaying: Boolean = true): PlaybackController {
@@ -1113,11 +1114,71 @@ class PlaybackControllerTest {
         assertEquals(listOf("resume"), player.playCommands())
         assertEquals(true, controller.shownPlaying())
 
-        player.currentlyPlayingGate = CompletableDeferred() // holds the poll that follows, so only the resume answers
         gate.complete(Unit)
-        runCurrent()
+        runCurrent() // refused, and the poll that follows still finds nothing active
+        assertEquals(listOf(0L, 0L), player.pollTimes())
         controller.assertShowsLastPlayed(trackA, progressMs = 42_000)
         assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+        advance(9_000) // and so do the polls after it
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+
+        player.plays(trackA, progressMs = 42_000) // the streamer opened Spotify on a device
+        advance(3_000)
+        assertEquals(SpotifyHealth.Ok, controller.health.value)
+        player.currentlyPlayingResult = SpotifyResult.Ok(null)
+        advance(3_000)
+        assertEquals(SpotifyHealth.NothingPlaying, controller.health.value)
+    }
+
+    @Test
+    fun aRefusedSkipOrPreviousShowsNoActiveDeviceUntilSpotifyTakesACommand() = runTest {
+        val player = fakePlayer()
+        val controller = startIdleWithLastPlayedA(player)
+        player.previousResult = SpotifyResult.NoActiveDevice
+        controller.previous()
+        advance(6_000) // the poll that follows and the next ones find nothing active
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+
+        controller.skip() // taken: the polls tell again
+        advance(3_000)
+        assertEquals(SpotifyHealth.NothingPlaying, controller.health.value)
+
+        player.skipResult = SpotifyResult.NoActiveDevice
+        controller.skip()
+        advance(6_000)
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+    }
+
+    @Test
+    fun aHandOverIsSavedBeforeSpotifysQueueIsRead() = runTest {
+        val player = fakePlayer()
+        player.queueGate = CompletableDeferred() // Spotify is slow to list its queue
+        player.plays(trackA, progressMs = 185_000)
+        val controller = controller(player)
+        controller.enqueue(r1)
+        controller.start()
+        runCurrent()
+        assertEquals(listOf(r1.track.uri), player.callsTo("addToQueue").map { it.arg })
+        assertEquals(listOf(0L), player.callsTo("userQueue").map { it.atMs }) // still in flight
+        assertEquals(r1, controller.handedOver.value)
+        assertTrue(controller.queue.value.items.isEmpty())
+        assertEquals(r1, store().load().handedOver)
+        assertTrue(store().load().queue.items.isEmpty())
+    }
+
+    @Test
+    fun skipOnTheLastPlayedSongStillHandsOverARequestForThatSong() = runTest {
+        val player = fakePlayer()
+        val again = request("again", trackA)
+        val controller = startIdleWithLastPlayedA(player) // shows track A, but nothing plays
+        controller.enqueue(again)
+        runCurrent()
+        controller.skip()
+        assertEquals(
+            listOf("addToQueue" to trackA.uri, "skipNext" to null),
+            player.commands().map { it.name to it.arg },
+        )
+        assertEquals(again, controller.handedOver.value)
     }
 
     @Test

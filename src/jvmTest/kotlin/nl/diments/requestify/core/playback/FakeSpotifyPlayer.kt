@@ -19,6 +19,10 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     var currentlyPlayingError: Exception? = null
     var userQueueResult: SpotifyResult<List<String>> = SpotifyResult.Ok(emptyList())
     var queueTracks: SpotifyResult<List<Track>> = SpotifyResult.Ok(emptyList())
+
+    /** When set, [userQueue] waits for it before answering, like a slow Spotify. */
+    var queueGate: CompletableDeferred<Unit>? = null
+    var skipResult: SpotifyResult<Unit> = SpotifyResult.Ok(Unit)
     var previousResult: SpotifyResult<Unit> = SpotifyResult.Ok(Unit)
     var recentResult: SpotifyResult<RecentTrack?> = SpotifyResult.Ok(null)
 
@@ -73,6 +77,7 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
 
     override suspend fun userQueue(): SpotifyResult<List<Track>> {
         record("userQueue")
+        queueGate?.await()
         return queueTracks
     }
 
@@ -90,7 +95,7 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
 
     override suspend fun skipNext(): SpotifyResult<Unit> {
         record("skipNext")
-        return SpotifyResult.Ok(Unit)
+        return skipResult
     }
 
     override suspend fun skipPrevious(): SpotifyResult<Unit> {

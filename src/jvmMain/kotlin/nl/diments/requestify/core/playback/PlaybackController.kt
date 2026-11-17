@@ -186,6 +186,12 @@ class PlaybackController(
     /** The pause or resume Spotify has not confirmed yet. Guarded by [stateMutex]; never saved. */
     private var playIntent: PlayIntent? = null
 
+    /**
+     * A command was refused for lack of an active device, and since then Spotify has neither played nor taken a
+     * command. Guarded by [stateMutex]; never saved.
+     */
+    private var commandFoundNoDevice = false
+
     // Guarded by [stateMutex]. [lastPlayed] is saved; it changes only when the song, its play state or Spotify's
     // activity changes, so a poll that only moves the position saves nothing.
     private var lastPlayed: LastPlayed? = null
@@ -249,16 +255,17 @@ class PlaybackController(
 
     /**
      * Hands the next request over first (when it may go), so it starts right away, then skips. While the saved
-     * queue cannot be read nothing is handed over, but the skip still happens.
+     * queue cannot be read nothing is handed over, but the skip still happens. A refusal shows in [health].
      */
     suspend fun skip() {
         spotifyMutex.withLock {
-            val head = if (syncState()) withState { handOverCandidate(_nowPlaying.value?.track?.id) } else null
+            val head = if (syncState()) withState { handOverCandidate(liveTrackId()) } else null
             if (head != null) {
                 val result = player.addToQueue(head.track.uri)
                 withState { if (result is SpotifyResult.Ok) markHandedOver(head) else _health.value = healthOf(result) }
             }
-            player.skipNext()
+            val skipped = player.skipNext()
+            stateMutex.withLock { commandAnswered(skipped) }
             upcomingStale = true
             wake.trySend(Unit)
         }
@@ -267,15 +274,19 @@ class PlaybackController(
     /**
      * Spotify's own previous: a first press restarts the song when it is a few seconds in, a second one goes back.
      * A request that was playing goes to history as on any track change; nothing is queued again, and the
-     * handed-over request stays next in Spotify's queue.
+     * handed-over request stays next in Spotify's queue. A refusal shows in [health].
      */
     suspend fun previous() {
         spotifyMutex.withLock {
-            player.skipPrevious()
+            val result = player.skipPrevious()
+            stateMutex.withLock { commandAnswered(result) }
             upcomingStale = true
             wake.trySend(Unit)
         }
     }
+
+    /** The track the last poll found playing (or paused); null while the last played song is shown. */
+    private fun liveTrackId(): String? = _nowPlaying.value?.takeIf { it.kind == NowPlayingKind.Live }?.track?.id
 
     /** The Spotify login changed: the permission is checked again by asking for the recently played song. */
     fun onLoginChanged() {
@@ -301,7 +312,10 @@ class PlaybackController(
         spotifyMutex.withLock {
             // With nothing shown there is nothing to pause: ask Spotify to play.
             val result = if (intent != null && !intent.shown.isPlaying) player.pause() else player.resume()
-            if (result !is SpotifyResult.Ok) stateMutex.withLock { refused(intent, result) }
+            stateMutex.withLock {
+                if (result !is SpotifyResult.Ok) refused(intent)
+                commandAnswered(result)
+            }
             wake.trySend(Unit)
         }
     }
@@ -322,7 +336,7 @@ class PlaybackController(
      * Spotify did not take [intent]'s command: unless a later click or Spotify itself replaced the intent, it
      * ends and the state flips back. Caller holds [stateMutex].
      */
-    private fun refused(intent: PlayIntent?, result: SpotifyResult<*>) {
+    private fun refused(intent: PlayIntent?) {
         if (intent != null && intent === playIntent) {
             playIntent = null
             val now = clock()
@@ -330,7 +344,20 @@ class PlaybackController(
                 it.copy(progressMs = it.positionAt(now), isPlaying = !intent.shown.isPlaying, sampledAtEpochMs = now)
             }
         }
-        _health.value = healthOf(result)
+    }
+
+    /**
+     * Spotify answered a play, pause, skip or previous command; a refusal shows in [health]. With nothing active a
+     * poll cannot tell that a device is missing, so after a refusal for that reason [health] keeps saying so until
+     * something plays or a command is taken. Caller holds [stateMutex].
+     */
+    private fun commandAnswered(result: SpotifyResult<Unit>) {
+        when (result) {
+            is SpotifyResult.Ok -> commandFoundNoDevice = false
+            SpotifyResult.NoActiveDevice -> commandFoundNoDevice = true
+            else -> Unit
+        }
+        if (result !is SpotifyResult.Ok) _health.value = healthOf(result)
     }
 
     /**
@@ -431,6 +458,8 @@ class PlaybackController(
             if (remainingMs != null && remainingMs <= config.handoverLeadMs) handOverCandidate(track?.id) else null
         }
         val handOverResult = head?.let { player.addToQueue(it.track.uri) }
+        // Saved at once: Spotify has it, so it must not wait for (or be lost with) the read below.
+        if (head != null && handOverResult is SpotifyResult.Ok) withState { markHandedOver(head) }
         if (cp == null) upcomingReadAtMs = null // read again as soon as something is active
         // After the hand-over, so Spotify's queue already has it.
         val upcoming = if (upcomingDue(cp != null, track?.id, handOverResult)) {
@@ -442,14 +471,15 @@ class PlaybackController(
             null
         }
         return withState {
-            if (head != null && handOverResult is SpotifyResult.Ok) markHandedOver(head)
             if (cp == null) {
                 _upcoming.value = emptyList()
-            } else if (upcoming is SpotifyResult.Ok) {
-                _upcoming.value = upcomingFrom(upcoming.value)
+            } else {
+                commandFoundNoDevice = false
+                if (upcoming is SpotifyResult.Ok) _upcoming.value = upcomingFrom(upcoming.value)
             }
             _health.value = when {
                 handOverResult != null && handOverResult !is SpotifyResult.Ok -> healthOf(handOverResult)
+                cp == null && commandFoundNoDevice -> SpotifyHealth.NoActiveDevice
                 cp == null -> SpotifyHealth.NothingPlaying
                 else -> SpotifyHealth.Ok
             }
