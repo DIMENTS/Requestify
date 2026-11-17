@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "message_id": "1b2c3d4e-5f60-4718-a9b0-c1d2e3f4a5b6",
+    "message_type": "notification",
+    "message_timestamp": "2026-11-17T19:58:21.123456789Z",
+    "subscription_type": "channel.channel_points_custom_reward_redemption.add",
+    "subscription_version": "1"
+  },
+  "payload": {
+    "subscription": {
+      "id": "f1c2a387-161a-49f9-a165-0f21d7a4e1c6",
+      "status": "enabled",
+      "type": "channel.channel_points_custom_reward_redemption.add",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "141981764",
+        "reward_id": "92af127c-7326-4483-a52b-b0da0be61c01"
+      },
+      "transport": {
+        "method": "websocket",
+        "session_id": "AQoQILE98gtqShGmLD7AM6yJThAB"
+      },
+      "created_at": "2026-11-17T19:47:10.723456789Z",
+      "cost": 0
+    },
+    "event": {
+      "id": "17fa2df1-ad76-4804-bfa5-a40ef63efe63",
+      "broadcaster_user_id": "141981764",
+      "broadcaster_user_login": "diments",
+      "broadcaster_user_name": "DIMENTS",
+      "user_id": "1234",
+      "user_login": "cool_user",
+      "user_name": "Cool_User",
+      "user_input": "Daft Punk - One More Time",
+      "status": "unfulfilled",
+      "reward": {
+        "id": "92af127c-7326-4483-a52b-b0da0be61c01",
+        "title": "Song request",
+        "cost": 500,
+        "prompt": "Artist - title, or a Spotify link"
+      },
+      "redeemed_at": "2026-11-17T19:58:20.881234567Z"
+    }
+  }
+}
