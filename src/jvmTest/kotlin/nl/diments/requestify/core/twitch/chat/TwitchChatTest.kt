@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -220,6 +221,27 @@ class TwitchChatTest {
         settle()
         assertEquals(listOf("probe"), h.twitch.sends.map { it.replyTo })
         assertTrue(h.rejectedEntries.isEmpty())
+    }
+
+    @Test
+    fun requestsAreHandledInTheOrderTheyWereSent() = runTest {
+        val h = harness()
+        val gate = CompletableDeferred<Unit>()
+        h.catalog.trackGates[idA] = gate // the first viewer's lookup is slow
+        h.message("m1", "!sr ${link(idA)}", viewer = "u1")
+        h.message("m2", "!sr ${link(idB)}", viewer = "u2")
+
+        awaitUntil("first lookup started") { "track:$idA" in h.catalog.calls }
+        settle()
+        assertEquals(listOf("track:$idA"), h.catalog.calls) // the second waits its turn
+        assertTrue(h.queued.isEmpty())
+
+        gate.complete(Unit)
+        awaitUntil("both replies") { h.twitch.sends.size == 2 }
+        assertEquals(listOf("Alpha", "Bravo"), h.queued.map { it.track.name })
+        assertEquals(listOf("m1", "m2"), h.twitch.sends.map { it.replyTo })
+        assertTrue("#1" in h.twitch.sends[0].message, h.twitch.sends[0].message)
+        assertTrue("#2" in h.twitch.sends[1].message, h.twitch.sends[1].message)
     }
 
     @Test

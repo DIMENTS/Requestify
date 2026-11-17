@@ -11,6 +11,8 @@ class FakeSpotifyCatalog : SpotifyCatalog {
 
     /** What [track] answers; a track not listed is [SpotifyResult.NotFound]. */
     val tracks = mutableMapOf<String, Track>()
+    /** A track lookup for an id listed here waits for its gate, like a slow Spotify. */
+    val trackGates = mutableMapOf<String, kotlinx.coroutines.CompletableDeferred<Unit>>()
     var searchResult: SpotifyResult<List<Track>> = SpotifyResult.Ok(emptyList())
 
     /** While set, every answer is this failure. */
@@ -23,6 +25,7 @@ class FakeSpotifyCatalog : SpotifyCatalog {
 
     override suspend fun track(id: String): SpotifyResult<Track> {
         calls += "track:$id"
+        trackGates[id]?.await()
         return failure ?: tracks[id]?.let { SpotifyResult.Ok(it) } ?: SpotifyResult.NotFound
     }
 

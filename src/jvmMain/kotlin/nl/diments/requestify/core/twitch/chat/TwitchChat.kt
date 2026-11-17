@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -71,10 +72,15 @@ class TwitchChat(
             if (job?.isActive == true) return
             followers.clear()
             job = scope.launch {
+                // The collector only hands messages over, so the event source is never held up; one worker handles
+                // them one at a time in the order they came in (first come, first served, also for the replies).
+                val inbox = Channel<EventSubEvent.ChatMessage>(Channel.UNLIMITED)
                 coroutineScope {
-                    events.collect { event ->
-                        // One launch per message: a slow Spotify search must not hold up the chat behind it.
-                        if (event is EventSubEvent.ChatMessage) launch { handleSafely(event) }
+                    launch { for (message in inbox) handleSafely(message) }
+                    try {
+                        events.collect { event -> if (event is EventSubEvent.ChatMessage) inbox.trySend(event) }
+                    } finally {
+                        inbox.close()
                     }
                 }
             }
