@@ -72,6 +72,7 @@ object AppIcons {
             "s1.79,-4 4,-4h1.73z",
     )
 
+    val DoNotDisturb by icon("DoNotDisturb", "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM17,13H7v-2h10v2z")
     val Add by icon("Add", "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")
     val Home by icon("Home", "M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z")
     val Link by icon(

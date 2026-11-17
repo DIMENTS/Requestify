@@ -131,4 +131,23 @@
     <string name="settings_language_restart">De nieuwe taal wordt gebruikt nadat je Requestify opnieuw hebt gestart.</string>
     <string name="save_failed">De wijziging kon niet worden opgeslagen. Probeer het opnieuw.</string>
     <string name="settings_load_failed">Je instellingen konden niet worden gelezen, dus Requestify gebruikt voorlopig de standaardinstellingen. Start Requestify opnieuw om het nog eens te proberen.</string>
+
+    <!-- Title bar -->
+    <string name="connection_all_connected">Alles verbonden</string>
+    <string name="connection_twitch_login_needed">Twitch: log opnieuw in</string>
+    <string name="connection_twitch_disconnected">Twitch verbroken, opnieuw proberen</string>
+    <string name="connection_reward_removed">Channel Points-beloning verwijderd</string>
+    <string name="requests_live_open">Live · verzoeken open</string>
+    <string name="requests_live_closed">Live · verzoeken dicht</string>
+    <string name="requests_offline_open">Offline · verzoeken open</string>
+    <string name="requests_offline_closed">Offline · verzoeken dicht</string>
+    <string name="requests_open">Verzoeken open</string>
+    <string name="requests_closed">Verzoeken dicht</string>
+    <string name="requests_tip_follows_open">Verzoeken staan open omdat je live bent. Klik om ze voorlopig te sluiten.</string>
+    <string name="requests_tip_follows_closed">Verzoeken zijn dicht omdat je stream offline is. Klik om ze voorlopig te openen.</string>
+    <string name="requests_tip_manual">Je hebt dit met de hand gezet. Verzoeken volgen je stream weer zodra die de volgende keer live of offline gaat.</string>
+    <string name="requests_tip_plain_open">Verzoeken staan open. Klik om ze te sluiten.</string>
+    <string name="requests_tip_plain_closed">Verzoeken zijn dicht. Klik om ze te openen.</string>
+    <string name="requests_tip_clears_at">Gratis verzoeken worden gewist om %1$s</string>
+    <string name="requests_tip_clear_waits">Wissen wacht tot je de verzoeken sluit</string>
 </resources>

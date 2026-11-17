@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import nl.diments.requestify.core.playback.SpotifyHealth
+import nl.diments.requestify.core.stream.GateStatus
+import nl.diments.requestify.ui.common.ConnectionProblem
 import nl.diments.requestify.ui.theme.BrandSeed
 import nl.diments.requestify.ui.theme.RequestifyTheme
 
@@ -31,13 +34,13 @@ class TitleBarTest {
     @AfterTest fun restoreLocale() = Locale.setDefault(originalLocale)
 
     @Test
-    fun showsTheAppNameAndSpotifysStatus() = runComposeUiTest {
-        val health = mutableStateOf<SpotifyHealth>(SpotifyHealth.Ok)
-        setContent { RequestifyTheme(BrandSeed, dark = true) { TitleBar(health.value) } }
+    fun showsTheAppNameAndOneConnectionStatus() = runComposeUiTest {
+        val problems = mutableStateOf<List<ConnectionProblem>>(emptyList())
+        setContent { RequestifyTheme(BrandSeed, dark = true) { TitleBar(problems.value) } }
         onNodeWithText("Requestify").assertIsDisplayed()
-        onNodeWithText("Spotify connected").assertIsDisplayed()
+        onNodeWithText("All connected").assertIsDisplayed()
 
-        health.value = SpotifyHealth.NoActiveDevice
+        problems.value = listOf(ConnectionProblem.Spotify(SpotifyHealth.NoActiveDevice))
         waitForIdle()
         onNodeWithText("Open Spotify on a device").assertIsDisplayed()
     }
@@ -48,13 +51,13 @@ class TitleBarTest {
         setContent {
             RequestifyTheme(BrandSeed, dark = true) {
                 TitleBar(
-                    SpotifyHealth.Ok,
+                    emptyList(),
                     onHitTest = { hits += it },
                     requestsSwitch = { Box(Modifier.size(52.dp, 32.dp).testTag("switch")) },
                 )
             }
         }
-        onNodeWithText("Spotify connected").performMouseInput { moveTo(center) }
+        onNodeWithText("All connected").performMouseInput { moveTo(center) }
         assertEquals(true, hits.last(), "the status chip")
         onNodeWithTag("switch").performMouseInput { moveTo(center) }
         assertEquals(true, hits.last(), "the requests switch")
@@ -67,7 +70,7 @@ class TitleBarTest {
         setContent {
             RequestifyTheme(BrandSeed, dark = true) {
                 TitleBar(
-                    SpotifyHealth.Ok,
+                    emptyList(),
                     Modifier.testTag("bar"),
                     captionInset = 141.dp,
                     requestsSwitch = { Box(Modifier.size(52.dp, 32.dp).testTag("switch")) },
@@ -77,5 +80,25 @@ class TitleBarTest {
         val bar = onNodeWithTag("bar").getBoundsInRoot()
         assertEquals(40.dp, bar.height)
         assertEquals(bar.right - 141.dp - 16.dp, onNodeWithTag("switch").getBoundsInRoot().right)
+    }
+
+    @Test
+    fun theRealRequestsToggleIsAClientAreaSoItIsClickableAndNotADragArea() = runComposeUiTest {
+        val hits = mutableListOf<Boolean>()
+        var toggles = 0
+        val status = GateStatus(open = true, twitch = true, live = true, manual = false, clearAtEpochMs = null, clearPostponed = false)
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                TitleBar(
+                    emptyList(),
+                    onHitTest = { hits += it },
+                    requestsSwitch = { RequestsToggle(status, onToggle = { toggles++ }) },
+                )
+            }
+        }
+        onNodeWithText("Live · requests open").performMouseInput { moveTo(center) }
+        assertEquals(true, hits.last(), "the requests toggle")
+        onNodeWithText("Live · requests open").performClick()
+        assertEquals(1, toggles)
     }
 }

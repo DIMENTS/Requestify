@@ -69,6 +69,8 @@ import nl.diments.requestify.resources.nav_settings
 import nl.diments.requestify.resources.settings_load_failed
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
+import nl.diments.requestify.ui.common.TwitchHealth
+import nl.diments.requestify.ui.common.connectionProblems
 import nl.diments.requestify.ui.home.HomeScreen
 import nl.diments.requestify.ui.settings.SettingsScreen
 import nl.diments.requestify.ui.setup.SpotifySetupScreen
@@ -79,6 +81,7 @@ import nl.diments.requestify.ui.theme.albumSeedFrom
 import nl.diments.requestify.ui.theme.albumSeedOrPrevious
 import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
+import nl.diments.requestify.ui.window.RequestsToggle
 import nl.diments.requestify.ui.window.TitleBar
 import nl.diments.requestify.ui.window.rememberWindowCaption
 import org.jetbrains.compose.resources.StringResource
@@ -116,6 +119,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
         .collectAsState(graph.home.state.value.nowPlaying?.track)
     val health by remember(graph) { graph.home.state.map { it.health }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.health)
+    val gate by graph.gate.status.collectAsState()
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
     val caption = rememberWindowCaption(window, dark)
@@ -128,7 +132,13 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     RequestifyTheme(selectSeeds(settings.themeMode, albumSeed).app, dark) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column {
-                TitleBar(health, captionInset = caption?.buttonsInset ?: 0.dp, onHitTest = caption?.hitTest)
+                TitleBar(
+                    problems = connectionProblems(health, TwitchHealth()),
+                    captionInset = caption?.buttonsInset ?: 0.dp,
+                    onHitTest = caption?.hitTest,
+                    onConnectionsClick = { destination = Destination.Connections },
+                    requestsSwitch = { RequestsToggle(gate, onToggle = graph.gate::toggle) },
+                )
                 Row(Modifier.weight(1f)) {
                     AppRail(
                         selected = destination,

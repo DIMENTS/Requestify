@@ -20,11 +20,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import nl.diments.requestify.core.playback.SpotifyHealth
+import nl.diments.requestify.ui.common.ConnectionChip
+import nl.diments.requestify.ui.common.ConnectionProblem
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.app_name
 import nl.diments.requestify.ui.common.AppIcons
-import nl.diments.requestify.ui.common.SpotifyStatusChip
 import org.jetbrains.compose.resources.stringResource
 
 /** The title bar's height; as the window's custom title bar, this is also the height Windows drags by. */
@@ -34,22 +34,23 @@ val TitleBarHeight = 40.dp
 private val EdgePadding = 16.dp
 
 /**
- * The app's title bar, full width above the rail and the screens: the app's mark and name, Spotify's status,
- * and room for plan 2's "Requests open/closed" switch ([requestsSwitch]). It has no background of its own, so it
+ * The app's title bar, full width above the rail and the screens: the app's mark and name, the one connection status,
+ * and the "Requests open/closed" toggle ([requestsSwitch]). It has no background of its own, so it
  * is one plane with the app below it, in the same animated colours.
  *
  * As the window's custom title bar, [captionInset] keeps the native caption buttons free and [onHitTest] gets
- * the hit test of every pointer event ([captionHitTest]): the status chip and the switch are the bar's client
+ * the hit test of every pointer event ([captionHitTest]): the status chip and the toggle are the bar's client
  * areas, the rest of the bar moves the window. Without them (the window keeps its own title bar) it is a header
  * at the top of the content.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TitleBar(
-    health: SpotifyHealth,
+    problems: List<ConnectionProblem>,
     modifier: Modifier = Modifier,
     captionInset: Dp = 0.dp,
     onHitTest: ((client: Boolean) -> Unit)? = null,
+    onConnectionsClick: () -> Unit = {},
     requestsSwitch: @Composable () -> Unit = {},
 ) {
     val clientAreas = remember { TitleBarClientAreas() }
@@ -70,7 +71,7 @@ fun TitleBar(
             maxLines = 1,
         )
         Spacer(Modifier.width(16.dp))
-        SpotifyStatusChip(health, Modifier.titleBarClientArea(clientAreas))
+        ConnectionChip(problems, onConnectionsClick, Modifier.titleBarClientArea(clientAreas))
         Spacer(Modifier.weight(1f))
         Box(Modifier.titleBarClientArea(clientAreas)) { requestsSwitch() }
     }

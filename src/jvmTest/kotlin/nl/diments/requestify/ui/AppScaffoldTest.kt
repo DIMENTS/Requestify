@@ -112,12 +112,13 @@ class AppScaffoldTest {
     }
 
     @Test
-    fun theTitleBarShowsSpotifysStatusOnEveryScreen() = runDesktopComposeUiTest(width = 1180, height = 760) {
+    fun theTitleBarShowsTheConnectionStatusAndTheRequestsToggleOnEveryScreen() = runDesktopComposeUiTest(width = 1180, height = 760) {
         setContent { AppScaffold(graph()) }
         onNode(hasText("Settings") and hasClickAction()).performClick()
         waitForIdle()
         onNodeWithText("Requestify").assertIsDisplayed()
-        onNodeWithText("Spotify is not playing").assertIsDisplayed()
+        onNodeWithText("All connected").assertIsDisplayed()
+        onNode(hasText("Requests ", substring = true) and hasClickAction()).assertIsDisplayed()
     }
 
     @Test

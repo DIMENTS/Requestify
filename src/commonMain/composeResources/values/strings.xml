@@ -131,4 +131,23 @@
     <string name="settings_language_restart">The new language is used after you restart Requestify.</string>
     <string name="save_failed">Couldn’t save the change. Try again.</string>
     <string name="settings_load_failed">Couldn’t read your settings, so Requestify uses the defaults for now. Restart Requestify to try again.</string>
+
+    <!-- Title bar -->
+    <string name="connection_all_connected">All connected</string>
+    <string name="connection_twitch_login_needed">Twitch: log in again</string>
+    <string name="connection_twitch_disconnected">Twitch disconnected, retrying</string>
+    <string name="connection_reward_removed">Channel Points reward removed</string>
+    <string name="requests_live_open">Live · requests open</string>
+    <string name="requests_live_closed">Live · requests closed</string>
+    <string name="requests_offline_open">Offline · requests open</string>
+    <string name="requests_offline_closed">Offline · requests closed</string>
+    <string name="requests_open">Requests open</string>
+    <string name="requests_closed">Requests closed</string>
+    <string name="requests_tip_follows_open">Requests are open because you’re live. Click to close them for now.</string>
+    <string name="requests_tip_follows_closed">Requests are closed because your stream is offline. Click to open them for now.</string>
+    <string name="requests_tip_manual">You set this by hand. Requests follow your stream again the next time it goes live or offline.</string>
+    <string name="requests_tip_plain_open">Requests are open. Click to close them.</string>
+    <string name="requests_tip_plain_closed">Requests are closed. Click to open them.</string>
+    <string name="requests_tip_clears_at">Free requests clear at %1$s</string>
+    <string name="requests_tip_clear_waits">Clearing waits until you close requests</string>
 </resources>

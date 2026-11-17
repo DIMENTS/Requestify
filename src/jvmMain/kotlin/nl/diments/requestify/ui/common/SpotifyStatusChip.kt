@@ -35,11 +35,11 @@ import nl.diments.requestify.resources.spotify_status_unreachable
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-private enum class Tone { Good, Neutral, Problem }
+internal enum class Tone { Good, Neutral, Problem }
 
-private class StatusLook(val text: StringResource, val icon: ImageVector, val tone: Tone)
+internal class StatusLook(val text: StringResource, val icon: ImageVector, val tone: Tone)
 
-private fun SpotifyHealth.look(): StatusLook = when (this) {
+internal fun SpotifyHealth.look(): StatusLook = when (this) {
     SpotifyHealth.Ok -> StatusLook(Res.string.spotify_status_ok, AppIcons.CheckCircle, Tone.Good)
     SpotifyHealth.NothingPlaying -> StatusLook(Res.string.spotify_status_nothing_playing, AppIcons.MusicNote, Tone.Neutral)
     SpotifyHealth.NoActiveDevice -> StatusLook(Res.string.spotify_status_no_device, AppIcons.Warning, Tone.Problem)
@@ -51,10 +51,13 @@ private fun SpotifyHealth.look(): StatusLook = when (this) {
 }
 
 /** Spotify's state at a glance; problems get the error container so they stand out. Changes cross-fade. */
+@Composable
+fun SpotifyStatusChip(health: SpotifyHealth, modifier: Modifier = Modifier) = StatusChip(health.look(), modifier)
+
+/** A status pill; [onClick] makes it a button. Problems get the error container, and a new look cross-fades. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SpotifyStatusChip(health: SpotifyHealth, modifier: Modifier = Modifier) {
-    val look = health.look()
+internal fun StatusChip(look: StatusLook, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val scheme = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val container by animateColorAsState(
@@ -73,13 +76,9 @@ fun SpotifyStatusChip(health: SpotifyHealth, modifier: Modifier = Modifier) {
         },
         motion.defaultEffectsSpec(),
     )
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.small,
-        color = container,
-        contentColor = content,
-        border = if (look.tone == Tone.Problem) null else BorderStroke(1.dp, scheme.outlineVariant),
-    ) {
+    val shape = MaterialTheme.shapes.small
+    val border = if (look.tone == Tone.Problem) null else BorderStroke(1.dp, scheme.outlineVariant)
+    val body: @Composable () -> Unit = {
         AnimatedContent(
             targetState = look,
             transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
@@ -94,5 +93,10 @@ fun SpotifyStatusChip(health: SpotifyHealth, modifier: Modifier = Modifier) {
                 Text(stringResource(shown.text), style = MaterialTheme.typography.labelLarge)
             }
         }
+    }
+    if (onClick == null) {
+        Surface(modifier = modifier, shape = shape, color = container, contentColor = content, border = border, content = body)
+    } else {
+        Surface(onClick = onClick, modifier = modifier, shape = shape, color = container, contentColor = content, border = border, content = body)
     }
 }
