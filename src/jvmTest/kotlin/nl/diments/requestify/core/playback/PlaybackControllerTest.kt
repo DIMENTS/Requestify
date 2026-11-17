@@ -112,9 +112,12 @@ class PlaybackControllerTest {
 
     private fun FakeSpotifyPlayer.playCommands() = calls.map { it.name }.filter { it == "pause" || it == "resume" }
 
-    /** What was sent to Spotify, without the reads: polls, queue checks and refreshes, recently played. */
-    private fun FakeSpotifyPlayer.commands() =
-        calls.filter { it.name !in setOf("currentlyPlaying", "userQueueTrackIds", "userQueue", "recentlyPlayed") }
+    /** Polls, queue checks and refreshes, recently played. */
+    private val reads =
+        setOf("currentlyPlaying", "userQueueTrackIds", "userQueue", "recentlyPlayed", "recentlyPlayedSince")
+
+    /** What was sent to Spotify, without the [reads]. */
+    private fun FakeSpotifyPlayer.commands() = calls.filter { it.name !in reads }
 
     /** Spotify plays (or has paused) track A at 60 s, and the first poll has shown it. */
     private fun TestScope.startAt60s(player: FakeSpotifyPlayer, isPlaying: Boolean = true): PlaybackController {

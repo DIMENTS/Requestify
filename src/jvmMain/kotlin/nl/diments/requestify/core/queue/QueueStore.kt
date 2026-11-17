@@ -20,6 +20,10 @@ data class LastPlayed(
     val request: Request? = null,
 )
 
+/**
+ * [handedOverAtEpochMs] is when [handedOver] went to Spotify's queue (wall time); null without it, and in files
+ * written before it was kept.
+ */
 @Serializable
 data class PersistedPlayback(
     val queue: RequestQueue = RequestQueue(),
@@ -27,6 +31,7 @@ data class PersistedPlayback(
     val playing: Request? = null,
     val history: List<PlayedEntry> = emptyList(),
     val lastPlayed: LastPlayed? = null,
+    val handedOverAtEpochMs: Long? = null,
 )
 
 class QueueStore(private val file: JsonFileStore<PersistedPlayback>) {

@@ -30,6 +30,7 @@ import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.queue.RequestQueue
+import nl.diments.requestify.core.spotify.RecentTrack
 import nl.diments.requestify.core.spotify.SpotifyPlayer
 import nl.diments.requestify.core.spotify.SpotifyResult
 
@@ -85,9 +86,10 @@ sealed interface SpotifyHealth {
 }
 
 /**
- * [playIntentSettleMs]: how long a pause or resume is shown while Spotify still reports the state from before
- * it (its Web API takes a moment to catch up). [upcomingRefreshMs]: how often Spotify's queue is read again when
- * nothing else asked for it, and how often the saved position of the song playing is brought up to date.
+ * [nearEndPollMs]: how often Spotify is polled while a song plays its last [nearEndWindowMs] (not while it is
+ * paused). [playIntentSettleMs]: how long a pause or resume is shown while Spotify still reports the state from
+ * before it (its Web API takes a moment to catch up). [upcomingRefreshMs]: how often Spotify's queue is read again
+ * when nothing else asked for it, and how often the saved position of the song playing is brought up to date.
  * [recentlyPlayedRefreshMs]: how often Spotify's recently played song is asked for while nothing is active.
  */
 data class PlaybackConfig(
@@ -115,9 +117,9 @@ data class PlaybackConfig(
  * edits wait in order and are applied on top of it once a later tick or edit reads it; [submit] and
  * [removeMatching] wait for it themselves, as they answer with what they did.
  *
- * Besides the polls, Spotify's queue ([upcoming]) and its recently played song are read only when something
- * changed or a while has passed, never on every poll. Neither ever changes [health], but when Spotify asks to wait
- * after either, the next poll waits as it does after any other call.
+ * Besides the polls, Spotify's queue ([upcoming]) and its recently played songs are read only when something
+ * changed or a while has passed, never on every poll. None of these reads ever changes [health], but when Spotify
+ * asks to wait after one, the next poll waits as it does after any other call.
  */
 class PlaybackController(
     private val player: SpotifyPlayer,
@@ -203,6 +205,9 @@ class PlaybackController(
     private var lastTrackId: String? = null
     private var lastSaved: PersistedPlayback? = null
 
+    /** When [handedOver] went to Spotify (wall time); set and cleared with it, and saved with it. */
+    private var handedOverAt: Long? = null
+
     /** The pause or resume Spotify has not confirmed yet. Guarded by [stateMutex]; never saved. */
     private var playIntent: PlayIntent? = null
 
@@ -263,6 +268,9 @@ class PlaybackController(
      * are one step under [stateMutex], so two requests at once can never both pass a limit. A request whose id is
      * already queued, handed over or playing is not added again, nor decided on: it is accepted where it is. Waits
      * until the saved state is loaded.
+     *
+     * A caller cancelled while the request is being added and saved can get a [CancellationException] although the
+     * request was added and saved: once [decide] accepted it, the addition stands.
      */
     suspend fun submit(request: Request, decide: (PlaybackSnapshot) -> RejectReason?): SubmitOutcome {
         awaitLoaded()
@@ -344,12 +352,14 @@ class PlaybackController(
         PlaybackSnapshot(_queue.value.items, _handedOver.value, playing, _history.value, _nowPlaying.value)
 
     /**
-     * Where the known request with [id] is, and about how long until it plays: the rest of the track shown now, the
-     * handed-over one, then the queued ones before it. Caller holds [stateMutex].
+     * Where the known request with [id] is, and about how long until it plays: the rest of the track Spotify plays
+     * now (none while only the last played song is shown), the handed-over one, then the queued ones before it.
+     * Caller holds [stateMutex].
      */
     private fun whereIs(id: String): SubmitOutcome.Accepted {
         if (playing?.id == id) return SubmitOutcome.Accepted(0, 0)
-        val restOfTrackMs = _nowPlaying.value?.let { it.track.durationMs - it.positionAt(clock()) } ?: 0
+        val live = _nowPlaying.value?.takeIf { it.kind == NowPlayingKind.Live }
+        val restOfTrackMs = live?.let { it.track.durationMs - it.positionAt(clock()) } ?: 0
         if (_handedOver.value?.id == id) return SubmitOutcome.Accepted(0, restOfTrackMs)
         val index = _queue.value.items.indexOfFirst { it.id == id }
         check(index >= 0) { "request $id is not known" }
@@ -553,13 +563,19 @@ class PlaybackController(
         } else {
             null
         }
+        // The handed-over request left Spotify's queue: its recently played tells whether it played meanwhile.
+        val playedSince = spotifyQueue
+            ?.let { ids -> withState { playedCheckSince(ids) } }
+            ?.let { since -> player.recentlyPlayedSince(since) }
         val recentAskedUnder = if (cp == null) withState { lastPlayedBook.recentlyPlayedDue() } else null
         val recent = recentAskedUnder?.let { player.recentlyPlayed() }
         val remainingMs = if (cp != null && track != null) track.durationMs - cp.progressMs else null
         val head = withState {
             wake.tryReceive()
             if (recentAskedUnder != null && recent != null) lastPlayedBook.answeredRecentlyPlayed(recent, recentAskedUnder)
-            if (track?.id != lastTrackId) settleTrackChange(track?.id, spotifyQueue)
+            if (track?.id != lastTrackId) {
+                settleTrackChange(track?.id, spotifyQueue, (playedSince as? SpotifyResult.Ok)?.value)
+            }
             _nowPlaying.value = lastPlayedBook.show(cp, playing, _nowPlaying.value, ::withPlayIntent)
             if (remainingMs != null && remainingMs <= config.handoverLeadMs) pickForHandOver(track?.id) else null
         }
@@ -572,6 +588,8 @@ class PlaybackController(
         } else {
             null
         }
+        // Only while Spotify plays: a paused song gets no nearer its end.
+        val nearEnd = cp?.isPlaying == true && remainingMs != null && remainingMs <= config.nearEndWindowMs
         return withState {
             if (cp == null) {
                 _upcoming.value = emptyList()
@@ -587,11 +605,11 @@ class PlaybackController(
             }
             val pollMs = when {
                 playIntent != null -> config.nearEndPollMs // soon picks up Spotify's confirmation
-                remainingMs != null && remainingMs <= config.nearEndWindowMs -> config.nearEndPollMs
+                nearEnd -> config.nearEndPollMs
                 else -> config.idlePollMs
             }
             // Spotify asked to wait, also when only an extra read was refused: no sooner than it said, nor than usual.
-            val limited = listOf(handOverResult, upcoming, recent)
+            val limited = listOf(handOverResult, upcoming, recent, playedSince)
                 .firstNotNullOfOrNull { it as? SpotifyResult.RateLimited }
             if (limited != null) NextTick(maxOf(retryAfterMs(limited), pollMs), wakeable = false) else NextTick(pollMs)
         }
@@ -620,34 +638,65 @@ class PlaybackController(
         }
     }
 
-    /** A track ended that wasn't the handed-over one: only Spotify's queue can tell whether it still has it. */
+    /**
+     * Another track than the handed-over one plays (or none), first seen now, also on the first poll after startup:
+     * only Spotify's queue can tell whether it still has the handed-over one.
+     */
     private fun needsSpotifyQueueCheck(trackId: String?): Boolean {
         val sent = _handedOver.value ?: return false
-        return trackId != lastTrackId && lastTrackId != null && sent.track.id != trackId
+        return trackId != lastTrackId && sent.track.id != trackId
+    }
+
+    /**
+     * When to ask Spotify's recently played from: when [handedOver] went to Spotify, now that [spotifyQueue] no
+     * longer has it. Null while it is still there, or when that time is not known (saved before it was kept).
+     */
+    private fun playedCheckSince(spotifyQueue: List<String>): Long? {
+        val sent = _handedOver.value ?: return null
+        return handedOverAt?.takeIf { sent.track.id !in spotifyQueue }
     }
 
     /**
      * Spotify moved on to [trackId]: the playing request is done, and the handed-over one either plays now
-     * ([RequestEvent.Started]) or, when [spotifyQueue] no longer has it, goes back to the head. A failed queue check
-     * never gets here, so [lastTrackId] stays put and the next tick settles the change again.
+     * ([RequestEvent.Started]) or [spotifyQueue] no longer has it. Then, when it is in [playedSince] (Spotify's
+     * recently played since its hand-over), it played while nobody watched, e.g. while the app was closed: it gets
+     * its [RequestEvent.Started] and goes to history. Otherwise (also when that read failed, [playedSince] null) it
+     * goes back to the head. A failed queue check never gets here, so [lastTrackId] stays put and the next tick
+     * settles the change again.
      */
-    private fun settleTrackChange(trackId: String?, spotifyQueue: List<String>?) {
+    private fun settleTrackChange(trackId: String?, spotifyQueue: List<String>?, playedSince: List<RecentTrack>?) {
         playing?.let {
             if (it.track.id != trackId) {
-                _history.value = (listOf(PlayedEntry(it, clock())) + _history.value).take(QueueStore.MAX_HISTORY)
+                addToHistory(it)
                 playing = null
             }
         }
         val sent = _handedOver.value
         if (sent != null && sent.track.id == trackId) {
             playing = sent
-            _handedOver.value = null
+            clearHandedOver()
             unsentEvents += RequestEvent.Started(sent)
         } else if (sent != null && spotifyQueue != null && sent.track.id !in spotifyQueue) {
-            _queue.value = _queue.value.addFirst(sent)
-            _handedOver.value = null
+            if (playedSince.orEmpty().any { it.track.id == sent.track.id }) {
+                unsentEvents += RequestEvent.Started(sent)
+                addToHistory(sent) // after the playing one, which ended before it started
+            } else {
+                _queue.value = _queue.value.addFirst(sent)
+            }
+            clearHandedOver()
         }
         lastTrackId = trackId
+    }
+
+    /** [request] played; it is the newest in [history]. Caller holds [stateMutex]. */
+    private fun addToHistory(request: Request) {
+        _history.value = (listOf(PlayedEntry(request, clock())) + _history.value).take(QueueStore.MAX_HISTORY)
+    }
+
+    /** Caller holds [stateMutex]. */
+    private fun clearHandedOver() {
+        _handedOver.value = null
+        handedOverAt = null
     }
 
     /**
@@ -690,10 +739,11 @@ class PlaybackController(
 
     /**
      * Spotify has [request] now, even if it was moved meanwhile (a removal waits for the answer, see
-     * [handingOver]): take it out of the current queue.
+     * [handingOver]): take it out of the current queue. Caller holds [stateMutex].
      */
     private fun markHandedOver(request: Request) {
         _handedOver.value = request
+        handedOverAt = clock()
         _queue.value = _queue.value.remove(request.id)
     }
 
@@ -740,6 +790,7 @@ class PlaybackController(
         }
         _queue.value = saved.queue
         _handedOver.value = saved.handedOver
+        handedOverAt = saved.handedOverAtEpochMs
         playing = saved.playing
         _history.value = saved.history
         lastPlayedBook.restore(saved)
@@ -766,7 +817,14 @@ class PlaybackController(
      * everything is saved.
      */
     private suspend fun persistIfChanged(): Boolean {
-        val snapshot = PersistedPlayback(_queue.value, _handedOver.value, playing, _history.value, lastPlayedBook.lastPlayed)
+        val snapshot = PersistedPlayback(
+            _queue.value,
+            _handedOver.value,
+            playing,
+            _history.value,
+            lastPlayedBook.lastPlayed,
+            handedOverAtEpochMs = handedOverAt,
+        )
         if (snapshot == lastSaved) {
             _persistError.value = null // e.g. an unsaved edit was undone: nothing is left unsaved
             return true

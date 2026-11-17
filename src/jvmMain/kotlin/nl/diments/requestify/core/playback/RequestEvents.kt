@@ -47,7 +47,10 @@ enum class RemoveReason {
 
 /** What happened to a request, emitted by [PlaybackController.events] once the change is saved. */
 sealed interface RequestEvent {
-    /** Spotify started playing the handed-over [request]. */
+    /**
+     * Spotify started playing the handed-over [request]. For one that played while the app was away (closed), it
+     * comes late, once Spotify's recently played shows it, and the request is in history by then.
+     */
     data class Started(val request: Request) : RequestEvent
 
     /** [request] left the queue without playing. Handing a request over to Spotify does not remove it. */

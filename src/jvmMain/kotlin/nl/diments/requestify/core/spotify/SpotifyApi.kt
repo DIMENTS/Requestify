@@ -71,6 +71,12 @@ interface SpotifyPlayer {
 
     /** The most recently played track, `Ok(null)` when there is none. */
     suspend fun recentlyPlayed(): SpotifyResult<RecentTrack?>
+
+    /**
+     * The tracks whose play Spotify logged after [afterEpochMs], at most 50, in Spotify's order; items without a
+     * usable track or time are dropped. Spotify logs only tracks played for a while (about 30 s), with some delay.
+     */
+    suspend fun recentlyPlayedSince(afterEpochMs: Long): SpotifyResult<List<RecentTrack>>
     suspend fun addToQueue(trackUri: String): SpotifyResult<Unit>
     suspend fun skipNext(): SpotifyResult<Unit>
     suspend fun skipPrevious(): SpotifyResult<Unit>
@@ -122,10 +128,18 @@ class SpotifyApi(
 
     override suspend fun recentlyPlayed(): SpotifyResult<RecentTrack?> =
         execute(HttpMethod.Get, "me", "player", "recently-played", params = listOf("limit" to "1")) { body ->
-            val item = json.decodeFromString<RecentlyPlayedDto>(body).items.firstOrNull() ?: return@execute null
-            val track = item.track?.toTrackOrNull() ?: return@execute null
-            val playedAt = runCatching { Instant.parse(item.playedAt).toEpochMilli() }.getOrNull() ?: return@execute null
-            RecentTrack(track, playedAt)
+            json.decodeFromString<RecentlyPlayedDto>(body).items.firstOrNull()?.toRecentTrackOrNull()
+        }
+
+    override suspend fun recentlyPlayedSince(afterEpochMs: Long): SpotifyResult<List<RecentTrack>> =
+        execute(
+            HttpMethod.Get,
+            "me",
+            "player",
+            "recently-played",
+            params = listOf("limit" to "50", "after" to afterEpochMs.toString()),
+        ) { body ->
+            json.decodeFromString<RecentlyPlayedDto>(body).items.mapNotNull { it.toRecentTrackOrNull() }
         }
 
     override suspend fun addToQueue(trackUri: String): SpotifyResult<Unit> =
@@ -271,7 +285,14 @@ class SpotifyApi(
     private class RecentlyPlayedDto(val items: List<RecentItemDto> = emptyList())
 
     @Serializable
-    private class RecentItemDto(@SerialName("played_at") val playedAt: String? = null, val track: TrackDto? = null)
+    private class RecentItemDto(@SerialName("played_at") val playedAt: String? = null, val track: TrackDto? = null) {
+        /** Null without a usable track or a readable time. */
+        fun toRecentTrackOrNull(): RecentTrack? {
+            val usable = track?.toTrackOrNull() ?: return null
+            val at = playedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: return null
+            return RecentTrack(usable, at)
+        }
+    }
 
     @Serializable
     private class QueueItemDto(val id: String? = null, val type: String? = null)

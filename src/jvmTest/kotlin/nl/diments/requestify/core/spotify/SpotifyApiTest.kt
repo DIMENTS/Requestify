@@ -391,6 +391,28 @@ class SpotifyApiTest {
     }
 
     @Test
+    fun recentlyPlayedSinceSendsAfterAndLimit50() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        fun track(id: String) = """{"id":"$id","uri":"spotify:track:$id","name":"$id","type":"track"}"""
+        val body = """{"items":[""" +
+            """{"played_at":"2026-11-17T09:35:00.000Z","track":${track("b")}},""" +
+            """{"played_at":"2026-11-17T09:34:00.000Z","track":$localFile},""" +
+            """{"played_at":"yesterday","track":${track("c")}},""" +
+            """{"played_at":"2026-11-17T09:30:00.000Z","track":${track("a")}}]}"""
+        val recent = api { req -> seen = req; respond(body, HttpStatusCode.OK, json) }
+            .recentlyPlayedSince(afterEpochMs = 1_794_907_000_000)
+            .ok()
+        assertEquals(
+            listOf("b" to 1_794_908_100_000L, "a" to 1_794_907_800_000L), // unusable track or time: dropped
+            recent.map { it.track.id to it.playedAtEpochMs },
+        )
+        assertEquals(HttpMethod.Get, seen!!.method)
+        assertEquals("/v1/me/player/recently-played", seen.url.encodedPath)
+        assertEquals("50", seen.url.parameters["limit"])
+        assertEquals("1794907000000", seen.url.parameters["after"])
+    }
+
+    @Test
     fun recentlyPlayedEmptyIsOkNull() = runBlocking<Unit> {
         assertNull(api { respond("""{"items":[]}""", HttpStatusCode.OK, json) }.recentlyPlayed().ok())
     }

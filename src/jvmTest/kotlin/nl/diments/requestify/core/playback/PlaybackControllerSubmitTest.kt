@@ -24,6 +24,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -39,6 +40,7 @@ import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
+import nl.diments.requestify.core.queue.LastPlayed
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.QueueStore
@@ -141,6 +143,42 @@ class PlaybackControllerSubmitTest {
         assertEquals(SubmitOutcome.Accepted(position = 1, waitMs = 100_000), outcome)
         assertEquals(listOf(paid, r1), controller.queue.value.items)
         assertEquals(listOf(paid, r1), store().load().queue.items)
+    }
+
+    @Test
+    fun waitCountsTheTracksQueuedBefore() = runTest {
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 100_000) // 100 s left, nothing handed over yet
+        val controller = controller(player)
+        controller.enqueue(r1)
+        controller.start()
+        runCurrent()
+
+        assertEquals(SubmitOutcome.Accepted(position = 2, waitMs = 100_000 + 200_000), controller.submit(r2) { null })
+    }
+
+    @Test
+    fun waitCountsTheCurrentTrackOnlyWhileItIsLive() = runTest {
+        store().save(PersistedPlayback(lastPlayed = LastPlayed(trackA, progressMs = 60_000, playedAtEpochMs = 0)))
+        val controller = controller(fakePlayer()) // Spotify has nothing active
+
+        assertEquals(SubmitOutcome.Accepted(position = 1, waitMs = 0), controller.submit(r1) { null })
+        assertEquals(NowPlayingKind.LastPlayed, controller.nowPlaying.value?.kind)
+        assertEquals(SubmitOutcome.Accepted(position = 2, waitMs = 200_000), controller.submit(r2) { null })
+    }
+
+    @Test
+    fun aSubmitCancelledDuringItsSaveIsStillAddedAndSaved() = runTest {
+        val controller = controller(fakePlayer())
+        var outcome: SubmitOutcome? = null
+        lateinit var caller: Job
+        caller = launch { outcome = controller.submit(r1) { caller.cancel(); null } } // cancelled before the save
+        runCurrent()
+
+        assertTrue(caller.isCancelled)
+        assertNull(outcome, "the caller got a CancellationException")
+        assertEquals(listOf(r1), controller.queue.value.items)
+        assertEquals(listOf(r1), store().load().queue.items)
     }
 
     @Test
