@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import nl.diments.requestify.core.rules.Rules
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.storage.StoreReadException
 
@@ -16,6 +17,7 @@ data class Settings(
     val darkMode: DarkMode = DarkMode.System,
     val language: AppLanguage = AppLanguage.System,
     val paidPriority: Boolean = true,
+    val rules: Rules = Rules(),
 )
 
 /** Saved in settings.json under the stable names below: never change them, or saved settings are lost. */

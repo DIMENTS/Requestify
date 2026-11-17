@@ -105,6 +105,22 @@ class SavedFormatCompatTest {
     }
 
     @Test
+    fun oldQueueWithoutNewFieldsStillReads() {
+        val file = dir.resolve("queue.json")
+        file.writeText(
+            """{"queue":{"items":[{"id":"r1","track":{"id":"t1","uri":"spotify:track:t1","name":"S","artists":["A"],""" +
+                """"durationMs":1000,"explicit":false,"albumArtUrl":null},"requester":{"displayName":"V","login":"v"},""" +
+                """"source":"CHAT","payment":null,"createdAtEpochMs":5}]}}""",
+        )
+        val loaded = QueueStore(JsonFileStore(file, PersistedPlayback.serializer()) { PersistedPlayback() }).load()
+        val request = loaded.queue.items.single()
+        assertEquals(emptyList(), request.track.artistIds)
+        assertEquals(null, request.requester.twitchUserId)
+        assertEquals(false, request.rulesWaived)
+        assertNothingMovedAside()
+    }
+
+    @Test
     fun settingsV1WithACustomColourIsRead() {
         val file = installed("settings-v1.json", "settings.json")
         val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value

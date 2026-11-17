@@ -12,6 +12,8 @@ data class Track(
     val durationMs: Long,
     val explicit: Boolean,
     val albumArtUrl: String?,
+    /** Spotify's artist ids, parallel to [artists]; empty for tracks saved before they were kept. */
+    val artistIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -30,7 +32,7 @@ sealed interface Payment {
 }
 
 @Serializable
-data class Requester(val displayName: String, val login: String? = null)
+data class Requester(val displayName: String, val login: String? = null, val twitchUserId: String? = null)
 
 @Serializable
 data class Request(
@@ -41,6 +43,15 @@ data class Request(
     val payment: Payment?,
     val createdAtEpochMs: Long,
     val sourceRef: String? = null,
+    /** "Add anyway": the streamer let it in past the rules. */
+    val rulesWaived: Boolean = false,
 ) {
     val isPaid: Boolean get() = payment != null
 }
+
+/** A request the rules apply to: not the streamer's own add, and not one let in anyway. */
+val Request.isViewerRequest: Boolean get() = source != RequestSource.MANUAL && !rulesWaived
+
+/** A viewer's request that was not paid for: from chat or with Channel Points. */
+val Request.isFreeViewerRequest: Boolean
+    get() = payment == null && (source == RequestSource.CHAT || source == RequestSource.CHANNEL_POINTS)
