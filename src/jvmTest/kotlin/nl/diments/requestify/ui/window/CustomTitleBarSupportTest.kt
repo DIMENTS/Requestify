@@ -12,10 +12,19 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.jetbrains.WindowDecorations
+import java.awt.Dialog
+import java.awt.Frame
+import java.awt.Window
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class CustomTitleBarSupportTest {
@@ -43,6 +52,58 @@ class CustomTitleBarSupportTest {
         val brokenService = titleBarMode(jbrAvailable = { true }, decorationsSupported = { error("service failed") })
         assertEquals(TitleBarMode.Native, noApi)
         assertEquals(TitleBarMode.Native, brokenService)
+    }
+
+    @Test
+    fun aHitTestThatFailsGivesTheWindowItsOwnTitleBarBack() {
+        val installed = mutableListOf<WindowDecorations.CustomTitleBar?>()
+        val decorations = object : WindowDecorations {
+            override fun setCustomTitleBar(frame: Frame, bar: WindowDecorations.CustomTitleBar?) {
+                installed += bar
+            }
+            override fun setCustomTitleBar(dialog: Dialog, bar: WindowDecorations.CustomTitleBar?) = error("unused")
+            override fun createCustomTitleBar() = error("unused")
+        }
+        var hitTests = 0
+        val bar = FailingHitTestBar { hitTests++ }
+        val frame = Frame()
+        try {
+            val titleBar = JbrTitleBar(frame, decorations, bar)
+            val caption = assertNotNull(titleBar.show(TitleBarHeight, Density(1f), dark = true))
+            assertSame(bar, installed.last())
+
+            caption.hitTest(true) // the runtime throws; nothing may reach Compose's event dispatch
+            assertTrue(titleBar.failed)
+            assertNull(installed.last(), "the window has its own title bar again")
+
+            caption.hitTest(false)
+            assertEquals(1, hitTests, "the failed bar is not asked again")
+            assertNull(titleBar.show(TitleBarHeight, Density(1f), dark = false), "and is not shown again")
+        } finally {
+            frame.dispose()
+        }
+    }
+
+    /** A custom title bar whose hit test fails in the runtime, after telling [onHitTest]. */
+    private class FailingHitTestBar(private val onHitTest: () -> Unit) : WindowDecorations.CustomTitleBar {
+        private val properties = mutableMapOf<String, Any>()
+        private var height = 0f
+        override fun getHeight() = height
+        override fun setHeight(height: Float) {
+            this.height = height
+        }
+        override fun getProperties(): Map<String, Any> = properties
+        override fun putProperties(map: Map<String, *>) = map.forEach { (key, value) -> putProperty(key, value) }
+        override fun putProperty(key: String, value: Any?) {
+            if (value == null) properties -= key else properties[key] = value
+        }
+        override fun getLeftInset() = 0f
+        override fun getRightInset() = 141f
+        override fun forceHitTest(client: Boolean) {
+            onHitTest()
+            throw IllegalStateException("the native hit test failed")
+        }
+        override fun getContainingWindow(): Window? = null
     }
 
     @Test

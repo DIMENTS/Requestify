@@ -56,16 +56,18 @@ fun rememberWindowCaption(window: Frame?, dark: Boolean): WindowCaption? {
     val density = LocalDensity.current
     var caption by remember(jbrBar) { mutableStateOf<WindowCaption?>(null) }
     LaunchedEffect(jbrBar, density, dark) { caption = jbrBar?.show(TitleBarHeight, density, dark) }
-    return caption
+    return caption?.takeUnless { jbrBar?.failed == true }
 }
 
 /** The JetBrains Runtime's custom title bar on [window]; after a failure the window keeps its own title bar. */
-private class JbrTitleBar private constructor(
+internal class JbrTitleBar internal constructor(
     private val window: Frame,
     private val decorations: WindowDecorations,
     private val bar: WindowDecorations.CustomTitleBar,
 ) {
-    private var failed = false
+    /** Observable, so the app's bar stops leaving room for caption buttons the window no longer has. */
+    var failed by mutableStateOf(false)
+        private set
 
     fun show(height: Dp, density: Density, dark: Boolean): WindowCaption? {
         if (failed) return null
@@ -83,8 +85,16 @@ private class JbrTitleBar private constructor(
         }
     }
 
+    /** Runs inside Compose's event dispatch, where an exception would close the window, so a failure falls back. */
     private fun hitTest(client: Boolean) {
-        if (!failed) bar.forceHitTest(client)
+        if (failed) return
+        try {
+            bar.forceHitTest(client)
+        } catch (e: Exception) {
+            fallBack(e)
+        } catch (e: LinkageError) {
+            fallBack(e)
+        }
     }
 
     private fun fallBack(cause: Throwable): WindowCaption? {
@@ -101,6 +111,8 @@ private class JbrTitleBar private constructor(
             return runCatching {
                 val decorations = JBR.getWindowDecorations()
                 JbrTitleBar(window, decorations, decorations.createCustomTitleBar())
+            }.onFailure {
+                System.err.println("Requestify: couldn't make the custom title bar, so the window keeps its own: $it")
             }.getOrNull()
         }
     }
