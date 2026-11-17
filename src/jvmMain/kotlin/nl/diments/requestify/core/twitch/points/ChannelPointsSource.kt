@@ -36,8 +36,19 @@ import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
  * - **Unfulfilled** while its request waits, also while it is handed over to Spotify (it can still come back).
  * - **Fulfilled** when it starts playing ([RequestEvent.Started]).
  * - **Canceled** (refunded) when it is rejected (closed requests included), and when it leaves the queue without
- *   playing ([RequestEvent.Removed]: X, `!wrongsong`, `!remove`, blacklist sweep, end-of-stream clear). Its lifecycle
- *   runs on while Channel Points are switched off: only new redemptions are ignored then.
+ *   playing ([RequestEvent.Removed]: X, `!wrongsong`, `!remove`, blacklist sweep, end-of-stream clear).
+ * - **A refund is final:** a redemption refunded in this run is never fulfilled afterwards, also when the streamer
+ *   lets the rejected request in anyway and it plays (the viewer was told the points came back).
+ *
+ * Two parts, started separately by the wiring:
+ * - [startLifecycle], **once when the app starts**, before anything can change the queue (before
+ *   `PlaybackController.start()` and before the UI is shown), and [stopLifecycle] only at exit: it turns the
+ *   controller's [RequestEvent]s into outbox entries, whatever the Twitch login, and also while Channel Points are
+ *   switched off (the redemptions still waiting stay refundable). It needs no login: the outbox keeps the entries
+ *   until it can send them.
+ * - [startSession] / [stopSession] **with the Twitch session** (logged in, EventSub running): new redemptions and
+ *   catch-up. [startSession] also starts the lifecycle part when it is not running yet; [stopSession] leaves it
+ *   running.
  *
  * A directly linked reward that Requestify did not create (`cpx:` refs) never reaches the outbox (Twitch refuses its
  * updates), is not caught up (Twitch does not list it), and no reply claims a refund for it.
@@ -45,10 +56,10 @@ import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
  * Replies are plain chat messages (a redemption has no chat message to reply to) starting with "@name", saying it was
  * added or why not; nothing for a blocked viewer.
  *
- * **Catch-up** ([catchUp]: on [start] and after every fresh EventSub session, whose events in between are lost) reads
- * the reward's unfulfilled redemptions and settles each by what the app knows of it: queued, handed over or in the
- * outbox: left alone; playing or in history: fulfilled; handled earlier in this run but gone from the queue without
- * playing (it left while nobody listened): refunded; otherwise a new redemption.
+ * **Catch-up** ([catchUp]: on [startSession] and after every fresh EventSub session, whose events in between are
+ * lost) reads the reward's unfulfilled redemptions and settles each by what the app knows of it: queued, handed over
+ * or in the outbox: left alone; playing or in history: fulfilled (unless refunded); known in this run (handled,
+ * settled or sent) but gone from the queue without playing: refunded; otherwise a new redemption.
  *
  * Redemptions and catch-ups are handled one at a time, in order, and each redemption once.
  */
@@ -84,26 +95,46 @@ class ChannelPointsSource(
     }
 
     private val lock = Any()
-    private var job: Job? = null
+    private var lifecycle: Job? = null
+    private var session: Job? = null
 
     /** One redemption or catch-up at a time. */
     private val turn = Mutex()
 
-    /** Redemption ids handled or seen as requests in this run. Guarded by [turn]. */
+    /** Redemption ids handled, caught up or settled in this run. */
     private val known = RecentIds(KNOWN_IDS)
 
+    /** Redemption ids refunded in this run: never fulfilled afterwards. */
+    private val refunded = RecentIds(KNOWN_IDS)
+
     /**
-     * Starts listening, then catches up. Safe before the controller has started or read its saved state: the
-     * request events are subscribed to before anything can happen, and catch-up waits for the saved state.
+     * Starts turning request events into outbox entries, for the whole app lifetime; does nothing when it runs
+     * already. Call it once at app start, before anything can change the queue: the events do not replay.
      */
-    fun start() {
+    fun startLifecycle() {
+        synchronized(lock) { startLifecycleLocked() }
+    }
+
+    /** Only at app exit: request events after this are not settled (catch-up recovers them within this run). */
+    fun stopLifecycle() {
         synchronized(lock) {
-            if (job?.isActive == true) return
-            job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                // Every flow is subscribed before start() returns: none of them replays.
+            lifecycle?.cancel()
+            lifecycle = null
+        }
+    }
+
+    /**
+     * With the Twitch session: starts listening to redemptions, then catches up; also starts the lifecycle part when
+     * it does not run yet. Safe before the controller has started or read its saved state: catch-up waits for it.
+     */
+    fun startSession() {
+        synchronized(lock) {
+            startLifecycleLocked()
+            if (session?.isActive == true) return
+            session = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                // Both flows are subscribed before startSession() returns: neither replays.
                 val inbox = Channel<Work>(Channel.UNLIMITED)
                 coroutineScope {
-                    launch(start = CoroutineStart.UNDISPATCHED) { controller.events.collect { settle(it) } }
                     launch(start = CoroutineStart.UNDISPATCHED) { freshSessions.collect { inbox.trySend(Work.CatchUp) } }
                     inbox.trySend(Work.CatchUp)
                     launch { for (work in inbox) doSafely(work) }
@@ -117,11 +148,18 @@ class ChannelPointsSource(
         }
     }
 
-    fun stop() {
+    /** The Twitch session ended: no redemptions or catch-ups until [startSession]. The lifecycle part keeps running. */
+    fun stopSession() {
         synchronized(lock) {
-            job?.cancel()
-            job = null
+            session?.cancel()
+            session = null
         }
+    }
+
+    /** Caller holds [lock]. */
+    private fun startLifecycleLocked() {
+        if (lifecycle?.isActive == true) return
+        lifecycle = scope.launch(start = CoroutineStart.UNDISPATCHED) { controller.events.collect { settle(it) } }
     }
 
     /** Settles the linked reward's unfulfilled redemptions (Requestify's own reward only); see the class comment. */
@@ -132,7 +170,7 @@ class ChannelPointsSource(
         turn.withLock {
             val waiting = when (val result = api.unfulfilledRedemptions(rewardId)) {
                 is TwitchResult.Ok -> result.value
-                else -> return // the next start or fresh session tries again
+                else -> return // the next session start or fresh session tries again
             }
             for (redemption in waiting) caughtUp(redemption)
         }
@@ -167,12 +205,10 @@ class ChannelPointsSource(
         val played = snapshot.playing?.let { isFor(it, id) } == true || snapshot.history.any { isFor(it.request, id) }
         when {
             waits || outbox.entries.value.any { it.redemptionId == id } -> known.add(id)
-            played -> {
-                known.add(id)
-                outbox.enqueue(redemption.rewardId, id, RedemptionStatus.FULFILLED)
-            }
-            // Handled in this run, and gone without playing: it left the queue while nobody was listening.
-            id in known -> outbox.enqueue(redemption.rewardId, id, RedemptionStatus.CANCELED)
+            played -> fulfil(redemption.rewardId, id)
+            // Known in this run and gone without playing: it left the queue while nobody listened, or Twitch's list
+            // was read just before its refund landed. Refunding again is harmless; running it through the rules is not.
+            id in known || outbox.wasSent(id) -> refund(redemption.rewardId, id)
             !settings.settings.value.twitch.channelPoints.enabled -> Unit // new, but switched off: it waits
             else -> {
                 known.add(id)
@@ -206,20 +242,23 @@ class ChannelPointsSource(
             receivedAtEpochMs = clock(),
         )
         val outcome = intake.submit(incoming)
-        val refunded = managed && outcome is IntakeOutcome.Rejected
-        if (refunded) outbox.enqueue(rewardId, redemptionId, RedemptionStatus.CANCELED)
-        replies.outcome(outcome, "@$userName ", refundedPoints = refunded)?.let { sender.send(it, replyTo = null) }
+        val refundedNow = managed && outcome is IntakeOutcome.Rejected
+        if (refundedNow) refund(rewardId, redemptionId)
+        replies.outcome(outcome, "@$userName ", refundedPoints = refundedNow)?.let { sender.send(it, replyTo = null) }
     }
 
     /** A request of Requestify's own reward started playing, or left the queue without playing. */
     private fun settle(event: RequestEvent) {
         try {
-            val (request, status) = when (event) {
-                is RequestEvent.Started -> event.request to RedemptionStatus.FULFILLED
-                is RequestEvent.Removed -> event.request to RedemptionStatus.CANCELED
+            val request = when (event) {
+                is RequestEvent.Started -> event.request
+                is RequestEvent.Removed -> event.request
             }
             val ref = ChannelPointsRef.parse(request.sourceRef)?.takeIf { it.managed } ?: return
-            outbox.enqueue(ref.rewardId, ref.redemptionId, status)
+            when (event) {
+                is RequestEvent.Started -> fulfil(ref.rewardId, ref.redemptionId)
+                is RequestEvent.Removed -> refund(ref.rewardId, ref.redemptionId)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -227,18 +266,18 @@ class ChannelPointsSource(
         }
     }
 
-    /** The last [capacity] ids, oldest dropped first. */
-    private class RecentIds(private val capacity: Int) {
-        private val ids = LinkedHashSet<String>()
+    /** Every refund goes through here: it is final. */
+    private fun refund(rewardId: String, redemptionId: String) {
+        known.add(redemptionId)
+        refunded.add(redemptionId)
+        outbox.enqueue(rewardId, redemptionId, RedemptionStatus.CANCELED)
+    }
 
-        operator fun contains(id: String) = id in ids
-
-        /** False when [id] is known already. */
-        fun add(id: String): Boolean {
-            if (!ids.add(id)) return false
-            if (ids.size > capacity) ids.remove(ids.first())
-            return true
-        }
+    /** Every fulfil goes through here: never for a redemption refunded in this run. */
+    private fun fulfil(rewardId: String, redemptionId: String) {
+        known.add(redemptionId)
+        if (redemptionId in refunded) return
+        outbox.enqueue(rewardId, redemptionId, RedemptionStatus.FULFILLED)
     }
 
     private companion object {

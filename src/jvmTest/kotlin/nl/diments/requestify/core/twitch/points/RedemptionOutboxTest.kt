@@ -81,10 +81,81 @@ class RedemptionOutboxTest {
         val outbox = outbox(helix)
         outbox.start()
         outbox.enqueue("rw1", "red1", FULFILLED)
+        assertFalse(outbox.wasSent("red1"))
 
         awaitUntil("sent") { outbox.entries.value.isEmpty() }
         assertEquals(listOf(listOf(OutboxEntry("rw1", "red1", FULFILLED))), inFileAtCall.toList())
         assertEquals(emptyList(), saved())
+        assertTrue(outbox.wasSent("red1"))
+    }
+
+    @Test
+    fun refundIsFinal() = runTest {
+        val helix = helix()
+        val outbox = outbox(helix)
+        outbox.enqueue("rw1", "red1", CANCELED)
+        outbox.enqueue("rw1", "red1", FULFILLED) // e.g. added anyway and played: the viewer was told "refunded"
+        assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED)), outbox.entries.value)
+        assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED)), saved())
+
+        // Also while the refund is on its way, and when that try fails.
+        helix.patchStatuses += 500
+        helix.onPatch = { if (it.status == "CANCELED") outbox.enqueue("rw1", "red1", FULFILLED) }
+        outbox.start()
+        awaitUntil("the failed try") { outbox.entries.value.single().tries == 1 }
+        assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED, tries = 1)), outbox.entries.value)
+
+        advanceTimeBy(5_000)
+        awaitUntil("sent") { outbox.entries.value.isEmpty() }
+        settle()
+        assertEquals(listOf("CANCELED", "CANCELED"), helix.patches.map { it.status })
+    }
+
+    @Test
+    fun badRequestMovesTheEntryBehindTheOthers() = runTest {
+        val helix = helix()
+        helix.patchStatuses += 400
+        val outbox = outbox(helix)
+        outbox.enqueue("rw1", "bad", FULFILLED)
+        outbox.enqueue("rw1", "red2", CANCELED)
+        outbox.start()
+
+        awaitUntil("the refund behind it is sent") { helix.patches.size == 2 }
+        awaitUntil("only the bad one left") { outbox.entries.value.size == 1 }
+        assertEquals(listOf("bad@0", "red2@0"), helix.patches.map { "${it.redemptionId}@${it.atMs}" })
+        assertEquals(listOf(OutboxEntry("rw1", "bad", FULFILLED, tries = 1)), outbox.entries.value)
+        assertEquals(outbox.entries.value, saved())
+
+        outbox.enqueue("rw1", "red3", CANCELED) // a later one does not wait for it either
+        awaitUntil("sent at once") { helix.patches.size == 3 }
+        assertEquals("red3@0", helix.patches.last().let { "${it.redemptionId}@${it.atMs}" })
+
+        advanceTimeBy(4_999)
+        settle()
+        assertEquals(3, helix.patches.size, "the bad one waits its own backoff")
+        advanceTimeBy(1)
+        awaitUntil("retried") { outbox.entries.value.isEmpty() }
+        assertEquals("bad@5000", helix.patches.last().let { "${it.redemptionId}@${it.atMs}" })
+    }
+
+    @Test
+    fun rateLimitWaitsForAllWithoutCountingATry() = runTest {
+        val helix = helix()
+        helix.patchStatuses += 429 // no Ratelimit-Reset header: Twitch's client waits 5 s
+        val outbox = outbox(helix)
+        outbox.enqueue("rw1", "red1", CANCELED)
+        outbox.enqueue("rw1", "red2", CANCELED)
+        outbox.start()
+
+        awaitUntil("the limited try") { helix.patches.size == 1 }
+        settle()
+        assertEquals(listOf(0, 0), outbox.entries.value.map { it.tries }, "not counted as a try")
+        advanceTimeBy(4_999)
+        settle()
+        assertEquals(1, helix.patches.size, "everything waits")
+        advanceTimeBy(1)
+        awaitUntil("both sent") { outbox.entries.value.isEmpty() }
+        assertEquals(listOf("red1@0", "red1@5000", "red2@5000"), helix.patches.map { "${it.redemptionId}@${it.atMs}" })
     }
 
     @Test

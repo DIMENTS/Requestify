@@ -123,10 +123,30 @@ class ChannelPointsSourceTest {
         )
         rig.sender.start()
         if (start) {
-            source.start()
+            source.startSession() // starts the lifecycle part too
             runCurrent()
         }
         return Harness(rig, helix, outbox, source, freshSessions)
+    }
+
+    /** A Channel Points request of Requestify's own reward, as a request saved by an earlier run. */
+    private fun cp(id: String, trackId: String, viewer: String) = Request(
+        id, track(trackId, "Song $id"), Requester("Name $viewer", "login_$viewer", viewer),
+        RequestSource.CHANNEL_POINTS, null, 0, sourceRef = "cp:$REWARD:$id",
+    )
+
+    private fun saveQueue(playback: PersistedPlayback) =
+        QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() })
+            .save(playback)
+
+    /** Hands the head over near the end of Zulu, then lets Spotify start it (Alpha). */
+    private fun TestScope.playHead(h: Harness, id: String) {
+        h.rig.player.plays(track(idZ, "Zulu"), progressMs = 190_000)
+        h.rig.controller.start()
+        awaitUntil("handed over") { h.rig.controller.handedOver.value?.id == id }
+        h.rig.player.plays(track(idA, "Alpha"), progressMs = 500)
+        advanceTimeBy(1_000)
+        awaitUntil("playing") { h.rig.controller.snapshot().playing?.id == id }
     }
 
     @Test
@@ -248,12 +268,8 @@ class ChannelPointsSourceTest {
 
     @Test
     fun catchUpSettlesPlayedQueuedAndUnknown() = runTest {
-        fun cp(id: String, trackId: String, viewer: String) = Request(
-            id, track(trackId, "Song $id"), Requester("Name $viewer", "login_$viewer", viewer),
-            RequestSource.CHANNEL_POINTS, null, 0, sourceRef = "cp:$REWARD:$id",
-        )
         // What the app knew when it was closed.
-        QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }).save(
+        saveQueue(
             PersistedPlayback(
                 queue = RequestQueue(listOf(cp("redQ", "q".repeat(22), "v1"))),
                 handedOver = cp("redH", "h".repeat(22), "v2"),
@@ -274,7 +290,7 @@ class ChannelPointsSourceTest {
             ),
         )
 
-        h.source.start() // before the controller has read its saved state
+        h.source.startSession() // before the controller has read its saved state
         awaitUntil("the unknown one answered") { h.sends.isNotEmpty() }
         settle()
         assertEquals(listOf(REWARD), h.helix.lists)
@@ -306,7 +322,7 @@ class ChannelPointsSourceTest {
         val h = harness(start = false, waiting = listOf(waiting("redN", link(idA), "v1")))
         h.rig.open.value = false
 
-        h.source.start()
+        h.source.startSession()
         awaitUntil("answered") { h.sends.isNotEmpty() }
         assertEquals(listOf(OutboxEntry(REWARD, "redN", CANCELED)), h.outboxed)
         assertTrue(h.rig.queued.isEmpty())
@@ -319,14 +335,15 @@ class ChannelPointsSourceTest {
         h.redeem("red1", link(idA))
         awaitUntil("reply") { h.sends.isNotEmpty() }
 
-        h.source.stop()
+        h.source.stopSession()
+        h.source.stopLifecycle() // e.g. a wiring that missed it: nothing hears the removal
         h.rig.controller.remove("red1")
         awaitUntil("removed") { h.rig.queued.isEmpty() }
         settle()
         assertTrue(h.outboxed.isEmpty(), "nobody listened")
 
         h.helix.unfulfilled += waiting("red1", link(idA), "u1")
-        h.source.start()
+        h.source.startSession()
         awaitUntil("refunded") { h.outboxed.isNotEmpty() }
         settle()
         assertEquals(listOf(OutboxEntry(REWARD, "red1", CANCELED)), h.outboxed)
@@ -395,6 +412,102 @@ class ChannelPointsSourceTest {
         assertTrue(h.rig.rejectedEntries.isEmpty())
         assertTrue(h.rig.catalog.calls.isEmpty())
         assertTrue(h.outboxed.isEmpty())
+    }
+
+    @Test
+    fun refundIsFinalWhenTheRequestIsAddedAnywayAndPlays() = runTest {
+        val h = harness()
+        h.rig.open.value = false
+        h.redeem("red1", link(idA))
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        assertTrue("refunded" in h.sends.single().message, h.sends.single().message)
+        assertEquals(listOf(OutboxEntry(REWARD, "red1", CANCELED)), h.outboxed) // not sent yet (e.g. a dead login)
+
+        h.rig.open.value = true
+        h.rig.intake.addAnyway("red1") // the streamer lets it in anyway: same cp: reference
+        awaitUntil("queued again") { h.rig.queued.singleOrNull()?.id == "red1" }
+        playHead(h, "red1")
+        settle()
+
+        assertEquals(listOf(OutboxEntry(REWARD, "red1", CANCELED)), h.outboxed, "the viewer was told: refunded")
+    }
+
+    @Test
+    fun refundIsFinalAfterItWasSent() = runTest {
+        val h = harness()
+        h.outbox.start()
+        h.rig.open.value = false
+        h.redeem("red1", link(idA))
+        awaitUntil("refund sent") { h.helix.patches.isNotEmpty() && h.outboxed.isEmpty() }
+
+        h.rig.open.value = true
+        h.rig.intake.addAnyway("red1")
+        awaitUntil("queued again") { h.rig.queued.singleOrNull()?.id == "red1" }
+        playHead(h, "red1")
+        settle()
+
+        assertEquals(listOf("red1:CANCELED"), h.helix.patches.map { "${it.redemptionId}:${it.status}" })
+        assertTrue(h.outboxed.isEmpty())
+    }
+
+    @Test
+    fun lifecycleRunsWhileTheSessionIsStopped() = runTest {
+        saveQueue(PersistedPlayback(queue = RequestQueue(listOf(cp("redQ", "q".repeat(22), "v1")))))
+        val h = harness(start = false)
+        h.source.startLifecycle() // at app start: no Twitch session (yet)
+        h.rig.controller.remove("redQ")
+        awaitUntil("refunded without a session") { h.outboxed.isNotEmpty() }
+        assertEquals(listOf(OutboxEntry(REWARD, "redQ", CANCELED)), h.outboxed)
+        assertTrue(h.helix.lists.isEmpty(), "no catch-up without a session")
+
+        h.source.startSession()
+        h.redeem("red1", link(idA))
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        h.source.stopSession() // logged out
+        h.redeem("red2", link(idB), viewer = "u2")
+        h.rig.controller.remove("red1")
+        awaitUntil("refunded after the session ended") { h.outboxed.size == 2 }
+        settle()
+        assertEquals(OutboxEntry(REWARD, "red1", CANCELED), h.outboxed.last())
+        assertEquals(1, h.sends.size, "no redemptions without a session")
+        assertTrue(h.rig.queued.isEmpty())
+    }
+
+    @Test
+    fun justRefundedRedemptionIsNeverRunThroughTheRulesAgain() = runTest {
+        saveQueue(PersistedPlayback(queue = RequestQueue(listOf(cp("redQ", idA, "v1")))))
+        val h = harness(start = false)
+        h.source.startLifecycle()
+        h.outbox.start()
+        h.rig.controller.remove("redQ") // queued in an earlier run, removed before any catch-up saw it
+        awaitUntil("refund sent") { h.helix.patches.isNotEmpty() && h.outboxed.isEmpty() }
+
+        h.helix.unfulfilled += waiting("redQ", link(idA), "v1") // read just before the refund landed
+        h.source.startSession()
+        awaitUntil("caught up") { h.helix.lists.isNotEmpty() }
+        settle()
+
+        assertTrue(h.rig.queued.isEmpty(), "not queued again")
+        assertTrue(h.sends.isEmpty())
+        assertTrue(h.rig.catalog.calls.isEmpty())
+        assertTrue(h.helix.patches.all { it.status == "CANCELED" }, "${h.helix.patches}")
+    }
+
+    @Test
+    fun catchUpNeverRequeuesWhatTheOutboxSent() = runTest {
+        outboxFile().write(listOf(OutboxEntry(REWARD, "redX", CANCELED))) // left by an earlier run
+        val h = harness(start = false)
+        h.outbox.start()
+        awaitUntil("refund sent") { h.helix.patches.isNotEmpty() && h.outboxed.isEmpty() }
+
+        h.helix.unfulfilled += waiting("redX", link(idA), "v1") // read just before the refund landed
+        h.source.startSession()
+        awaitUntil("caught up") { h.helix.lists.isNotEmpty() }
+        settle()
+
+        assertTrue(h.rig.queued.isEmpty(), "not queued again")
+        assertTrue(h.sends.isEmpty())
+        assertTrue(h.rig.catalog.calls.isEmpty())
     }
 
     private companion object {
