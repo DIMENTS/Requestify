@@ -180,4 +180,26 @@
     <string name="block_song_and_skip">Nummer blokkeren en overslaan</string>
     <string name="block_artist_and_skip">Artiest blokkeren en overslaan</string>
     <string name="block_viewer_named">@%1$s blokkeren</string>
+
+    <!-- Rules -->
+    <string name="nav_rules">Regels</string>
+    <string name="rules_subtitle">Gelden voor elk verzoek uit chat, Channel Points en Bits.</string>
+    <string name="rules_note">Betaalde verzoeken slaan de limieten over. Blacklist, lengte en expliciet gelden altijd.</string>
+    <string name="rules_group_queue">Wachtrij</string>
+    <string name="rules_group_songs">Nummers</string>
+    <string name="rules_max_queue">Maximaal in de wachtrij</string>
+    <string name="rules_per_viewer">Per kijker tegelijk</string>
+    <string name="rules_cooldown">Wachttijd per kijker</string>
+    <string name="rules_cooldown_hint">Na een verzoek</string>
+    <string name="rules_off">uit</string>
+    <string name="rules_minutes">%1$d min</string>
+    <string name="rules_no_duplicates">Geen dubbele nummers</string>
+    <string name="rules_no_duplicates_hint">Niet opnieuw zolang het in de wachtrij staat of net is gespeeld</string>
+    <string name="rules_duplicate_window">Termijn voor dubbele nummers</string>
+    <string name="rules_paid_first">Betaald gaat voor</string>
+    <string name="rules_min_length">Minimale lengte</string>
+    <string name="rules_max_length">Maximale lengte</string>
+    <string name="rules_block_explicit">Expliciete nummers weigeren</string>
+    <string name="rules_decrease">%1$s verlagen</string>
+    <string name="rules_increase">%1$s verhogen</string>
 </resources>

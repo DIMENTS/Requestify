@@ -135,7 +135,7 @@ class AppScaffoldTest {
         setContent { AppScaffold(graph()) }
         waitForIdle()
         val add = onNodeWithContentDescription("Add a track").getBoundsInRoot()
-        val items = listOf("Home", "Connections", "Settings").map { railItem(it) }
+        val items = listOf("Home", "Connections", "Rules", "Settings").map { railItem(it) }
 
         items.forEach { item ->
             assertEquals(item.centerX().value, add.centerX().value, absoluteTolerance = 1f, "add button over $item")
@@ -187,5 +187,21 @@ class AppScaffoldTest {
         onNodeWithContentDescription("Colour 3").performClick()
         waitForIdle()
         assertEquals(ThemeMode.Custom(CustomSeedPresets[2].toArgb()), graph.settings.settings.value.themeMode)
+    }
+
+    @Test
+    fun railHasRules() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        assertEquals(
+            listOf(Destination.Home, Destination.Connections, Destination.Rules, Destination.Settings),
+            Destination.entries,
+        )
+        val graph = graph()
+        setContent { AppScaffold(graph) }
+        onNode(hasText("Rules") and hasClickAction()).performClick()
+        waitForIdle()
+
+        headline("Rules").let { assertEquals(TitleBarHeight + 24.dp, it.top, "Rules starts where Home starts") }
+        onNodeWithText("Paid requests skip the limits. Blacklist, length and explicit always apply.").assertIsDisplayed()
+        onNodeWithText("25").assertIsDisplayed()
     }
 }

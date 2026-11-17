@@ -98,6 +98,12 @@ object AppIcons {
         "PlaylistAdd",
         "M14,10H3v2h11v-2zM14,6H3v2h11V6zM18,14v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM3,16h7v-2H3v2z",
     )
+    val Tune by icon(
+        "Tune",
+        "M3,17v2h6v-2L3,17zM3,5v2h10L13,5L3,5zM13,21v-2h8v-2h-8v-2h-2v6h2zM7,9v2L3,11v2h4v2h2L9,9L7,9zM21,13v-2L11,11v2h10z" +
+            "M15,9h2L17,7h4L21,5h-4L17,3h-2v6z",
+    )
+    val Remove by icon("Remove", "M19,13H5v-2h14v2z")
     val Add by icon("Add", "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")
     val Home by icon("Home", "M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z")
     val Link by icon(

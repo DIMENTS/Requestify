@@ -65,6 +65,7 @@ import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.nav_add
 import nl.diments.requestify.resources.nav_connections
 import nl.diments.requestify.resources.nav_home
+import nl.diments.requestify.resources.nav_rules
 import nl.diments.requestify.resources.nav_settings
 import nl.diments.requestify.resources.settings_load_failed
 import nl.diments.requestify.ui.common.AppIcons
@@ -72,6 +73,7 @@ import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.common.TwitchHealth
 import nl.diments.requestify.ui.common.connectionProblems
 import nl.diments.requestify.ui.home.HomeScreen
+import nl.diments.requestify.ui.rules.RulesScreen
 import nl.diments.requestify.ui.settings.SettingsScreen
 import nl.diments.requestify.ui.setup.SpotifySetupScreen
 import nl.diments.requestify.ui.setup.isValidSpotifyClientId
@@ -87,10 +89,11 @@ import nl.diments.requestify.ui.window.rememberWindowCaption
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
-/** The app's top-level screens, in rail order. Later plans add Rules, Blacklist and Log. */
+/** The app's top-level screens, in rail order. Later plans add Blacklist and Log. */
 enum class Destination(val label: StringResource, val icon: ImageVector) {
     Home(Res.string.nav_home, AppIcons.Home),
     Connections(Res.string.nav_connections, AppIcons.Link),
+    Rules(Res.string.nav_rules, AppIcons.Tune),
     Settings(Res.string.nav_settings, AppIcons.Settings),
 }
 
@@ -181,6 +184,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                                         }
                                     }
                                     Destination.Connections -> SpotifySetupScreen(graph.spotifySetup)
+                                    Destination.Rules -> RulesScreen(graph.settings)
                                     Destination.Settings -> SettingsScreen(graph.settings)
                                 }
                             }

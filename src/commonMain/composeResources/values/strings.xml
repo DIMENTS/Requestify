@@ -180,4 +180,26 @@
     <string name="block_song_and_skip">Block song and skip</string>
     <string name="block_artist_and_skip">Block artist and skip</string>
     <string name="block_viewer_named">Block @%1$s</string>
+
+    <!-- Rules -->
+    <string name="nav_rules">Rules</string>
+    <string name="rules_subtitle">These apply to every request from chat, Channel Points and Bits.</string>
+    <string name="rules_note">Paid requests skip the limits. Blacklist, length and explicit always apply.</string>
+    <string name="rules_group_queue">Queue</string>
+    <string name="rules_group_songs">Songs</string>
+    <string name="rules_max_queue">Maximum in the queue</string>
+    <string name="rules_per_viewer">Per viewer at once</string>
+    <string name="rules_cooldown">Cooldown per viewer</string>
+    <string name="rules_cooldown_hint">After a request</string>
+    <string name="rules_off">off</string>
+    <string name="rules_minutes">%1$d min</string>
+    <string name="rules_no_duplicates">No duplicate songs</string>
+    <string name="rules_no_duplicates_hint">Not again while it is in the queue or was played recently</string>
+    <string name="rules_duplicate_window">Duplicate window</string>
+    <string name="rules_paid_first">Paid requests go first</string>
+    <string name="rules_min_length">Minimum length</string>
+    <string name="rules_max_length">Maximum length</string>
+    <string name="rules_block_explicit">Block explicit songs</string>
+    <string name="rules_decrease">Decrease %1$s</string>
+    <string name="rules_increase">Increase %1$s</string>
 </resources>
