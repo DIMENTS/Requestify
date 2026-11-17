@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.materialkolor.DynamicMaterialExpressiveTheme
+import com.materialkolor.PaletteStyle
 
 /**
  * The Expressive type scale with emphasized styles that really stand out. The default gives the emphasized
@@ -31,6 +32,13 @@ val ExpressiveTypography: Typography = Typography().run {
 
 private fun TextStyle.atLeast(weight: FontWeight) = copy(fontWeight = maxOf(fontWeight ?: FontWeight.Normal, weight))
 
+/**
+ * How the scheme is drawn from the seed. Vibrant keeps the secondary colours in the seed's own hue family (the
+ * Expressive style rotates them, which put green controls on a violet scheme) and stays lively for dull album
+ * art (Content turns it grey, TonalSpot is muted for every album).
+ */
+private val SchemeStyle = PaletteStyle.Vibrant
+
 /** Expressive scheme derived from [seed]; colours animate smoothly whenever [seed] or [dark] changes. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -38,6 +46,7 @@ fun RequestifyTheme(seed: Color, dark: Boolean, content: @Composable () -> Unit)
     DynamicMaterialExpressiveTheme(
         seedColor = seed,
         isDark = dark,
+        style = SchemeStyle,
         animate = true,
         motionScheme = MotionScheme.expressive(),
         typography = ExpressiveTypography,
