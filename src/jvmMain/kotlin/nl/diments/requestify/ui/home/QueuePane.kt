@@ -50,6 +50,7 @@ import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.resources.Res
+import nl.diments.requestify.resources.home_block_failing
 import nl.diments.requestify.resources.home_load_failing
 import nl.diments.requestify.resources.home_played_empty
 import nl.diments.requestify.resources.home_played_tab
@@ -123,6 +124,13 @@ fun QueuePane(
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             ProblemBanner(stringResource(Res.string.home_save_failing))
+        }
+        AnimatedVisibility(
+            visible = state.blockFailing,
+            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+        ) {
+            ProblemBanner(stringResource(Res.string.home_block_failing))
         }
         AddTrackField(
             results = state.results,

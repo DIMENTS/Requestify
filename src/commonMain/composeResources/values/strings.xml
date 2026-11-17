@@ -202,4 +202,6 @@
     <string name="rules_block_explicit">Block explicit songs</string>
     <string name="rules_decrease">Decrease %1$s</string>
     <string name="rules_increase">Increase %1$s</string>
+
+    <string name="home_block_failing">Couldn’t save the blacklist. Try again.</string>
 </resources>

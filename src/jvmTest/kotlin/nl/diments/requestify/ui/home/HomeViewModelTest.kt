@@ -452,4 +452,45 @@ class HomeViewModelTest {
         assertEquals(listOf("a"), home.vm.state.value.queue.map { it.id })
         assertEquals(emptyList(), home.vm.state.value.rejected)
     }
+
+    private fun blacklistBlocked(home: Home) = java.nio.file.Files.createDirectory(dir.resolve("blacklist.json.tmp"))
+
+    @Test
+    fun aBlockThatCannotBeSavedDoesNotSkipAndSaysSoUntilABlockSucceeds() = runTest {
+        val home = home()
+        home.player.plays(track("now"))
+        home.controller.start()
+        settle()
+        blacklistBlocked(home) // the blacklist cannot write its temp file
+
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
+        settle()
+
+        assertEquals(0, home.player.callsTo("skipNext").size)
+        assertEquals(emptyList(), home.parts.blacklist.blacklist.value.tracks)
+        assertEquals(true, home.vm.state.value.blockFailing)
+
+        dir.resolve("blacklist.json.tmp").toFile().delete()
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
+        settle()
+
+        assertEquals(1, home.player.callsTo("skipNext").size)
+        assertEquals(false, home.vm.state.value.blockFailing)
+    }
+
+    @Test
+    fun blockingWhatIsBlockedAlreadyStillSkips() = runTest {
+        val home = home()
+        home.player.plays(track("now"))
+        home.controller.start()
+        settle()
+        home.vm.onBlock(BlockTarget.Song(track("now")))
+        settle()
+
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
+        settle()
+
+        assertEquals(1, home.player.callsTo("skipNext").size)
+        assertEquals(false, home.vm.state.value.blockFailing)
+    }
 }

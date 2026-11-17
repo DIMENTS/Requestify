@@ -60,6 +60,8 @@ data class HomeUiState(
     /** The Rejected tab, newest first, and [rejectedBadge]: how many of them are paid. */
     val rejected: List<RejectedEntry> = emptyList(),
     val rejectedBadge: Int = 0,
+    /** The last block could not be saved to the blacklist; it clears with the next block that is saved. */
+    val blockFailing: Boolean = false,
 )
 
 /** Runs on the caller's [scope] (an app-lifetime scope); it starts nothing that outlives it. */
@@ -90,11 +92,12 @@ class HomeViewModel(
         val nowPlaying: NowPlaying?,
     )
 
-    private class Storage(val persistError: String?, val loadError: String?)
+    private class Storage(val persistError: String?, val loadError: String?, val blockFailed: Boolean)
 
     private class Rejections(val entries: List<RejectedEntry>, val paidCount: Int)
 
     private val add = MutableStateFlow(AddState())
+    private val blockFailed = MutableStateFlow(false)
     private var lookup: Job? = null
 
     val settings: StateFlow<Settings> = settings.settings
@@ -109,7 +112,7 @@ class HomeViewModel(
             ::playback,
         ),
         controller.health,
-        combine(controller.persistError, controller.loadError, ::Storage),
+        combine(controller.persistError, controller.loadError, blockFailed, ::Storage),
         combine(rejected.entries, rejected.paidCount, ::Rejections),
         add,
         ::uiState,
@@ -169,8 +172,8 @@ class HomeViewModel(
     fun onAddAnyway(id: String) = intake.addAnyway(id)
 
     /** Takes a rejected request off the list. */
-    fun onDismiss(id: String) = intake.dismiss(id)
 
+    fun onDismiss(id: String) = intake.dismiss(id)
     /** Blocks [target] for good: the queue is swept of what it now matches. Nothing is skipped. */
     fun onBlock(target: BlockTarget) {
         scope.launch { block(target) }
@@ -178,28 +181,33 @@ class HomeViewModel(
 
     /**
      * Now Playing's block menu: blocks [target], and skips the song when it is the song or its artist that was
-     * blocked. Blocking a viewer leaves what is playing alone.
+     * blocked. Blocking a viewer leaves what is playing alone. A block that could not be saved skips nothing.
      */
     fun onBlockCurrentAndSkip(target: BlockTarget) {
         scope.launch {
-            block(target)
-            if (target !is BlockTarget.Viewer) controller.skip()
+            if (block(target) && target !is BlockTarget.Viewer) controller.skip()
         }
     }
 
-    /** The streamer blocks: no moderator is named. A viewer without a login is blocked under their name. */
-    private suspend fun block(target: BlockTarget) {
-        when (target) {
+    /**
+     * The streamer blocks: no moderator is named. A viewer without a login is blocked under their name. Returns
+     * false when the blacklist could not be written (then [HomeUiState.blockFailing] is set until a block succeeds);
+     * blocking what is blocked already counts as done.
+     */
+    private suspend fun block(target: BlockTarget): Boolean {
+        val saved = when (target) {
             is BlockTarget.Song -> intake.blockTrack(target.track, by = null)
             is BlockTarget.Artist -> {
                 val id = target.track.artistIds.firstOrNull()
                 val name = target.track.artists.firstOrNull().orEmpty()
-                if (id != null || name.isNotBlank()) intake.blockArtist(id, name, by = null)
+                if (id != null || name.isNotBlank()) intake.blockArtist(id, name, by = null) else true
             }
             is BlockTarget.Viewer -> target.requester.twitchUserId?.let { userId ->
                 intake.blockViewer(userId, target.requester.login ?: target.requester.displayName, by = null)
-            }
+            } ?: true
         }
+        blockFailed.value = !saved
+        return saved
     }
 
     fun onPrevious() {
@@ -239,7 +247,7 @@ class HomeViewModel(
             controller.nowPlaying.value,
         ),
         controller.health.value,
-        Storage(controller.persistError.value, controller.loadError.value),
+        Storage(controller.persistError.value, controller.loadError.value, blockFailed.value),
         Rejections(rejected.entries.value, rejected.paidCount.value),
         add.value,
     )
@@ -270,6 +278,7 @@ class HomeViewModel(
         saveFailing = storage.persistError != null,
         lookingUp = add.lookingUp,
         loadFailing = storage.loadError != null,
+        blockFailing = storage.blockFailed,
         upcoming = playback.upcoming,
         rejected = rejections.entries,
         rejectedBadge = rejections.paidCount,

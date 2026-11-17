@@ -216,13 +216,13 @@ fun RulesScreen(settings: SettingsStore) {
     }
 }
 
-/** What paid requests skip, in the tertiary container with a bolt: the same bolt a paid request wears. */
+/** What paid requests skip, in a quiet container with a tertiary bolt: the same bolt a paid request wears. */
 @Composable
 private fun InfoNote(text: String) {
     Surface(
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -230,7 +230,7 @@ private fun InfoNote(text: String) {
             horizontalArrangement = Arrangement.spacedBy(Spacing.m),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(AppIcons.Bolt, contentDescription = null, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(20.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium)
         }
     }

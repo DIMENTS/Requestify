@@ -104,7 +104,7 @@ private val ClearTime: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /** Why the switch stands as it does, plus when the free requests will be cleared while that is pending. */
 @Composable
-private fun tooltipText(status: GateStatus): String {
+internal fun tooltipText(status: GateStatus, zone: ZoneId = ZoneId.systemDefault()): String {
     val why = stringResource(
         when {
             status.twitch && status.manual -> Res.string.requests_tip_manual
@@ -118,7 +118,7 @@ private fun tooltipText(status: GateStatus): String {
     val clearing = when {
         clears != null -> stringResource(
             Res.string.requests_tip_clears_at,
-            remember(clears) { ClearTime.format(Instant.ofEpochMilli(clears).atZone(ZoneId.systemDefault())) },
+            remember(clears, zone) { ClearTime.format(Instant.ofEpochMilli(clears).atZone(zone)) },
         )
         status.clearPostponed -> stringResource(Res.string.requests_tip_clear_waits)
         else -> null

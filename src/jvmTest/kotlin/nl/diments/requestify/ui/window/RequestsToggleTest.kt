@@ -60,4 +60,41 @@ class RequestsToggleTest {
         onNodeWithText("Requests closed").performClick()
         assertEquals(1, toggles)
     }
+
+    private fun tip(status: GateStatus, zone: java.time.ZoneId = java.time.ZoneId.of("UTC")): String {
+        var text = ""
+        runComposeUiTest { setContent { text = tooltipText(status, zone) } ; waitForIdle() }
+        return text
+    }
+
+    @Test
+    fun tooltipSaysWhenFreeRequestsClearInTheGivenZone() {
+        val at = java.time.Instant.parse("2026-11-17T22:41:00Z").toEpochMilli()
+        val grace = status(open = true, twitch = true).copy(clearAtEpochMs = at)
+        assertEquals(
+            "Requests are open because you’re live. Click to close them for now.\nFree requests clear at 22:41",
+            tip(grace),
+        )
+        // The same moment on the clock of another zone (Amsterdam is UTC+1 in November).
+        assertEquals(true, tip(grace, java.time.ZoneId.of("Europe/Amsterdam")).endsWith("Free requests clear at 23:41"))
+        // Single-digit hours keep their zero.
+        val early = java.time.Instant.parse("2026-11-17T05:07:00Z").toEpochMilli()
+        assertEquals(true, tip(grace.copy(clearAtEpochMs = early)).endsWith("clear at 05:07"))
+    }
+
+    @Test
+    fun tooltipSaysClearingWaitsWhilePostponed() {
+        val text = tip(status(open = true, twitch = true).copy(clearPostponed = true))
+        assertEquals(true, text.endsWith("Clearing waits until you close requests"), text)
+        assertEquals(false, text.contains("Free requests clear at"))
+    }
+
+    @Test
+    fun tooltipExplainsAManualOverrideAndHasNoClearLineWithoutAGrace() {
+        assertEquals(
+            "You set this by hand. Requests follow your stream again the next time it goes live or offline.",
+            tip(status(open = true, twitch = true).copy(manual = true)),
+        )
+        assertEquals("Requests are closed. Click to open them.", tip(status(open = false, twitch = false)))
+    }
 }
