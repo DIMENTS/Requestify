@@ -134,7 +134,18 @@ object AppIcons {
         "M19,19H5V5h7V3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2v-7h-2v7z" +
             "M14,3v2h3.59l-9.83,9.83 1.41,1.41L19,6.41V10h2V3h-7z",
     )
-    val Check by icon("Check", "M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z")
+    val Chat by icon(
+        "Chat",
+        "M20,2H4c-1.1,0 -2,0.9 -2,2v18l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2z",
+    )
+    val Diamond by icon(
+        "Diamond",
+        "M19,3H5L2,9l10,12L22,9L19,3zM9.62,8l1.5,-3h1.76l1.5,3H9.62zM11,10v6.68L5.44,10H11zM13,10h5.56L13,16.68V10z" +
+            "M19.26,8h-2.65l-1.5,-3h2.65L19.26,8zM6.24,5h2.65l-1.5,3H4.74L6.24,5z",
+    )
+    val ExpandMore by icon("ExpandMore", "M16.59,8.59L12,13.17 7.41,8.59 6,10l6,6 6,-6z")
+    val ArrowDropDown by icon("ArrowDropDown", "M7,10l5,5 5,-5z")
+    val Check by icon("Check","M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z")
     val Info by icon(
         "Info",
         "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-6h2v6zM13,9h-2V7h2v2z",

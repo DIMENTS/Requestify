@@ -39,10 +39,13 @@ import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
 import nl.diments.requestify.core.settings.Settings
+import nl.diments.requestify.core.settings.TwitchAccount
+import nl.diments.requestify.core.settings.TwitchSettings
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.twitch.eventsub.EventSubState
 import nl.diments.requestify.ui.Destination
+import nl.diments.requestify.ui.common.TwitchHealth
 import nl.diments.requestify.ui.startDestination
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalPathApi::class)
@@ -74,6 +77,35 @@ class AppGraphTest {
         runCurrent()
         assertTrue(graph.gate.open.value)
         assertFalse(graph.gate.status.value.twitch)
+    }
+
+    @Test
+    fun twitchLoggedOutKeepsRequestsOpenWithoutTwitch() = runTest {
+        val requests = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requests += request.url.toString()
+            respondError(HttpStatusCode.ServiceUnavailable)
+        }
+        val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), engine, backgroundScope)
+        graph.start()
+        runCurrent()
+        assertTrue(graph.gate.open.value, "without a Twitch account the plain switch decides, default open")
+        assertFalse(graph.gate.status.value.twitch)
+        assertEquals(EventSubState.Stopped, graph.eventSub.state.value, "logged out: no EventSub connection")
+        assertFalse(requests.any { "twitch" in it }, "logged out: nothing is asked of Twitch: $requests")
+        assertEquals(TwitchHealth(), graph.twitchSession.health.value)
+        graph.stop()
+    }
+
+    @Test
+    fun aTwitchAccountKeepsRequestsOnTheStreamEvenWhenTheLoginIsDead() = runTest {
+        JsonFileStore(AppPaths(dir).settingsFile, Settings.serializer()) { Settings() }
+            .write(Settings(twitch = TwitchSettings(account = TwitchAccount("42", "diments", "DIMENTS", "affiliate"))))
+        // No saved login (it was lost), yet the account is still set up: requests must not fall back to the plain switch.
+        val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), backgroundScope)
+        runCurrent()
+        assertTrue(graph.gate.status.value.twitch)
+        assertFalse(graph.gate.open.value, "a Twitch streamer's requests follow the stream, which is not live")
     }
 
     @Test

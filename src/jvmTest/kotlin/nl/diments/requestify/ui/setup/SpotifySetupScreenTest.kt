@@ -107,12 +107,15 @@ class SpotifySetupScreenTest {
 
     private lateinit var controller: PlaybackController
 
+    /** The Twitch card shares the screen; these tests are about Spotify, so it stays logged out. */
+    private val twitchVm by lazy { TwitchSetupParts(dir, scope).vm }
+
     private fun ComposeUiTest.clickLogIn() =
         onNode(hasText("Log in with Spotify") and hasClickAction()).performClick()
 
     @Test
     fun aLoginThatTakesTooLongPointsAtTheClientIdAndRedirectUri() = runDesktopComposeUiTest(width = 1180, height = 1400) {
-        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(viewModel(loginTimeout = 200.milliseconds)) } }
+        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(viewModel(loginTimeout = 200.milliseconds), twitchVm) } }
         clickLogIn()
         waitUntil(timeoutMillis = 10_000) {
             onAllNodesWithText("Logging in took too long", substring = true).fetchSemanticsNodes().isNotEmpty()
@@ -123,7 +126,7 @@ class SpotifySetupScreenTest {
     @Test
     fun aLoginCanBeCancelled() = runDesktopComposeUiTest(width = 1180, height = 1400) {
         val vm = viewModel(loginTimeout = 5.minutes)
-        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(vm) } }
+        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(vm, twitchVm) } }
         clickLogIn()
         waitForIdle()
         onNodeWithText("Waiting for you to log in in your browser…").assertIsDisplayed()
@@ -139,7 +142,7 @@ class SpotifySetupScreenTest {
     fun aLoginWithoutTheNewPermissionOffersToLogInAgain() = runDesktopComposeUiTest(width = 1180, height = 1400) {
         val player = FakeSpotifyPlayer { 0L }.apply { recentResult = SpotifyResult.MissingPermission }
         val vm = viewModel(loginTimeout = 5.minutes, savedLogin = true, player = player)
-        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(vm) } }
+        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(vm, twitchVm) } }
         val note = "Log in again to show your last played song."
         onNodeWithText(note).assertDoesNotExist()
 

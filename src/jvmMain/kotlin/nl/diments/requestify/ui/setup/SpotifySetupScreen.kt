@@ -116,12 +116,16 @@ private const val COPIED_CONFIRMATION_MS = 2_000L
 private val BadgeHeight = 32.dp
 private val StepBadgeSize = 36.dp
 
-/** Connections: the guided Spotify setup, one numbered step at a time, with a live result at the end. */
+/**
+ * Connections: the guided Spotify setup, one numbered step at a time, with a live result at the end, and under it the
+ * Twitch card.
+ */
 @Composable
-fun SpotifySetupScreen(vm: SpotifySetupViewModel) {
+fun SpotifySetupScreen(vm: SpotifySetupViewModel, twitch: TwitchSetupViewModel) {
     val state by vm.state.collectAsState()
     PageScaffold(stringResource(Res.string.nav_connections), subtitle = stringResource(Res.string.setup_intro)) {
         SpotifyCard(state, vm)
+        TwitchCard(twitch)
     }
 }
 
@@ -168,14 +172,26 @@ private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
 }
 
 @Composable
-private fun ConnectionBadge(auth: SpotifyAuthStatus) {
+private fun ConnectionBadge(auth: SpotifyAuthStatus) = ConnectionBadge(
+    when (auth) {
+        SpotifyAuthStatus.LoggedIn -> LoginStatus.Connected
+        SpotifyAuthStatus.LoggedOut -> LoginStatus.NotConnected
+        is SpotifyAuthStatus.LoginNeeded -> LoginStatus.LoginExpired
+    },
+)
+
+/** How a service's login stands, as the badge on its card says it. */
+internal enum class LoginStatus { Connected, NotConnected, LoginExpired }
+
+@Composable
+internal fun ConnectionBadge(status: LoginStatus) {
     val scheme = MaterialTheme.colorScheme
-    val (text, container, content) = when (auth) {
-        SpotifyAuthStatus.LoggedIn ->
+    val (text, container, content) = when (status) {
+        LoginStatus.Connected ->
             Triple(Res.string.setup_status_connected, scheme.primaryContainer, scheme.onPrimaryContainer)
-        SpotifyAuthStatus.LoggedOut ->
+        LoginStatus.NotConnected ->
             Triple(Res.string.setup_status_not_connected, scheme.surfaceContainerHighest, scheme.onSurfaceVariant)
-        is SpotifyAuthStatus.LoginNeeded ->
+        LoginStatus.LoginExpired ->
             Triple(Res.string.setup_status_login_expired, scheme.errorContainer, scheme.onErrorContainer)
     }
     Surface(shape = CircleShape, color = container, contentColor = content) {
@@ -470,12 +486,12 @@ private fun ResultLine(icon: ImageVector, tint: Color, text: StringResource) {
 }
 
 @Composable
-private fun ErrorText(text: String) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+internal fun ErrorText(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = modifier)
 }
 
 @Composable
-private fun ButtonIcon(icon: ImageVector) {
+internal fun ButtonIcon(icon: ImageVector) {
     Icon(
         icon,
         contentDescription = null,

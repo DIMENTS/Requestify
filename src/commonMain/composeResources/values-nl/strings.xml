@@ -204,4 +204,43 @@
     <string name="rules_increase">%1$s verhogen</string>
 
     <string name="home_block_failing">Blacklist opslaan mislukt. Probeer het opnieuw.</string>
+
+    <string name="twitch_title">Twitch</string>
+    <string name="twitch_intro">Log in met Twitch, dan kunnen kijkers nummers aanvragen in je chat.</string>
+    <string name="twitch_login">Inloggen met Twitch</string>
+    <string name="twitch_login_again_as">Opnieuw inloggen als %1$s</string>
+    <string name="twitch_login_expired">Je Twitch-login is verlopen. Log opnieuw in.</string>
+    <string name="twitch_requesting_code">Code opvragen bij Twitch…</string>
+    <string name="twitch_code_title">Inloggen bij Twitch</string>
+    <string name="twitch_code_hint">Je browser opent twitch.tv/activate. Vul daar deze code in:</string>
+    <string name="twitch_open_browser">Browser openen</string>
+    <string name="twitch_waiting">Wachten tot je bevestigt…</string>
+    <string name="twitch_code_expired">De code is verlopen. Probeer het opnieuw.</string>
+    <string name="twitch_login_failed">Inloggen is niet gelukt. Probeer het opnieuw.</string>
+    <string name="twitch_unreachable">Twitch is niet bereikbaar. Controleer je verbinding en probeer het opnieuw.</string>
+    <string name="twitch_tag_affiliate">Affiliate</string>
+    <string name="twitch_tag_partner">Partner</string>
+    <string name="twitch_section_chat">Chat</string>
+    <string name="twitch_section_bits">Bits</string>
+    <string name="twitch_chat_title">!%1$s in de chat</string>
+    <string name="twitch_chat_hint">Link of zoektekst</string>
+    <string name="twitch_permission_label">Wie mag aanvragen</string>
+    <string name="twitch_permission_everyone">Iedereen</string>
+    <string name="twitch_permission_followers">Volgers</string>
+    <string name="twitch_permission_subscribers">Abonnees</string>
+    <string name="twitch_permission_vips">VIP’s</string>
+    <string name="twitch_permission_moderators">Moderators</string>
+    <string name="twitch_bits_title">Cheer met Spotify-link</string>
+    <string name="twitch_bits_hint">Minimum aantal bits</string>
+    <string name="twitch_bits_not_affiliate">Bits zijn alleen beschikbaar voor Twitch Affiliates en Partners.</string>
+    <string name="twitch_commands_title">Commando’s</string>
+    <string name="twitch_command_request">Aanvragen</string>
+    <string name="twitch_command_song">Huidig nummer</string>
+    <string name="twitch_command_queue">Wachtrij</string>
+    <string name="twitch_command_wrong_song">Verkeerd nummer</string>
+    <string name="twitch_command_skip">Overslaan</string>
+    <string name="twitch_command_remove">Verwijderen</string>
+    <string name="twitch_command_blacklist">Blacklist</string>
+    <string name="twitch_command_blank">Vul een naam in</string>
+    <string name="twitch_command_duplicate">Een ander commando gebruikt deze naam al</string>
 </resources>

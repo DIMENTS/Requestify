@@ -204,4 +204,43 @@
     <string name="rules_increase">Increase %1$s</string>
 
     <string name="home_block_failing">Couldn’t save the blacklist. Try again.</string>
+
+    <string name="twitch_title">Twitch</string>
+    <string name="twitch_intro">Log in with Twitch so viewers can request songs from your chat.</string>
+    <string name="twitch_login">Log in with Twitch</string>
+    <string name="twitch_login_again_as">Log in again as %1$s</string>
+    <string name="twitch_login_expired">Your Twitch login has expired. Log in again.</string>
+    <string name="twitch_requesting_code">Asking Twitch for a code…</string>
+    <string name="twitch_code_title">Log in to Twitch</string>
+    <string name="twitch_code_hint">Your browser opens twitch.tv/activate. Enter this code there:</string>
+    <string name="twitch_open_browser">Open browser</string>
+    <string name="twitch_waiting">Waiting until you confirm…</string>
+    <string name="twitch_code_expired">The code ran out. Try again.</string>
+    <string name="twitch_login_failed">Logging in didn’t work. Try again.</string>
+    <string name="twitch_unreachable">Couldn’t reach Twitch. Check your connection and try again.</string>
+    <string name="twitch_tag_affiliate">Affiliate</string>
+    <string name="twitch_tag_partner">Partner</string>
+    <string name="twitch_section_chat">Chat</string>
+    <string name="twitch_section_bits">Bits</string>
+    <string name="twitch_chat_title">!%1$s in chat</string>
+    <string name="twitch_chat_hint">A link or search text</string>
+    <string name="twitch_permission_label">Who may request</string>
+    <string name="twitch_permission_everyone">Everyone</string>
+    <string name="twitch_permission_followers">Followers</string>
+    <string name="twitch_permission_subscribers">Subscribers</string>
+    <string name="twitch_permission_vips">VIPs</string>
+    <string name="twitch_permission_moderators">Moderators</string>
+    <string name="twitch_bits_title">Cheer with a Spotify link</string>
+    <string name="twitch_bits_hint">Minimum bits</string>
+    <string name="twitch_bits_not_affiliate">Bits are only available to Twitch Affiliates and Partners.</string>
+    <string name="twitch_commands_title">Commands</string>
+    <string name="twitch_command_request">Request</string>
+    <string name="twitch_command_song">Current song</string>
+    <string name="twitch_command_queue">Queue</string>
+    <string name="twitch_command_wrong_song">Wrong song</string>
+    <string name="twitch_command_skip">Skip</string>
+    <string name="twitch_command_remove">Remove</string>
+    <string name="twitch_command_blacklist">Blacklist</string>
+    <string name="twitch_command_blank">Enter a name</string>
+    <string name="twitch_command_duplicate">Another command already uses this name</string>
 </resources>

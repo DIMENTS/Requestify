@@ -8,10 +8,15 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import java.awt.Desktop
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.builtins.ListSerializer
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
@@ -38,11 +43,13 @@ import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.TwitchApi
+import nl.diments.requestify.core.twitch.TwitchSession
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
 import nl.diments.requestify.core.twitch.eventsub.EventSubClient
 import nl.diments.requestify.core.twitch.eventsub.KtorEventSubConnector
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
+import nl.diments.requestify.ui.setup.TwitchSetupViewModel
 
 /**
  * Builds the app's objects once, for the app's whole life, on [scope] (an app-lifetime scope on the UI thread).
@@ -77,8 +84,13 @@ class AppGraph(
 
     private val spotify = SpotifyApi(http, token = { force -> auth.token(force) })
 
-    /** Whether a Twitch account is logged in: none until the Twitch session is wired. */
-    private val twitchConnected = MutableStateFlow(false)
+    /**
+     * Whether a Twitch account is set up: true even while its login is dead, so a Twitch streamer's requests never
+     * fall back to the plain default-open switch.
+     */
+    private val twitchConnected: StateFlow<Boolean> = settings.settings
+        .map { it.twitch.account != null }
+        .stateIn(scope, SharingStarted.Eagerly, settings.settings.value.twitch.account != null)
 
     /** Whether requests are open; at the stream's real end it clears the free viewer requests. */
     val gate: RequestsGate = RequestsGate(
@@ -130,14 +142,26 @@ class AppGraph(
     )
 
     /** Built, not started: the Twitch session starts it while logged in. */
-    internal val eventSub = EventSubClient(
+    internal val eventSub: EventSubClient = EventSubClient(
         connector = KtorEventSubConnector(http),
         api = twitchApi,
         broadcasterId = { settings.settings.value.twitch.account?.userId },
         rewardId = { settings.settings.value.twitch.channelPoints.rewardId },
-        onAuthorizationRevoked = { twitchAuth.markLoginNeeded("EventSub authorization revoked") },
+        onAuthorizationRevoked = { twitchSession.onAuthorizationRevoked() },
         scope = scope,
         clock = System::currentTimeMillis,
+    )
+
+    /** Keeps EventSub and the login in step, and reports Twitch's health to the connection chip. */
+    val twitchSession: TwitchSession = TwitchSession(twitchAuth, twitchApi, eventSub, settings, scope, clock = System::currentTimeMillis)
+
+    val twitchSetup = TwitchSetupViewModel(
+        auth = twitchAuth,
+        api = twitchApi,
+        settings = settings,
+        scope = scope,
+        openBrowser = { url -> browse(url) },
+        copyToClipboard = ::copyToClipboard,
     )
 
     /**
@@ -148,23 +172,37 @@ class AppGraph(
         gate.start()
         controller.start()
         intake.start()
+        twitchSession.start()
     }
 
     /**
-     * Stops polling Spotify. A queue save still in flight when the app exits right after can be cut off; the
-     * atomic write then keeps the previous file, so at most the last change is lost.
+     * Stops polling Spotify and disconnects from Twitch. A queue save still in flight when the app exits right after
+     * can be cut off; the atomic write then keeps the previous file, so at most the last change is lost.
      */
-    fun stop() = controller.stop()
+    fun stop() {
+        twitchSession.stop()
+        controller.stop()
+    }
 
     /** Opens the Spotify login page in the default browser, or shows its address when that is not possible. */
     private fun openLoginPage(url: String) {
-        val opened = try {
-            val canBrowse = Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)
-            if (canBrowse) Desktop.getDesktop().browse(URI(url))
-            canBrowse
+        if (!browse(url)) spotifySetup.showLoginUrl(url)
+    }
+
+    /** Opens [url] in the default browser; false when that is not possible. */
+    private fun browse(url: String): Boolean = try {
+        val canBrowse = Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)
+        if (canBrowse) Desktop.getDesktop().browse(URI(url))
+        canBrowse
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Puts [text] on the system clipboard; nothing happens when another program holds it. */
+    private fun copyToClipboard(text: String) {
+        try {
+            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
         } catch (_: Exception) {
-            false
         }
-        if (!opened) spotifySetup.showLoginUrl(url)
     }
 }

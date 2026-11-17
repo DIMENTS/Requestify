@@ -70,7 +70,6 @@ import nl.diments.requestify.resources.nav_settings
 import nl.diments.requestify.resources.settings_load_failed
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
-import nl.diments.requestify.ui.common.TwitchHealth
 import nl.diments.requestify.ui.common.connectionProblems
 import nl.diments.requestify.ui.home.HomeScreen
 import nl.diments.requestify.ui.rules.RulesScreen
@@ -123,6 +122,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     val health by remember(graph) { graph.home.state.map { it.health }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.health)
     val gate by graph.gate.status.collectAsState()
+    val twitchHealth by graph.twitchSession.health.collectAsState()
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
     val caption = rememberWindowCaption(window, dark)
@@ -136,7 +136,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column {
                 TitleBar(
-                    problems = connectionProblems(health, TwitchHealth()),
+                    problems = connectionProblems(health, twitchHealth),
                     captionInset = caption?.buttonsInset ?: 0.dp,
                     onHitTest = caption?.hitTest,
                     onConnectionsClick = { destination = Destination.Connections },
@@ -183,7 +183,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                                             }
                                         }
                                     }
-                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup)
+                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup, graph.twitchSetup)
                                     Destination.Rules -> RulesScreen(graph.settings)
                                     Destination.Settings -> SettingsScreen(graph.settings)
                                 }

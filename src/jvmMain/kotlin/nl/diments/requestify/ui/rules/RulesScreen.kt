@@ -260,7 +260,7 @@ private fun RuleGroup(title: String, icon: ImageVector, rows: @Composable () -> 
 }
 
 @Composable
-private fun RowDivider() {
+internal fun RowDivider() {
     HorizontalDivider(
         Modifier.padding(horizontal = Spacing.l),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -268,11 +268,11 @@ private fun RowDivider() {
 }
 
 /** The room every row keeps, so a row with a hint and one without are about as tall. */
-private val RowMinHeight = 56.dp
+internal val RowMinHeight = 56.dp
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun RuleText(title: String, hint: String?, modifier: Modifier = Modifier) {
+internal fun RuleText(title: String, hint: String?, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(title, style = MaterialTheme.typography.titleSmall)
         if (hint != null) {
@@ -340,7 +340,7 @@ private fun StepperRow(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Stepper(
+internal fun Stepper(
     value: String,
     canDecrease: Boolean,
     canIncrease: Boolean,
