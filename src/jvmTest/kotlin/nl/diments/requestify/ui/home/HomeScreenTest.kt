@@ -9,8 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -33,6 +37,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.MinimumWindowSize
+import nl.diments.requestify.core.model.Request
+import nl.diments.requestify.core.model.RequestSource
+import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
 import nl.diments.requestify.core.playback.PlaybackController
@@ -43,6 +51,8 @@ import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.SpotifyCatalog
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.ui.CollapsedRailWidth
+import nl.diments.requestify.ui.window.TitleBarHeight
 
 @OptIn(ExperimentalTestApi::class, ExperimentalPathApi::class)
 class HomeScreenTest {
@@ -176,6 +186,39 @@ class HomeScreenTest {
 
             onNodeWithContentDescription("Previous").performClick()
             waitUntil(timeoutMillis = 5_000) { player.callsTo("skipPrevious").size == 1 }
+        }
+
+    /** "Song n" asked for in chat by "viewern". */
+    private fun chatRequest(n: Int) = Request(
+        "r$n",
+        Track("t$n", "spotify:track:t$n", "Song $n", listOf("Artist"), 200_000, false, null),
+        Requester("viewer$n"),
+        RequestSource.CHAT,
+        payment = null,
+        createdAtEpochMs = n.toLong(),
+    )
+
+    // Home at the smallest window: the window minus the rail and the title bar.
+    private val smallestWidth = MinimumWindowSize.width - CollapsedRailWidth
+    private val smallestHeight = MinimumWindowSize.height - TitleBarHeight
+
+    @Test
+    fun atTheSmallestWindowTheQueueUnderNowPlayingShowsAWholeRow() =
+        runDesktopComposeUiTest(width = smallestWidth.value.toInt(), height = smallestHeight.value.toInt()) {
+            val controller = controller(FakeSpotifyPlayer { 0L })
+            val vm = viewModelWith(controller)
+            controller.enqueue(chatRequest(1))
+            controller.enqueue(chatRequest(2))
+            setContent { HomeScreen(vm, albumSeed = null) }
+            waitUntil(timeoutMillis = 5_000) { vm.state.value.queue.size == 2 }
+            waitForIdle()
+            assertTrue(nowPlayingIsAboveTheQueue(), "the narrow layout")
+
+            // The list clips its rows, so a row's bounds are the part of it that shows.
+            val firstRow = onAllNodesWithTag(QUEUE_ROW_TAG)[0]
+            firstRow.assert(hasAnyDescendant(hasText("Song 1")))
+            val row = firstRow.fetchSemanticsNode()
+            assertEquals(row.size.height.toFloat(), row.boundsInRoot.height, "the first row is cut off")
         }
 
     @Test

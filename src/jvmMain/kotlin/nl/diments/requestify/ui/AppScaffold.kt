@@ -183,7 +183,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
 }
 
 /** The collapsed M3 navigation rail's width; its items are centred in it. */
-private val CollapsedRailWidth = 96.dp
+internal val CollapsedRailWidth = 96.dp
 
 /**
  * The Expressive navigation rail (collapsed), under the title bar: the "Add" FAB on top, then one item per

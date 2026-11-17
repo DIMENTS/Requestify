@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -75,6 +76,7 @@ import nl.diments.requestify.resources.home_queue_total
 import nl.diments.requestify.resources.home_remove_request
 import nl.diments.requestify.resources.home_save_failing
 import nl.diments.requestify.resources.home_up_next_in_spotify
+import nl.diments.requestify.resources.queue_no_requests_yet
 import nl.diments.requestify.resources.queue_then_in_spotify
 import nl.diments.requestify.resources.queue_your_music
 import nl.diments.requestify.ui.common.AlbumArt
@@ -88,6 +90,9 @@ import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+
+/** The test tag of each row of the queue list, requests and Spotify's own tracks alike. */
+internal const val QUEUE_ROW_TAG = "queue-row"
 
 /** Connected list rows: [Spacing.xs] apart, 20 dp corners on the outside of the group, 6 dp between rows. */
 private val RowGap = Spacing.xs
@@ -209,9 +214,9 @@ private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -
 /**
  * Everything that plays next, in playing order: the [handedOver] request, the queue and then [upcoming], the
  * tracks Spotify itself has lined up. The queue and Spotify's tracks form one connected list with a caption where
- * the requests end. Only the requests can be dragged, and only among themselves. While a row is dragged the list
- * shows a local order; the move is committed when the row is dropped, and the local order is dropped again once
- * the queue reflects it.
+ * the requests end; without any request, a quiet line in their place says where they will show up. Only the
+ * requests can be dragged, and only among themselves. While a row is dragged the list shows a local order; the move
+ * is committed when the row is dropped, and the local order is dropped again once the queue reflects it.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -269,6 +274,17 @@ private fun QueueList(
                         .padding(bottom = Spacing.s),
                 )
             }
+        } else if (shown.isEmpty()) {
+            // Only Spotify's own tracks follow: say where requests will show up.
+            item(key = NO_REQUESTS_KEY) {
+                NoRequestsYet(
+                    Modifier.animateItem(
+                        motion.defaultEffectsSpec(),
+                        motion.defaultSpatialSpec(),
+                        motion.fastEffectsSpec(),
+                    ),
+                )
+            }
         }
         itemsIndexed(shown, key = { _, request -> request.id }) { index, request ->
             ReorderableItem(
@@ -319,6 +335,7 @@ private fun QueueList(
 }
 
 private const val HANDED_OVER_KEY = "handed-over"
+private const val NO_REQUESTS_KEY = "no-requests"
 private const val THEN_IN_SPOTIFY_KEY = "then-in-spotify"
 
 /**
@@ -426,7 +443,7 @@ private fun QueueRowLayout(
     remove: (@Composable () -> Unit)? = null,
     details: @Composable RowScope.() -> Unit,
 ) {
-    Surface(modifier, shape = shape, color = color, shadowElevation = shadowElevation) {
+    Surface(modifier.testTag(QUEUE_ROW_TAG), shape = shape, color = color, shadowElevation = shadowElevation) {
         Row(
             modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.s),
             verticalAlignment = Alignment.CenterVertically,
@@ -436,6 +453,17 @@ private fun QueueRowLayout(
             if (remove != null) remove() else Spacer(Modifier.size(RemoveButtonSize))
         }
     }
+}
+
+/** In place of the requests while there are none, above Spotify's own next tracks: one quiet line. */
+@Composable
+private fun NoRequestsYet(modifier: Modifier = Modifier) {
+    Text(
+        stringResource(Res.string.queue_no_requests_yet),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(horizontal = Spacing.l, vertical = Spacing.s),
+    )
 }
 
 /** Where the requests end and Spotify's own next tracks begin: a caption on a hairline, inside the list. */

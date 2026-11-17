@@ -1074,7 +1074,8 @@ class PlaybackControllerTest {
     @Test
     fun spotifysCopyOfTheSavedSongKeepsItsPositionAndRequester() = runTest {
         val player = fakePlayer()
-        player.recentResult = SpotifyResult.Ok(RecentTrack(trackA, playedAtEpochMs = 2_000)) // the same play, logged later
+        // The same play of A, as Spotify logged it once it ended.
+        player.recentResult = SpotifyResult.Ok(RecentTrack(trackA, playedAtEpochMs = 2_000))
         val forA = request("forA", trackA)
         val controller = startIdleWithLastPlayedA(player, saved = lastPlayedA.copy(request = forA))
         assertEquals(listOf(0L), player.callsTo("recentlyPlayed").map { it.atMs })

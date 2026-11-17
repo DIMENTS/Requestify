@@ -75,6 +75,7 @@ import nl.diments.requestify.resources.setup_device_hint
 import nl.diments.requestify.resources.setup_device_ok
 import nl.diments.requestify.resources.setup_extra_permission
 import nl.diments.requestify.resources.setup_intro
+import nl.diments.requestify.resources.setup_log_in_again
 import nl.diments.requestify.resources.setup_logged_in
 import nl.diments.requestify.resources.setup_logging_in
 import nl.diments.requestify.resources.setup_login
@@ -385,7 +386,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                     // The same login again, without logging out: it grants the permission this login lacks.
                     if (state.needsExtraPermission) {
                         FilledTonalButton(onClick = vm::onLogin, shapes = ButtonDefaults.shapes()) {
-                            Text(stringResource(Res.string.setup_login))
+                            Text(stringResource(Res.string.setup_log_in_again))
                         }
                     }
                     TextButton(onClick = vm::onLogout, shapes = ButtonDefaults.shapes()) {

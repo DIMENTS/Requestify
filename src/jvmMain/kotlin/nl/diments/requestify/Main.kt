@@ -38,11 +38,16 @@ fun main() {
             state = windowState,
             title = stringResource(Res.string.app_name),
         ) {
-            LaunchedEffect(window) { window.minimumSize = Dimension(720, 560) }
+            LaunchedEffect(window) {
+                window.minimumSize = with(MinimumWindowSize) { Dimension(width.value.toInt(), height.value.toInt()) }
+            }
             AppScaffold(graph, window)
         }
     }
 }
+
+/** The smallest the window gets: Home's narrow layout still shows a whole row of the queue under Now Playing. */
+internal val MinimumWindowSize = DpSize(720.dp, 640.dp)
 
 /** Null for [AppLanguage.System]: the JVM default (from Windows) stays. */
 private fun localeFor(language: AppLanguage): Locale? = when (language) {

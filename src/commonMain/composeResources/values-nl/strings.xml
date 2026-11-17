@@ -15,6 +15,7 @@
     <string name="home_up_next_in_spotify">Volgende in Spotify</string>
     <string name="queue_then_in_spotify">Daarna in Spotify</string>
     <string name="queue_your_music">Je muziek</string>
+    <string name="queue_no_requests_yet">Nog geen verzoeken — nieuwe verzoeken verschijnen hier</string>
     <string name="home_save_failing">Wachtrij opslaan mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_load_failing">Opgeslagen wachtrij lezen mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_remove_request">%1$s verwijderen</string>
@@ -92,6 +93,7 @@
     <string name="setup_step_login_title">Log in met Spotify</string>
     <string name="setup_step_login_body">Je browser opent Spotify. Geef Requestify toestemming om het afspelen te bedienen.</string>
     <string name="setup_login">Inloggen met Spotify</string>
+    <string name="setup_log_in_again">Opnieuw inloggen</string>
     <string name="setup_logging_in">Wachten tot je inlogt in je browser…</string>
     <string name="setup_cancel_login">Annuleren</string>
     <string name="setup_browser_failed">Je browser ging niet open. Open dit adres zelf:</string>

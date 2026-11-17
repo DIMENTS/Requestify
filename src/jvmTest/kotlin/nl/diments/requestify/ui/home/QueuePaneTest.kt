@@ -255,6 +255,26 @@ class QueuePaneTest {
         val tops = order.map { top(it) }
         assertTrue(tops.zipWithNext().all { (a, b) -> a < b }, "top to bottom: $order, but the tops are $tops")
         onNodeWithText("The queue is empty. New requests show up here.").assertDoesNotExist()
+        onNodeWithText(noRequestsYet).assertDoesNotExist() // the handed-over request is one
+    }
+
+    private val noRequestsYet = "No requests yet — new requests show up here"
+
+    @Test
+    fun withoutRequestsSpotifysTracksFollowAQuietHint() = runDesktopComposeUiTest(width = 800, height = 900) {
+        var state by mutableStateOf(stateWith(emptyList(), upcoming = spotifyTracks(2)))
+        setContent { Pane(state) }
+
+        val order = listOf(noRequestsYet, "Then in Spotify", "Spotify 1", "Spotify 2")
+        val tops = order.map { top(it) }
+        assertTrue(tops.zipWithNext().all { (a, b) -> a < b }, "top to bottom: $order, but the tops are $tops")
+        onAllNodesWithText(noRequestsYet).assertCountEquals(1)
+        onNodeWithText("The queue is empty. New requests show up here.").assertDoesNotExist()
+
+        state = stateWith(listOf(chatRequest(1)), upcoming = spotifyTracks(2)) // the first request came in
+        waitForIdle()
+        onNodeWithText(noRequestsYet).assertDoesNotExist()
+        onNodeWithText("Song 1").assertIsDisplayed()
     }
 
     @Test

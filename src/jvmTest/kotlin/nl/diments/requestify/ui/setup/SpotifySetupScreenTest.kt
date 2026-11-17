@@ -145,8 +145,9 @@ class SpotifySetupScreenTest {
         controller.stop()
         onNodeWithText(note).assertIsDisplayed()
         onNode(hasText("Log out") and hasClickAction()).assertIsDisplayed()
+        onNode(hasText("Log in with Spotify") and hasClickAction()).assertDoesNotExist() // beside "Logged in to Spotify"
 
-        clickLogIn() // logs in again without logging out
+        onNode(hasText("Log in again") and hasClickAction()).performClick() // logs in again without logging out
         waitForIdle()
         onNodeWithText("Waiting for you to log in in your browser…").assertIsDisplayed()
         onNode(hasText("Cancel") and hasClickAction()).performClick()

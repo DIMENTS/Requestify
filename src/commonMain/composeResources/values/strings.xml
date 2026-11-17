@@ -15,6 +15,7 @@
     <string name="home_up_next_in_spotify">Up next in Spotify</string>
     <string name="queue_then_in_spotify">Then in Spotify</string>
     <string name="queue_your_music">Your music</string>
+    <string name="queue_no_requests_yet">No requests yet — new requests show up here</string>
     <string name="home_save_failing">Couldn’t save the queue — retrying</string>
     <string name="home_load_failing">Couldn’t read the saved queue — retrying</string>
     <string name="home_remove_request">Remove %1$s</string>
@@ -92,6 +93,7 @@
     <string name="setup_step_login_title">Log in with Spotify</string>
     <string name="setup_step_login_body">Your browser opens Spotify. Allow Requestify to control your playback.</string>
     <string name="setup_login">Log in with Spotify</string>
+    <string name="setup_log_in_again">Log in again</string>
     <string name="setup_logging_in">Waiting for you to log in in your browser…</string>
     <string name="setup_cancel_login">Cancel</string>
     <string name="setup_browser_failed">Your browser didn’t open. Open this address yourself:</string>
