@@ -65,11 +65,17 @@ class HomeViewModelTest {
         override suspend fun isPremium(): SpotifyResult<Boolean?> = SpotifyResult.Ok(true)
     }
 
-    private class Home(val vm: HomeViewModel, val controller: PlaybackController, val catalog: FakeCatalog)
+    private class Home(
+        val vm: HomeViewModel,
+        val controller: PlaybackController,
+        val catalog: FakeCatalog,
+        val player: FakeSpotifyPlayer,
+    )
 
     private fun TestScope.home(catalog: FakeCatalog = FakeCatalog()): Home {
+        val player = FakeSpotifyPlayer { testScheduler.currentTime }
         val controller = PlaybackController(
-            player = FakeSpotifyPlayer { testScheduler.currentTime },
+            player = player,
             store = QueueStore(
                 JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer(), retryDelaysMs = emptyList()) {
                     PersistedPlayback()
@@ -91,7 +97,7 @@ class HomeViewModelTest {
             clock = { testScheduler.currentTime },
             newId = { "new-${++ids}" },
         )
-        return Home(vm, controller, catalog)
+        return Home(vm, controller, catalog, player)
     }
 
     /** Lets any search debounce pass and runs everything due, background work included (unlike advanceUntilIdle). */
@@ -273,6 +279,14 @@ class HomeViewModelTest {
         home.vm.onRemove("a")
         settle()
         assertEquals(listOf("c", "b"), home.vm.state.value.queue.map { it.id })
+    }
+
+    @Test
+    fun previousDelegatesToTheController() = runTest {
+        val home = home()
+        home.vm.onPrevious()
+        settle()
+        assertEquals(1, home.player.callsTo("skipPrevious").size)
     }
 
     @Test

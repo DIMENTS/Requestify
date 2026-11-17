@@ -8,15 +8,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.DpRect
+import kotlin.math.abs
 import kotlin.test.assertTrue
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -31,6 +38,7 @@ import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.NowPlaying
+import nl.diments.requestify.core.playback.NowPlayingKind
 import nl.diments.requestify.ui.theme.BrandSeed
 import nl.diments.requestify.ui.theme.RequestifyTheme
 
@@ -45,9 +53,17 @@ class NowPlayingPaneTest {
 
     /** As on Home: the pane is 320 dp wide. [clock] is the wall time the pane reads. */
     @Composable
-    private fun Pane(nowPlaying: NowPlaying, clock: () -> Long) {
+    private fun Pane(
+        nowPlaying: NowPlaying?,
+        clock: () -> Long,
+        modifier: Modifier = Modifier.width(320.dp),
+        compact: Boolean = false,
+    ) {
         RequestifyTheme(BrandSeed, dark = true) {
-            NowPlayingPane(nowPlaying, onTogglePause = {}, onSkip = {}, modifier = Modifier.width(320.dp), clock = clock)
+            NowPlayingPane(
+                nowPlaying, onPrevious = {}, onTogglePause = {}, onSkip = {},
+                modifier = modifier, compact = compact, clock = clock,
+            )
         }
     }
 
@@ -118,12 +134,7 @@ class NowPlayingPaneTest {
         setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-                RequestifyTheme(BrandSeed, dark = true) {
-                    NowPlayingPane(
-                        nowPlaying, onTogglePause = {}, onSkip = {},
-                        modifier = Modifier.width(320.dp).height(472.dp), clock = { 0L },
-                    )
-                }
+                Pane(nowPlaying, clock = { 0L }, modifier = Modifier.width(320.dp).height(472.dp))
             }
         }
     }
@@ -147,5 +158,103 @@ class NowPlayingPaneTest {
         val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
 
         assertTrue(skip.bottom <= card.bottom && skip.top >= card.top, "skip $skip outside the card $card after scrolling")
+    }
+
+    /** Every state the card can be in, from the one with the most text to the one with the least. */
+    private val everyState by lazy {
+        listOf(
+            "a request with a two-line title" to
+                NowPlaying(midnightCity.copy(name = longTitle), 60_000, isPlaying = true, request = bitsRequest, sampledAtEpochMs = 0L),
+            "own music with a one-line title" to NowPlaying(midnightCity, 60_000, isPlaying = true, request = null, sampledAtEpochMs = 0L),
+            "paused" to NowPlaying(midnightCity, 60_000, isPlaying = false, request = null, sampledAtEpochMs = 0L),
+            "last played" to NowPlaying(
+                midnightCity, 60_000, isPlaying = false, request = null, sampledAtEpochMs = 0L, kind = NowPlayingKind.LastPlayed,
+            ),
+            "nothing playing" to null,
+        )
+    }
+
+    private val isProgressBar = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
+
+    /** Where the progress bar and each of the three buttons are. */
+    private fun ComposeUiTest.controlBounds(): Map<String, DpRect> = mapOf(
+        "progress" to onNode(isProgressBar).getBoundsInRoot(),
+        "previous" to onNodeWithContentDescription("Previous").getBoundsInRoot(),
+        "play/pause" to onNode(hasContentDescription("Pause") or hasContentDescription("Play")).getBoundsInRoot(),
+        "skip" to onNodeWithContentDescription("Skip").getBoundsInRoot(),
+    )
+
+    /** Shows each of [everyState] in turn in one card of one size and checks that no control moved. */
+    private fun assertControlsKeepTheirPlace(layout: String, size: Modifier, compact: Boolean) = runComposeUiTest {
+        var nowPlaying by mutableStateOf(everyState.first().second)
+        setContent { Pane(nowPlaying, clock = { 0L }, modifier = size, compact = compact) }
+        val placed = everyState.map { (name, state) ->
+            nowPlaying = state
+            waitForIdle()
+            name to controlBounds()
+        }
+        val (firstName, first) = placed.first()
+        for ((name, bounds) in placed.drop(1)) {
+            for ((control, rect) in bounds) {
+                val expected = first.getValue(control)
+                val off = listOf(rect.left - expected.left, rect.top - expected.top, rect.right - expected.right, rect.bottom - expected.bottom)
+                    .maxOf { abs(it.value) }
+                assertTrue(off <= 0.5f, "$layout: the $control is at $rect for $name but at $expected for $firstName")
+            }
+        }
+    }
+
+    @Test
+    fun controlsKeepTheirPlaceInEveryState() {
+        assertControlsKeepTheirPlace("wide", Modifier.width(320.dp).height(640.dp), compact = false)
+        assertControlsKeepTheirPlace("narrow", Modifier.width(700.dp), compact = true)
+    }
+
+    @Test
+    fun buttonsArePreviousPlayNextInOrder() {
+        for (compact in listOf(false, true)) {
+            runComposeUiTest {
+                setContent { Pane(polled(60_000), clock = { mainClock.currentTime }, compact = compact) }
+                val previous = onNodeWithContentDescription("Previous").getBoundsInRoot()
+                val playPause = onNodeWithContentDescription("Pause").getBoundsInRoot()
+                val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
+
+                val order = "compact = $compact: previous $previous, pause $playPause, skip $skip"
+                assertTrue(previous.right <= playPause.left && playPause.right <= skip.left, order)
+            }
+        }
+    }
+
+    @Test
+    fun labelFollowsTheState() = runComposeUiTest {
+        var nowPlaying by mutableStateOf<NowPlaying?>(null)
+        setContent { Pane(nowPlaying, clock = { mainClock.currentTime }) }
+        onNodeWithText("NOW PLAYING").assertIsDisplayed()
+
+        nowPlaying = polled(60_000)
+        waitForIdle()
+        onNodeWithText("NOW PLAYING").assertIsDisplayed()
+
+        nowPlaying = polled(60_000).copy(isPlaying = false)
+        waitForIdle()
+        onNodeWithText("PAUSED").assertIsDisplayed()
+        onNodeWithText("NOW PLAYING").assertDoesNotExist()
+
+        nowPlaying = polled(60_000).copy(isPlaying = false, kind = NowPlayingKind.LastPlayed)
+        waitForIdle()
+        onNodeWithText("LAST PLAYED").assertIsDisplayed()
+        onNodeWithText("PAUSED").assertDoesNotExist()
+    }
+
+    @Test
+    fun idleDisablesControls() = runComposeUiTest {
+        var nowPlaying by mutableStateOf<NowPlaying?>(null)
+        setContent { Pane(nowPlaying, clock = { 0L }) }
+        for (button in listOf("Previous", "Play", "Skip")) onNodeWithContentDescription(button).assertIsNotEnabled()
+
+        // The last played song can be resumed, and Spotify may still go back or forward on its last device.
+        nowPlaying = NowPlaying(midnightCity, 60_000, isPlaying = false, request = null, sampledAtEpochMs = 0L, kind = NowPlayingKind.LastPlayed)
+        waitForIdle()
+        for (button in listOf("Previous", "Play", "Skip")) onNodeWithContentDescription(button).assertIsEnabled()
     }
 }

@@ -1,5 +1,6 @@
 package nl.diments.requestify.ui.theme
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -7,6 +8,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.core.model.RequestSource
 
@@ -29,6 +32,9 @@ object SourceColors {
     }
 }
 
+/** The room around a [SourceChip]'s label. */
+private val ChipPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+
 @Composable
 fun SourceChip(source: RequestSource, label: String, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
@@ -38,6 +44,12 @@ fun SourceChip(source: RequestSource, label: String, modifier: Modifier = Modifi
         color = SourceColors.container(source) ?: scheme.surfaceContainerHighest,
         contentColor = SourceColors.content(source) ?: scheme.onSurfaceVariant,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(ChipPadding))
     }
 }
+
+/** How tall a [SourceChip] is at the current text size: one line of its label and the room above and below it. */
+@Composable
+fun sourceChipHeight(): Dp =
+    with(LocalDensity.current) { MaterialTheme.typography.labelMedium.lineHeight.toDp() } +
+        ChipPadding.calculateTopPadding() + ChipPadding.calculateBottomPadding()

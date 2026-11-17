@@ -1,6 +1,7 @@
 package nl.diments.requestify.ui.home
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -18,16 +19,18 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.ButtonGroup
+import androidx.compose.material3.ButtonGroupScope
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconToggleButton
@@ -58,26 +61,33 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.delay
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.NowPlaying
+import nl.diments.requestify.core.playback.NowPlayingKind
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.now_playing_idle_body
 import nl.diments.requestify.resources.now_playing_idle_title
 import nl.diments.requestify.resources.now_playing_label
+import nl.diments.requestify.resources.now_playing_label_last_played
+import nl.diments.requestify.resources.now_playing_label_paused
 import nl.diments.requestify.resources.now_playing_own_music
 import nl.diments.requestify.resources.now_playing_pause
 import nl.diments.requestify.resources.now_playing_play
+import nl.diments.requestify.resources.now_playing_previous
 import nl.diments.requestify.resources.now_playing_skip
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
@@ -86,6 +96,7 @@ import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
 import nl.diments.requestify.ui.theme.SourceChip
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.sourceChipHeight
 import org.jetbrains.compose.resources.stringResource
 
 /** The Now Playing card's test tag. */
@@ -99,20 +110,23 @@ private val MinArtSide = 64.dp
 /** Asymmetric art corners (top-start, top-end, bottom-end, bottom-start). */
 private val ArtCorners = listOf(36.dp, 36.dp, 12.dp, 36.dp)
 
-/** The art's side in the [compact] pane: about as tall as the track info beside it. */
-private val CompactArtSize = 112.dp
+/** The title's line height relative to its size: tighter than the type scale's, for a two-line display title. */
+private const val TITLE_LINE_HEIGHT = 1.15f
 
 /**
- * Right side of Home: what Spotify plays now, who asked for it, live progress and the play/pause + skip group,
- * all on one start edge. The art is on top; the track info, progress and controls sit at the bottom of the card
- * and the art takes the height they leave (square, at most the card's width); once the art is that wide, the
- * whole stack is centred instead. [compact] is for narrow windows, where the pane sits above the queue: the art
- * beside the track info, and under them the controls with the progress filling the rest of the row. [clock] is
- * wall time, the clock [NowPlaying.sampledAtEpochMs] is on.
+ * Right side of Home: what Spotify plays now (or played last), who asked for it, live progress and the previous,
+ * play/pause and skip group, all on one start edge. The details are equally tall in every state, nothing playing
+ * included (see [Details]), so switching songs or going idle never moves the progress or the buttons. The art is
+ * on top; the track info, progress and controls sit at the bottom of the card and the art takes the height they
+ * leave (square, at most the card's width); once the art is that wide, the whole stack is centred instead.
+ * [compact] is for narrow windows, where the pane sits above the queue: the art beside the track info and as tall
+ * as it, and under them the controls with the progress filling the rest of the row. [clock] is wall time, the
+ * clock [NowPlaying.sampledAtEpochMs] is on.
  */
 @Composable
 fun NowPlayingPane(
     nowPlaying: NowPlaying?,
+    onPrevious: () -> Unit,
     onTogglePause: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
@@ -131,9 +145,16 @@ fun NowPlayingPane(
                 PoppingArt(nowPlaying.track, artModifier)
             }
         }
-        val info = @Composable { if (nowPlaying == null) IdleInfo() else TrackInfo(nowPlaying, compact) }
-        val controls = @Composable { playing: NowPlaying ->
-            Controls(isPlaying = playing.isPlaying, onTogglePause = onTogglePause, onSkip = onSkip)
+        val details = @Composable { Details(nowPlaying, compact) }
+        val progress = @Composable { Progress(nowPlaying, clock) }
+        val controls = @Composable {
+            Controls(
+                isPlaying = nowPlaying?.isPlaying == true,
+                enabled = nowPlaying != null,
+                onPrevious = onPrevious,
+                onTogglePause = onTogglePause,
+                onSkip = onSkip,
+            )
         }
         if (compact) {
             Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
@@ -141,17 +162,15 @@ fun NowPlayingPane(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.xl),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    art(Modifier.size(CompactArtSize))
-                    Box(Modifier.weight(1f)) { info() }
+                    art(Modifier.size(detailsHeight(compact = true)))
+                    Box(Modifier.weight(1f)) { details() }
                 }
-                if (nowPlaying != null) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.l),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        controls(nowPlaying)
-                        Box(Modifier.weight(1f)) { Progress(nowPlaying, clock) }
-                    }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.l),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    controls()
+                    Box(Modifier.weight(1f)) { progress() }
                 }
             }
         } else {
@@ -161,11 +180,9 @@ fun NowPlayingPane(
                     ArtOverDetails(available) {
                         art(Modifier)
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
-                            info()
-                            if (nowPlaying != null) {
-                                Progress(nowPlaying, clock)
-                                controls(nowPlaying)
-                            }
+                            details()
+                            progress()
+                            controls()
                         }
                     }
                 }
@@ -199,38 +216,65 @@ private fun ArtOverDetails(availableHeight: Int, content: @Composable () -> Unit
     }
 }
 
-/** The label over the track and who asked for it. */
+/**
+ * The label, title, artist and who asked for it, in a block of [detailsHeight] whatever they hold, anchored at its
+ * bottom: a one-line title leaves its spare line above the label, so the text stays together and nothing under it
+ * moves. With nothing playing the block holds the label, the idle title and how to get something here.
+ */
 @Composable
-private fun TrackInfo(nowPlaying: NowPlaying, compact: Boolean) {
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Label()
-        TrackText(nowPlaying.track, compact)
-        RequestLine(nowPlaying.request)
+private fun Details(nowPlaying: NowPlaying?, compact: Boolean) {
+    Box(Modifier.height(detailsHeight(compact)), contentAlignment = Alignment.BottomStart) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+            Label(nowPlaying)
+            if (nowPlaying == null) {
+                Title(stringResource(Res.string.now_playing_idle_title), compact)
+                Text(
+                    stringResource(Res.string.now_playing_idle_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                TrackText(nowPlaying.track, compact)
+                RequestLine(nowPlaying.request)
+            }
+        }
     }
 }
 
+/**
+ * How tall the details are in every state, from the type scale at the current text size: the label, two lines of
+ * title, the artist and the requester row, with the gaps between them. (Nothing playing needs less: its message
+ * takes at most two body lines where the artist and the requester row go.)
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Label() {
-    Text(
-        stringResource(Res.string.now_playing_label),
-        style = MaterialTheme.typography.labelMediumEmphasized,
-        color = MaterialTheme.colorScheme.primary,
-        letterSpacing = 1.2.sp,
-    )
+private fun detailsHeight(compact: Boolean): Dp {
+    val typography = MaterialTheme.typography
+    val lines = with(LocalDensity.current) {
+        typography.labelMediumEmphasized.lineHeight.toDp() + titleStyle(compact).lineHeight.toDp() * 2 +
+            typography.titleMedium.lineHeight.toDp()
+    }
+    return lines + Spacing.s + requesterRowHeight() + Spacing.s
 }
 
-/** Nothing plays: the label, and how to get something here. */
+/** NOW PLAYING while playing (or with nothing to show), PAUSED while paused, LAST PLAYED for the last song played. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun IdleInfo() {
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
-        Label()
-        Text(stringResource(Res.string.now_playing_idle_title), style = MaterialTheme.typography.headlineSmallEmphasized)
+private fun Label(nowPlaying: NowPlaying?) {
+    val label = when {
+        nowPlaying?.kind == NowPlayingKind.LastPlayed -> Res.string.now_playing_label_last_played
+        nowPlaying == null || nowPlaying.isPlaying -> Res.string.now_playing_label
+        else -> Res.string.now_playing_label_paused
+    }
+    Crossfade(label, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) { shown ->
         Text(
-            stringResource(Res.string.now_playing_idle_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            stringResource(shown),
+            style = MaterialTheme.typography.labelMediumEmphasized,
+            color = MaterialTheme.colorScheme.primary,
+            letterSpacing = 1.2.sp,
+            maxLines = 1,
         )
     }
 }
@@ -277,7 +321,6 @@ private fun artShape(settled: Float): Shape = object : Shape {
 @Composable
 private fun TrackText(track: Track, compact: Boolean) {
     val motion = MaterialTheme.motionScheme
-    val typography = MaterialTheme.typography
     AnimatedContent(
         targetState = track,
         contentKey = { it.id },
@@ -288,17 +331,10 @@ private fun TrackText(track: Track, compact: Boolean) {
         },
     ) { shown ->
         Column {
-            val titleStyle = if (compact) typography.headlineMediumEmphasized else typography.displaySmallEmphasized
-            Text(
-                shown.name,
-                style = titleStyle.copy(lineHeight = 1.15.em),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                autoSize = TextAutoSize.StepBased(minFontSize = 20.sp, maxFontSize = titleStyle.fontSize),
-            )
+            Title(shown.name, compact)
             Text(
                 shown.artists.joinToString(", "),
-                style = typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -307,70 +343,100 @@ private fun TrackText(track: Track, compact: Boolean) {
     }
 }
 
+/** At most two lines (the details keep room for two); a longer title ends in "…". */
+@Composable
+private fun Title(text: String, compact: Boolean) {
+    Text(text, style = titleStyle(compact), maxLines = 2, overflow = TextOverflow.Ellipsis)
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun titleStyle(compact: Boolean): TextStyle {
+    val typography = MaterialTheme.typography
+    val style = if (compact) typography.headlineMediumEmphasized else typography.displaySmallEmphasized
+    return style.copy(lineHeight = style.fontSize * TITLE_LINE_HEIGHT)
+}
+
+/** Who asked for the song (its source chip and name), or that it is the streamer's own music. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RequestLine(request: Request?) {
     val motion = MaterialTheme.motionScheme
-    AnimatedContent(
-        targetState = request,
-        contentKey = { it?.id },
-        transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
-    ) { shown ->
-        if (shown == null) {
-            Text(
-                stringResource(Res.string.now_playing_own_music),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
-                SourceChip(shown.source, sourceLabel(shown))
+    Box(Modifier.height(requesterRowHeight()), contentAlignment = Alignment.CenterStart) {
+        AnimatedContent(
+            targetState = request,
+            contentKey = { it?.id },
+            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier.fillMaxHeight(),
+        ) { shown ->
+            if (shown == null) {
                 Text(
-                    requesterLabel(shown),
+                    stringResource(Res.string.now_playing_own_music),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
+                    SourceChip(shown.source, sourceLabel(shown))
+                    Text(
+                        requesterLabel(shown),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
 }
 
-/** The wavy bar flattens while paused; between polls the position runs on locally. */
+/** The requester row is as tall as a source chip (or a line of the name beside it), with a chip or without. */
+@Composable
+private fun requesterRowHeight(): Dp =
+    maxOf(sourceChipHeight(), with(LocalDensity.current) { MaterialTheme.typography.labelLarge.lineHeight.toDp() })
+
+/**
+ * The wavy bar flattens while paused; between polls the position runs on locally. With nothing playing the bar
+ * is empty and the times are left out, their line kept.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Progress(nowPlaying: NowPlaying, clock: () -> Long) {
-    val durationMs = nowPlaying.track.durationMs
+private fun Progress(nowPlaying: NowPlaying?, clock: () -> Long) {
+    val durationMs = nowPlaying?.track?.durationMs ?: 0L
     val position = rememberLivePosition(nowPlaying, clock)
     val elapsed by remember { derivedStateOf { formatDuration(position.longValue) } }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         LinearWavyProgressIndicator(
             progress = { if (durationMs > 0) position.longValue.toFloat() / durationMs else 0f },
             modifier = Modifier.fillMaxWidth(),
-            amplitude = { if (nowPlaying.isPlaying) WavyProgressIndicatorDefaults.indicatorAmplitude(it) else 0f },
+            amplitude = { if (nowPlaying?.isPlaying == true) WavyProgressIndicatorDefaults.indicatorAmplitude(it) else 0f },
         )
         val timeStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+        val timeColor = MaterialTheme.colorScheme.onSurfaceVariant
         Row {
-            Text(elapsed, style = timeStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (nowPlaying == null) "" else elapsed, style = timeStyle, color = timeColor)
             Spacer(Modifier.weight(1f))
-            Text(formatDuration(durationMs), style = timeStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (nowPlaying == null) "" else formatDuration(durationMs), style = timeStyle, color = timeColor)
         }
     }
 }
 
 /**
  * The position on [clock] (see [NowPlaying.positionAt]), updated every [PROGRESS_TICK_MS] on the frame clock while
- * playing, until the track's end. It runs from when Spotify sampled it, so a new poll moves the bar only as far
- * as Spotify really differs, and a pause stops it where it is. (The bar moves about a pixel per second, so
- * ticking every frame would look no smoother.)
+ * playing, until the track's end; 0 with nothing playing. It runs from when Spotify sampled it, so a new poll
+ * moves the bar only as far as Spotify really differs, and a pause stops it where it is. (The bar moves about a
+ * pixel per second, so ticking every frame would look no smoother.)
  */
 @Composable
-private fun rememberLivePosition(nowPlaying: NowPlaying, clock: () -> Long): LongState {
+private fun rememberLivePosition(nowPlaying: NowPlaying?, clock: () -> Long): LongState {
     val now by rememberUpdatedState(clock)
-    val position = remember { mutableLongStateOf(nowPlaying.positionAt(now())) }
+    val position = remember { mutableLongStateOf(nowPlaying?.positionAt(now()) ?: 0L) }
     LaunchedEffect(nowPlaying) {
-        position.longValue = nowPlaying.positionAt(now())
+        position.longValue = nowPlaying?.positionAt(now()) ?: 0L
+        if (nowPlaying == null) return@LaunchedEffect
         while (nowPlaying.isPlaying && position.longValue < nowPlaying.track.durationMs) {
             delay(PROGRESS_TICK_MS)
             withFrameMillis { position.longValue = nowPlaying.positionAt(now()) }
@@ -381,21 +447,34 @@ private fun rememberLivePosition(nowPlaying: NowPlaying, clock: () -> Long): Lon
 
 private const val PROGRESS_TICK_MS = 250L
 
-/** Play/pause (primary, wide; round while paused, squarer while playing) and skip, as an Expressive button group. */
+/**
+ * Previous, play/pause (primary, wide; round while paused, squarer while playing) and skip, as an Expressive
+ * button group. With nothing to control they stay where they are, disabled.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Controls(isPlaying: Boolean, onTogglePause: () -> Unit, onSkip: () -> Unit, modifier: Modifier = Modifier) {
+private fun Controls(
+    isPlaying: Boolean,
+    enabled: Boolean,
+    onPrevious: () -> Unit,
+    onTogglePause: () -> Unit,
+    onSkip: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val playPauseLabel = stringResource(if (isPlaying) Res.string.now_playing_pause else Res.string.now_playing_play)
+    val previousLabel = stringResource(Res.string.now_playing_previous)
     val skipLabel = stringResource(Res.string.now_playing_skip)
     val motion = MaterialTheme.motionScheme
     val scheme = MaterialTheme.colorScheme
     ButtonGroup(overflowIndicator = {}, modifier = modifier) {
+        tonalItem(AppIcons.SkipPrevious, previousLabel, enabled, onPrevious)
         customItem(
             buttonGroupContent = {
                 val interaction = remember { MutableInteractionSource() }
                 FilledIconToggleButton(
                     checked = isPlaying,
                     onCheckedChange = { onTogglePause() },
+                    enabled = enabled,
                     shapes = IconButtonDefaults.toggleableShapes(),
                     colors = IconButtonDefaults.filledIconToggleButtonColors(
                         containerColor = scheme.primary,
@@ -424,30 +503,37 @@ private fun Controls(isPlaying: Boolean, onTogglePause: () -> Unit, onSkip: () -
                 }
             },
             menuContent = { menu ->
-                DropdownMenuItem(text = { Text(playPauseLabel) }, onClick = { onTogglePause(); menu.dismiss() })
+                DropdownMenuItem(
+                    text = { Text(playPauseLabel) },
+                    onClick = { onTogglePause(); menu.dismiss() },
+                    enabled = enabled,
+                )
             },
         )
-        customItem(
-            buttonGroupContent = {
-                val interaction = remember { MutableInteractionSource() }
-                FilledTonalIconButton(
-                    onClick = onSkip,
-                    shapes = IconButtonDefaults.shapes(),
-                    interactionSource = interaction,
-                    modifier = Modifier
-                        .size(IconButtonDefaults.mediumContainerSize(IconButtonDefaults.IconButtonWidthOption.Uniform))
-                        .animateWidth(interaction),
-                ) {
-                    Icon(
-                        AppIcons.SkipNext,
-                        contentDescription = skipLabel,
-                        modifier = Modifier.size(IconButtonDefaults.mediumIconSize),
-                    )
-                }
-            },
-            menuContent = { menu ->
-                DropdownMenuItem(text = { Text(skipLabel) }, onClick = { onSkip(); menu.dismiss() })
-            },
-        )
+        tonalItem(AppIcons.SkipNext, skipLabel, enabled, onSkip)
     }
+}
+
+/** A round tonal button of the group (previous, skip), offered in the group's menu too when it does not fit. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun ButtonGroupScope.tonalItem(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    customItem(
+        buttonGroupContent = {
+            val interaction = remember { MutableInteractionSource() }
+            FilledTonalIconButton(
+                onClick = onClick,
+                enabled = enabled,
+                shapes = IconButtonDefaults.shapes(),
+                interactionSource = interaction,
+                modifier = Modifier
+                    .size(IconButtonDefaults.mediumContainerSize(IconButtonDefaults.IconButtonWidthOption.Uniform))
+                    .animateWidth(interaction),
+            ) {
+                Icon(icon, contentDescription = label, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
+            }
+        },
+        menuContent = { menu ->
+            DropdownMenuItem(text = { Text(label) }, onClick = { onClick(); menu.dismiss() }, enabled = enabled)
+        },
+    )
 }

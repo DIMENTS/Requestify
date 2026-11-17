@@ -43,11 +43,14 @@
 
     <!-- Home: now playing -->
     <string name="now_playing_label">NU SPEELT</string>
+    <string name="now_playing_label_paused">GEPAUZEERD</string>
+    <string name="now_playing_label_last_played">LAATST GESPEELD</string>
     <string name="now_playing_own_music">Je eigen muziek</string>
     <string name="now_playing_idle_title">Er speelt niets</string>
     <string name="now_playing_idle_body">Start muziek in Spotify, dan verschijnt die hier.</string>
     <string name="now_playing_play">Afspelen</string>
     <string name="now_playing_pause">Pauzeren</string>
+    <string name="now_playing_previous">Vorige</string>
     <string name="now_playing_skip">Overslaan</string>
 
     <!-- Spotify status -->

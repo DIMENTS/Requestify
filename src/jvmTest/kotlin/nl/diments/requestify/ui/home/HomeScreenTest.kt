@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -153,16 +154,32 @@ class HomeScreenTest {
             val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
             val label = onNodeWithText("NOW PLAYING").getBoundsInRoot()
             val title = onNodeWithText("Midnight City").getBoundsInRoot()
-            val playPause = onNodeWithContentDescription("Pause").getBoundsInRoot()
+            val firstButton = onNodeWithContentDescription("Previous").getBoundsInRoot() // the group starts with it
             val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
 
             assertTrue(card.bottom - skip.bottom <= 48.dp, "empty band under the controls: ${card.bottom - skip.bottom}")
             assertEquals(label.left, title.left, "the label and the title share one start edge")
-            assertEquals(title.left, playPause.left, "the controls start on that edge too, not centred")
+            assertEquals(title.left, firstButton.left, "the controls start on that edge too, not centred")
         }
 
     @Test
-    fun typedTextSurvivesTheLayoutSwitch() = runDesktopComposeUiTest(width = 1180, height = 760) {
+    fun previousButtonGoesBackInSpotify() =
+        runDesktopComposeUiTest(width = wideWidth.value.toInt(), height = wideHeight.value.toInt()) {
+            val player = FakeSpotifyPlayer { 0L }
+            player.plays(Track("np", "spotify:track:np", "Midnight City", listOf("M83"), 243_000, false, null), 141_000)
+            val controller = controller(player)
+            val vm = viewModelWith(controller)
+            controller.start()
+            setContent { HomeScreen(vm, albumSeed = null) }
+            waitUntil(timeoutMillis = 5_000) { vm.state.value.nowPlaying != null }
+            controller.stop() // no more polls: the player's calls from here on are the button's alone
+
+            onNodeWithContentDescription("Previous").performClick()
+            waitUntil(timeoutMillis = 5_000) { player.callsTo("skipPrevious").size == 1 }
+        }
+
+    @Test
+    fun typedTextSurvivesTheLayoutSwitch()= runDesktopComposeUiTest(width = 1180, height = 760) {
         val vm = viewModel()
         var railWidth by mutableStateOf(0.dp)
         setContent {

@@ -70,7 +70,7 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
             }
             val nowPlayingPane = @Composable { modifier: Modifier ->
                 RequestifyTheme(nowPlayingSeed, dark) {
-                    NowPlayingPane(state.nowPlaying, vm::onTogglePause, vm::onSkip, modifier, compact = !wide)
+                    NowPlayingPane(state.nowPlaying, vm::onPrevious, vm::onTogglePause, vm::onSkip, modifier, compact = !wide)
                 }
             }
             if (wide) {

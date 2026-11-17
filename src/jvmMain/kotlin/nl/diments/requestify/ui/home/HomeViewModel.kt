@@ -143,6 +143,10 @@ class HomeViewModel(
 
     fun onMove(id: String, toIndex: Int) = controller.move(id, toIndex)
 
+    fun onPrevious() {
+        scope.launch { controller.previous() }
+    }
+
     fun onSkip() {
         scope.launch { controller.skip() }
     }

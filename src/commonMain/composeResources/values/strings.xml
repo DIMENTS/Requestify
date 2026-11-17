@@ -43,11 +43,14 @@
 
     <!-- Home: now playing -->
     <string name="now_playing_label">NOW PLAYING</string>
+    <string name="now_playing_label_paused">PAUSED</string>
+    <string name="now_playing_label_last_played">LAST PLAYED</string>
     <string name="now_playing_own_music">Your own music</string>
     <string name="now_playing_idle_title">Nothing playing</string>
     <string name="now_playing_idle_body">Start music in Spotify and it shows up here.</string>
     <string name="now_playing_play">Play</string>
     <string name="now_playing_pause">Pause</string>
+    <string name="now_playing_previous">Previous</string>
     <string name="now_playing_skip">Skip</string>
 
     <!-- Spotify status -->
