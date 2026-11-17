@@ -332,6 +332,16 @@ class PlaybackController(
         return PlaybackSnapshot(_queue.value.items, _handedOver.value, now?.request, _history.value, now)
     }
 
+    /**
+     * The state as [submit]'s rules see it, once the saved state is loaded (it waits for that, and reads it when
+     * nothing did yet): unlike [snapshot], [PlaybackSnapshot.playing] is the request playing now, also before the
+     * first poll. For settling what happened to requests while nobody was listening.
+     */
+    suspend fun loadedSnapshot(): PlaybackSnapshot {
+        awaitLoaded()
+        return withState { stateSnapshot() }
+    }
+
     fun move(id: String, toIndex: Int) {
         change { _queue.value = _queue.value.move(id, toIndex) }
     }
