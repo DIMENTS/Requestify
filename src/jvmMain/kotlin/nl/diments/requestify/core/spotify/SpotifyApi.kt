@@ -35,6 +35,9 @@ sealed interface SpotifyResult<out T> {
     /** Spotify refused the call because the login was granted without the needed scope: log in again to grant it. */
     data object MissingPermission : SpotifyResult<Nothing>
     data class Failed(val message: String) : SpotifyResult<Nothing>
+
+    /** Spotify does not know it: HTTP 400 (not a valid id) or 404 (and not for lack of an active device). */
+    data object NotFound : SpotifyResult<Nothing>
 }
 
 /** What the token provider answers for an API call. */
@@ -84,10 +87,17 @@ interface SpotifyPlayer {
     suspend fun resume(): SpotifyResult<Unit>
 }
 
+/** An artist as search and lookup answer it. */
+data class ArtistRef(val id: String, val name: String, val imageUrl: String?)
+
 interface SpotifyCatalog {
     /** [limit] is coerced to 1..10 (dev-mode cap). */
     suspend fun searchTracks(query: String, limit: Int = 5): SpotifyResult<List<Track>>
     suspend fun track(id: String): SpotifyResult<Track>
+
+    /** [limit] is coerced to 1..10 (dev-mode cap). */
+    suspend fun searchArtists(query: String, limit: Int = 5): SpotifyResult<List<ArtistRef>>
+    suspend fun artist(id: String): SpotifyResult<ArtistRef>
 
     /** From `GET /me` `product` when present, else `Ok(null)`. */
     suspend fun isPremium(): SpotifyResult<Boolean?>
@@ -161,13 +171,32 @@ class SpotifyApi(
         execute(
             HttpMethod.Get,
             "search",
-            params = listOf("q" to query, "type" to "track", "limit" to limit.coerceIn(1, 10).toString()),
+            params = listOf(
+                "q" to query,
+                "type" to "track",
+                "limit" to limit.coerceIn(1, 10).toString(),
+                "market" to "from_token",
+            ),
         ) { body ->
             json.decodeFromString<SearchDto>(body).tracks.items.mapNotNull { it?.toTrackOrNull() }
         }
 
+    override suspend fun searchArtists(query: String, limit: Int): SpotifyResult<List<ArtistRef>> =
+        execute(
+            HttpMethod.Get,
+            "search",
+            params = listOf("q" to query, "type" to "artist", "limit" to limit.coerceIn(1, 10).toString()),
+        ) { body ->
+            json.decodeFromString<ArtistSearchDto>(body).artists.items.mapNotNull { it?.toRefOrNull() }
+        }
+
+    override suspend fun artist(id: String): SpotifyResult<ArtistRef> =
+        execute(HttpMethod.Get, "artists", id) { body ->
+            json.decodeFromString<ArtistDto>(body).toRefOrNull() ?: error("artist has no usable id or name")
+        }
+
     override suspend fun track(id: String): SpotifyResult<Track> =
-        execute(HttpMethod.Get, "tracks", id) { body -> json.decodeFromString<TrackDto>(body).toTrackOrNull() ?: error("track has no usable id, uri or name") }
+        execute(HttpMethod.Get, "tracks", id, params = listOf("market" to "from_token")) { body -> json.decodeFromString<TrackDto>(body).toTrackOrNull() ?: error("track has no usable id, uri or name") }
 
     override suspend fun isPremium(): SpotifyResult<Boolean?> =
         execute(HttpMethod.Get, "me") { body ->
@@ -234,11 +263,8 @@ class SpotifyApi(
     private fun <T> map(raw: Raw, onSuccess: (String) -> T): SpotifyResult<T> = when (raw.status) {
         200, 201, 202, 204 -> SpotifyResult.Ok(onSuccess(raw.body))
         403 -> forbidden(raw.body)
-        404 -> if (errorReason(raw.body) == "NO_ACTIVE_DEVICE") {
-            SpotifyResult.NoActiveDevice
-        } else {
-            SpotifyResult.Failed("HTTP 404")
-        }
+        400 -> SpotifyResult.NotFound
+        404 -> if (errorReason(raw.body) == "NO_ACTIVE_DEVICE") SpotifyResult.NoActiveDevice else SpotifyResult.NotFound
         429 -> SpotifyResult.RateLimited(
             raw.retryAfter?.trim()?.toLongOrNull()?.takeIf { it >= 0 }?.let { it * 1000 } ?: DEFAULT_RETRY_AFTER_MS,
         )
@@ -260,6 +286,7 @@ class SpotifyApi(
     private companion object {
         const val DEFAULT_RETRY_AFTER_MS = 5_000L
         const val ART_TARGET_WIDTH = 300
+        const val ARTIST_IMAGE_TARGET_WIDTH = 160
     }
 
     @Serializable
@@ -304,6 +331,12 @@ class SpotifyApi(
     private class TracksPage(val items: List<TrackDto?> = emptyList())
 
     @Serializable
+    private class ArtistSearchDto(val artists: ArtistsPage = ArtistsPage())
+
+    @Serializable
+    private class ArtistsPage(val items: List<ArtistDto?> = emptyList())
+
+    @Serializable
     private class MeDto(val product: String? = null)
 
     @Serializable
@@ -316,6 +349,7 @@ class SpotifyApi(
         val explicit: Boolean = false,
         val artists: List<ArtistDto> = emptyList(),
         val album: AlbumDto? = null,
+        @SerialName("is_playable") val isPlayable: Boolean? = null,
     ) {
         /** Null for items without a usable id, uri or name (e.g. local files, episodes). */
         fun toTrackOrNull(): Track? {
@@ -325,6 +359,8 @@ class SpotifyApi(
                 uri = uri,
                 name = name,
                 artists = artists.mapNotNull { it.name },
+                artistIds = artists.mapNotNull { it.id?.takeIf(String::isNotBlank) },
+                isPlayable = isPlayable ?: true,
                 durationMs = durationMs,
                 explicit = explicit,
                 albumArtUrl = album?.images
@@ -334,7 +370,18 @@ class SpotifyApi(
     }
 
     @Serializable
-    private class ArtistDto(val name: String? = null)
+    private class ArtistDto(
+        val id: String? = null,
+        val name: String? = null,
+        val images: List<ImageDto> = emptyList(),
+    ) {
+        /** Null without a usable id or name. */
+        fun toRefOrNull(): ArtistRef? {
+            if (id.isNullOrBlank() || name.isNullOrBlank()) return null
+            val image = images.minByOrNull { abs((it.width ?: Int.MAX_VALUE / 2) - ARTIST_IMAGE_TARGET_WIDTH) }?.url
+            return ArtistRef(id, name, image)
+        }
+    }
 
     @Serializable
     private class AlbumDto(val images: List<ImageDto> = emptyList())

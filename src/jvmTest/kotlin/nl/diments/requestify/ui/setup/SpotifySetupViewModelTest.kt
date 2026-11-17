@@ -53,6 +53,7 @@ import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.spotify.ArtistRef
 import nl.diments.requestify.core.spotify.SpotifyCatalog
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.spotify.auth.LoopbackReceiver
@@ -70,6 +71,8 @@ class SpotifySetupViewModelTest {
     private class FakeCatalog(private val premium: SpotifyResult<Boolean?>) : SpotifyCatalog {
         override suspend fun searchTracks(query: String, limit: Int) = SpotifyResult.Ok(emptyList<Track>())
         override suspend fun track(id: String) = SpotifyResult.Failed("unused")
+        override suspend fun searchArtists(query: String, limit: Int) = SpotifyResult.Ok(emptyList<ArtistRef>())
+        override suspend fun artist(id: String) = SpotifyResult.Failed("unused")
         override suspend fun isPremium() = premium
     }
 

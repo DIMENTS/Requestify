@@ -17,6 +17,10 @@ class SpotifyInputTest {
     @Test fun uri() = assertEquals(TrackId(ID), classify("spotify:track:$ID"))
     @Test fun linkInsideMessage() = assertEquals(TrackId(ID), classify("love this https://open.spotify.com/track/$ID !!"))
     @Test fun album() = assertEquals(NotATrack("album"), classify("https://open.spotify.com/album/1ATL5GLyefJaxhQzSPVrLX"))
+    @Test fun artistLinkClassifiesAsArtistId() = assertEquals(
+        SpotifyInput.ArtistId("0OdUWJ0sBjDrqHygGUXeCF"),
+        classify("https://open.spotify.com/intl-nl/artist/0OdUWJ0sBjDrqHygGUXeCF?si=x"),
+    )
     @Test fun playlist() = assertEquals(NotATrack("playlist"), classify("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"))
     @Test fun episodeUri() = assertEquals(NotATrack("episode"), classify("spotify:episode:512ojhOuo1ktJprKbVcKyQ"))
     @Test fun searchText() = assertEquals(SearchText("daft punk one more time"), classify("  daft punk one more time "))

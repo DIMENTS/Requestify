@@ -33,6 +33,7 @@ import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.spotify.ArtistRef
 import nl.diments.requestify.core.spotify.SpotifyCatalog
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
@@ -57,6 +58,10 @@ class HomeViewModelTest {
             searches += query to limit
             return searchResult
         }
+
+        override suspend fun searchArtists(query: String, limit: Int): SpotifyResult<List<ArtistRef>> = SpotifyResult.Ok(emptyList())
+
+        override suspend fun artist(id: String): SpotifyResult<ArtistRef> = SpotifyResult.NotFound
 
         override suspend fun track(id: String): SpotifyResult<Track> {
             lookups += id

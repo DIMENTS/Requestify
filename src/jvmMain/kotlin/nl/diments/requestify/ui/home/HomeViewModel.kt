@@ -113,6 +113,7 @@ class HomeViewModel(
         when (val input = classifySpotifyInput(text)) {
             SpotifyInput.Empty -> add.value = AddState()
             is SpotifyInput.NotATrack -> add.value = AddState(text, message = AddMessage.NotATrack(input.kind))
+            is SpotifyInput.ArtistId -> add.value = AddState(text, message = AddMessage.NotATrack("artist"))
             is SpotifyInput.TrackId -> lookUp(text) { catalog.track(input.id).valueOrNull()?.let(::listOf) }
             is SpotifyInput.SearchText -> lookUp(text) {
                 delay(SEARCH_DEBOUNCE_MS)

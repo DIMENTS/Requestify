@@ -769,6 +769,7 @@ class PlaybackController(
         SpotifyResult.LoggedOut -> SpotifyHealth.LoggedOut
         is SpotifyResult.RateLimited -> SpotifyHealth.RateLimited(clock() + retryAfterMs(result))
         is SpotifyResult.Failed -> SpotifyHealth.Unreachable(result.message)
+        SpotifyResult.NotFound -> SpotifyHealth.Unreachable("not found")
         SpotifyResult.MissingPermission -> SpotifyHealth.Unreachable("missing permission")
     }
 

@@ -2,6 +2,7 @@ package nl.diments.requestify.core.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class Track(
@@ -14,6 +15,8 @@ data class Track(
     val albumArtUrl: String?,
     /** Spotify's artist ids, parallel to [artists]; empty for tracks saved before they were kept. */
     val artistIds: List<String> = emptyList(),
+    /** Whether Spotify says the track can be played in the streamer's market. Not saved: true when read back. */
+    @Transient val isPlayable: Boolean = true,
 )
 
 @Serializable

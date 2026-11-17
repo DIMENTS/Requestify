@@ -188,10 +188,48 @@ class SpotifyApiTest {
     }
 
     @Test
-    fun notFoundWithoutReasonIsFailed() = runBlocking<Unit> {
-        val result = api { respond("""{"error":{"status":404,"message":"Not found"}}""", HttpStatusCode.NotFound, json) }
+    fun notFoundFor400And404WithoutDeviceReason() = runBlocking<Unit> {
+        val notFound = api { respond("""{"error":{"status":404,"message":"Not found"}}""", HttpStatusCode.NotFound, json) }
             .track("nope")
-        assertIs<SpotifyResult.Failed>(result)
+        assertEquals(SpotifyResult.NotFound, notFound)
+        val bad = api { respond("""{"error":{"status":400,"message":"Invalid id"}}""", HttpStatusCode.BadRequest, json) }
+            .track("nope")
+        assertEquals(SpotifyResult.NotFound, bad)
+    }
+
+    @Test
+    fun trackParsesArtistIdsAndIsPlayable() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val body = """{"id":"t","uri":"spotify:track:t","name":"T","type":"track","artists":[{"id":"a1","name":"A"},{"id":"a2","name":"B"}],"is_playable":false}"""
+        val track = api { req -> seen = req; respond(body, HttpStatusCode.OK, json) }.track("t").ok()
+        assertEquals(listOf("a1", "a2"), track.artistIds)
+        assertEquals(false, track.isPlayable)
+        assertEquals("from_token", seen!!.url.parameters["market"])
+        val plain = api { fixtureOk("track.json") }.track("x").ok()
+        assertEquals(true, plain.isPlayable)
+        assertEquals(emptyList(), plain.artistIds)
+        var searched: HttpRequestData? = null
+        api { req -> searched = req; fixtureOk("search.json") }.searchTracks("x")
+        assertEquals("from_token", searched!!.url.parameters["market"])
+    }
+
+    @Test
+    fun searchArtistsUsesTypeArtistAndLimitAtMost10() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val body = """{"artists":{"items":[{"id":"a1","name":"M83","images":[{"url":"https://i/big","width":640},{"url":"https://i/small","width":160}]},null,{"id":"a2","name":"No Image"}]}}"""
+        val result = api { req -> seen = req; respond(body, HttpStatusCode.OK, json) }.searchArtists("m83", limit = 50)
+        assertEquals("artist", seen!!.url.parameters["type"])
+        assertEquals("10", seen.url.parameters["limit"])
+        assertEquals("m83", seen.url.parameters["q"])
+        assertEquals(listOf(ArtistRef("a1", "M83", "https://i/small"), ArtistRef("a2", "No Image", null)), result.ok())
+    }
+
+    @Test
+    fun artistById() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val result = api { req -> seen = req; respond("""{"id":"a1","name":"M83","images":[]}""", HttpStatusCode.OK, json) }.artist("a1")
+        assertEquals("/v1/artists/a1", seen!!.url.encodedPath)
+        assertEquals(ArtistRef("a1", "M83", null), result.ok())
     }
 
     @Test
