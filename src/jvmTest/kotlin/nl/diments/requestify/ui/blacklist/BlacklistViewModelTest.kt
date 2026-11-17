@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -54,10 +55,17 @@ class BlacklistViewModelTest {
         var tracks: List<Track> = emptyList()
         var artists: List<ArtistRef> = emptyList()
         var linkedArtist: SpotifyResult<ArtistRef> = SpotifyResult.NotFound
+        var linkedTrack: SpotifyResult<Track> = SpotifyResult.NotFound
+        var searchFailure: SpotifyResult<List<Track>>? = null
+        val byQuery = mutableMapOf<String, List<Track>>()
+
+        /** While set, a track search waits for it before answering. */
+        var gate: CompletableDeferred<Unit>? = null
 
         override suspend fun searchTracks(query: String, limit: Int): SpotifyResult<List<Track>> {
             trackSearches += query
-            return SpotifyResult.Ok(tracks)
+            gate?.await()
+            return searchFailure ?: SpotifyResult.Ok(byQuery[query] ?: tracks)
         }
 
         override suspend fun searchArtists(query: String, limit: Int): SpotifyResult<List<ArtistRef>> {
@@ -67,7 +75,7 @@ class BlacklistViewModelTest {
 
         override suspend fun artist(id: String): SpotifyResult<ArtistRef> = linkedArtist
 
-        override suspend fun track(id: String): SpotifyResult<Track> = SpotifyResult.NotFound
+        override suspend fun track(id: String): SpotifyResult<Track> = linkedTrack
 
         override suspend fun isPremium(): SpotifyResult<Boolean?> = SpotifyResult.Ok(true)
     }
@@ -266,5 +274,104 @@ class BlacklistViewModelTest {
         runCurrent()
         assertEquals("", s.vm.state.value.input)
         assertEquals(emptyList(), s.vm.state.value.results)
+    }
+
+    @Test
+    fun aSlowLookupNeverLandsOverNewerInput() = runTest {
+        val s = setup()
+        val old = track("old")
+        val new = track("new")
+        s.catalog.byQuery["first"] = listOf(old)
+        s.catalog.byQuery["second"] = listOf(new)
+        val gate = CompletableDeferred<Unit>()
+        s.catalog.gate = gate
+
+        s.vm.onInput("first")
+        advanceTimeBy(301) // the first search is out and waiting
+        runCurrent()
+        s.vm.onInput("second") // the first answer is no longer wanted
+        advanceTimeBy(301)
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(BlockCandidate.Song(new)), s.vm.state.value.results)
+        assertEquals("second", s.vm.state.value.input)
+    }
+
+    @Test
+    fun submitDoesNothingWhileLookingUp() = runTest {
+        val s = setup()
+        s.catalog.tracks = listOf(track("t1"))
+        s.vm.onInput("song")
+        advanceTimeBy(301)
+        runCurrent()
+        assertEquals(1, s.vm.state.value.results.size)
+
+        s.catalog.gate = CompletableDeferred()
+        s.vm.onInput("song 2") // looking up again; the old results are stale
+        runCurrent()
+        assertTrue(s.vm.state.value.lookingUp)
+        assertEquals(false, s.vm.onSubmit("song 2"))
+        assertEquals(false, s.vm.onSubmit("song"), "the stale results answer another input")
+        runCurrent()
+        assertTrue(s.parts.blacklist.blacklist.value.tracks.isEmpty())
+    }
+
+    @Test
+    fun aFailedAddOrRemoveShowsBlockFailingUntilTheNextSaveWorks() = runTest {
+        val s = setup()
+        val saved = track("t1")
+        assertTrue(s.parts.intake.blockTrack(saved, by = null))
+        runCurrent()
+        val blocker = dir.resolve("blacklist.json.tmp").also { it.toFile().mkdirs() } // the store cannot write
+
+        s.vm.onRemove("t1")
+        runCurrent()
+        assertTrue(s.vm.state.value.blockFailing)
+        assertEquals(1, s.vm.state.value.blacklist.tracks.size, "a remove that could not be saved is not applied")
+
+        s.vm.onAdd(BlockCandidate.Song(track("t2")))
+        runCurrent()
+        assertTrue(s.vm.state.value.blockFailing)
+        assertEquals(1, s.vm.state.value.blacklist.tracks.size)
+
+        blocker.toFile().deleteRecursively()
+        s.vm.onRemove("t1")
+        runCurrent()
+        assertEquals(false, s.vm.state.value.blockFailing)
+        assertTrue(s.vm.state.value.blacklist.tracks.isEmpty())
+
+        blocker.toFile().mkdirs()
+        s.vm.onAdd(BlockCandidate.Song(track("t3")))
+        runCurrent()
+        assertTrue(s.vm.state.value.blockFailing)
+        blocker.toFile().deleteRecursively()
+        s.vm.onAdd(BlockCandidate.Song(track("t3")))
+        runCurrent()
+        assertEquals(false, s.vm.state.value.blockFailing)
+        assertEquals("t3", s.vm.state.value.blacklist.tracks.single().track.id)
+    }
+
+    @Test
+    fun spotifyNotAnsweringShowsUnavailable() = runTest {
+        val s = setup()
+        s.catalog.searchFailure = SpotifyResult.Failed("down")
+        s.vm.onInput("song")
+        advanceTimeBy(301)
+        runCurrent()
+        assertEquals(BlacklistMessage.SpotifyUnavailable, s.vm.state.value.message)
+        assertEquals(emptyList(), s.vm.state.value.results)
+    }
+
+    @Test
+    fun trackLinkOnSongsTabResolvesViaTrackLookup() = runTest {
+        val s = setup()
+        val linked = track(trackId)
+        s.catalog.linkedTrack = SpotifyResult.Ok(linked)
+        s.vm.onInput("https://open.spotify.com/track/$trackId")
+        runCurrent() // no debounce for a link
+        assertEquals(listOf(BlockCandidate.Song(linked)), s.vm.state.value.results)
+        assertTrue(s.catalog.trackSearches.isEmpty(), "a link is not searched for")
     }
 }
