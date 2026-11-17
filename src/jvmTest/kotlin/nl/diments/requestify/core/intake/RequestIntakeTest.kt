@@ -323,4 +323,96 @@ class RequestIntakeTest {
         assertEquals(listOf("paid"), p.rejected.entries.value.map { it.id })
         assertEquals(RejectReason.ViewerBlocked, p.rejected.entries.value.single().reason)
     }
+
+    /** Makes writes of [name] fail (a directory sits where its temp file goes) until [healWrites]. */
+    private fun breakWrites(name: String) { dir.resolve("$name.tmp").toFile().mkdirs() }
+    private fun healWrites(name: String) { dir.resolve("$name.tmp").toFile().deleteRecursively() }
+
+    @Test
+    fun blockedViewerFreeRejectionsOfAnyReasonAreNotListed() = runTest {
+        catalog.tracks[idB] = track(idB, playable = false)
+        val p = parts()
+        p.blacklist.addViewer("u1", "viewer1", null, 0)
+
+        val album = p.intake.submit(incoming("r1", input = "https://open.spotify.com/album/$idA", viewer = "u1"))
+        val noMatch = p.intake.submit(incoming("r2", input = "asdf", viewer = "u1"))
+        val unplayable = p.intake.submit(incoming("r3", input = link(idB), viewer = "u1"))
+
+        listOf(album, noMatch, unplayable).forEach { assertEquals(false, assertIs<IntakeOutcome.Rejected>(it).listed) }
+        assertTrue(p.rejected.entries.value.isEmpty())
+    }
+
+    @Test
+    fun blockedViewerFreeRequestWhileSpotifyDownIsNotListed() = runTest {
+        catalog.failure = SpotifyResult.Failed("boom")
+        val p = parts()
+        p.blacklist.addViewer("u1", "viewer1", null, 0)
+
+        val out = p.intake.submit(incoming("r1", viewer = "u1"))
+
+        assertEquals(IntakeOutcome.Rejected(RejectReason.SpotifyUnavailable, null, listed = false), out)
+        assertTrue(p.rejected.entries.value.isEmpty())
+    }
+
+    @Test
+    fun sweepLeavesARequestQueuedWhenItsRejectedEntryCannotBeWritten() = runTest {
+        val p = parts()
+        p.controller.enqueue(Request("paid", track("t-paid", "Bad", "bad"), Requester("V", "v", "u1"), RequestSource.BITS, Payment.Bits(100), 1L))
+        runCurrent()
+        val events = mutableListOf<RequestEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { p.controller.events.collect { events += it } }
+        breakWrites("rejected.json")
+
+        assertTrue(p.intake.blockArtist("bad", "Bad", null))
+        runCurrent()
+
+        assertEquals(listOf("paid"), p.controller.queue.value.items.map { it.id })
+        assertTrue(events.filterIsInstance<RequestEvent.Removed>().isEmpty())
+        assertTrue(p.rejected.entries.value.isEmpty())
+    }
+
+    @Test
+    fun paidRequestIsStillPendingWhenPendingJsonCannotBeWritten() = runTest {
+        catalog.failure = SpotifyResult.Failed("boom")
+        breakWrites("pending.json")
+        val p = parts()
+
+        val out = p.intake.submit(incoming("p1", payment = Payment.Bits(500), source = RequestSource.BITS))
+
+        assertEquals(IntakeOutcome.Pending, out)
+        assertTrue(p.rejected.entries.value.isEmpty())
+        catalog.failure = null
+        catalog.tracks[idA] = track(idA)
+        advanceTimeBy(5_001); runCurrent() // retried in memory
+        assertEquals(listOf("p1"), p.controller.queue.value.items.map { it.id })
+    }
+
+    @Test
+    fun paidRejectionThatCannotBeSavedIsRetriedUntilSaved() = runTest {
+        breakWrites("rejected.json")
+        val p = parts()
+
+        val out = p.intake.submit(incoming("p1", input = "https://open.spotify.com/album/$idA", payment = Payment.Bits(500), source = RequestSource.BITS))
+
+        assertEquals(IntakeOutcome.Rejected(RejectReason.NotATrack("album"), null, listed = true), out)
+        assertTrue(p.rejected.entries.value.isEmpty())
+        advanceTimeBy(5_001); runCurrent()
+        assertTrue(p.rejected.entries.value.isEmpty()) // still broken
+        healWrites("rejected.json")
+        advanceTimeBy(15_001); runCurrent()
+        assertEquals(listOf("p1"), p.rejected.entries.value.map { it.id })
+    }
+
+    @Test
+    fun freeRejectionThatCannotBeSavedIsDroppedAndNotListed() = runTest {
+        breakWrites("rejected.json")
+        val p = parts()
+
+        val out = p.intake.submit(incoming("r1", input = "https://open.spotify.com/album/$idA"))
+        healWrites("rejected.json")
+        advanceTimeBy(60_000); runCurrent()
+
+        assertEquals(IntakeOutcome.Rejected(RejectReason.NotATrack("album"), null, listed = false), out)
+        assertTrue(p.rejected.entries.value.isEmpty())
+    }
 }
