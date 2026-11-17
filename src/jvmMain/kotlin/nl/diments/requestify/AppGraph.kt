@@ -19,7 +19,10 @@ import nl.diments.requestify.core.intake.PendingResolveStore
 import nl.diments.requestify.core.intake.RejectedEntry
 import nl.diments.requestify.core.intake.RejectedStore
 import nl.diments.requestify.core.intake.RequestIntake
+import nl.diments.requestify.core.model.Request
+import nl.diments.requestify.core.model.isFreeViewerRequest
 import nl.diments.requestify.core.playback.PlaybackController
+import nl.diments.requestify.core.playback.RemoveReason
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.secrets.SecretStore
@@ -31,6 +34,8 @@ import nl.diments.requestify.core.spotify.auth.SpotifyAuth
 import nl.diments.requestify.core.storage.AppJson
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.stream.RequestsGate
+import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 
@@ -65,13 +70,22 @@ class AppGraph(
 
     private val spotify = SpotifyApi(http, token = { force -> auth.token(force) })
 
-    /** Whether requests are open: open until the requests gate takes over. */
-    private val requestsOpen = MutableStateFlow(true)
+    /** Whether a Twitch account is logged in: none until the Twitch session is wired. */
+    private val twitchConnected = MutableStateFlow(false)
+
+    /** Whether requests are open; at the stream's real end it clears the free viewer requests. */
+    val gate: RequestsGate = RequestsGate(
+        file = JsonFileStore(paths.streamFile, StreamState.serializer()) { StreamState() },
+        twitchConnected = twitchConnected,
+        scope = scope,
+        clock = System::currentTimeMillis,
+        onStreamEnded = { controller.removeMatching(RemoveReason.StreamEnded) { it.filter(Request::isFreeViewerRequest) } },
+    )
 
     private val controller = PlaybackController(
         player = spotify,
         store = QueueStore(JsonFileStore(paths.queueFile, PersistedPlayback.serializer()) { PersistedPlayback() }),
-        requestsOpen = requestsOpen,
+        requestsOpen = gate.open,
         paidPriority = { settings.settings.value.paidPriority },
         scope = scope,
         clock = System::currentTimeMillis,
@@ -91,7 +105,7 @@ class AppGraph(
         blacklist = blacklist,
         rejected = rejected,
         pending = pending,
-        requestsOpen = requestsOpen,
+        requestsOpen = gate.open,
         scope = scope,
         clock = System::currentTimeMillis,
     )
@@ -100,8 +114,12 @@ class AppGraph(
 
     val spotifySetup = SpotifySetupViewModel(settings, auth, spotify, controller, scope)
 
-    /** Starts polling Spotify and resumes the paid requests that waited for it. */
+    /**
+     * Resumes the offline grace (or ends a stream whose grace ran out while the app was off), starts polling Spotify
+     * and resumes the paid requests that waited for it.
+     */
     fun start() {
+        gate.start()
         controller.start()
         intake.start()
     }

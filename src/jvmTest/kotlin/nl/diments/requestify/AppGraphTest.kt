@@ -18,6 +18,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,14 @@ class AppGraphTest {
 
         assertEquals(emptyList(), graph.home.state.value.queue)
         assertTrue(requests.isEmpty(), "building the graph must not poll Spotify: $requests")
+    }
+
+    @Test
+    fun requestsAreOpenWithoutTwitch() = runTest {
+        val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), backgroundScope)
+        runCurrent()
+        assertTrue(graph.gate.open.value)
+        assertFalse(graph.gate.status.value.twitch)
     }
 
     @Test
