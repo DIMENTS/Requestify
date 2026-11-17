@@ -22,6 +22,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,7 @@ import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.queue.RequestQueue
+import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
 
 /** [PlaybackController.submit], the targeted removals and the request lifecycle events. */
@@ -342,6 +344,132 @@ class PlaybackControllerSubmitTest {
             seen.map { it.event },
         )
         assertTrue(seen.all { it.saved.queue.items == listOf(paid, own) }, "both emitted after the one save")
+    }
+
+    /**
+     * Queues R1, then [behind]. Track A has 15 s left, so the first tick picks R1, and Spotify holds the hand-over
+     * open until the returned gate completes.
+     */
+    private fun TestScope.startHandingOverR1(
+        player: FakeSpotifyPlayer,
+        controller: PlaybackController,
+        behind: List<Request> = emptyList(),
+    ): CompletableDeferred<Unit> {
+        val gate = CompletableDeferred<Unit>()
+        player.addToQueueGate = gate
+        player.plays(trackA, progressMs = 185_000)
+        controller.enqueue(r1)
+        behind.forEach(controller::enqueue)
+        controller.start()
+        runCurrent()
+        assertEquals(listOf(r1.track.uri), player.callsTo("addToQueue").map { it.arg })
+        return gate
+    }
+
+    @Test
+    fun removeWhileHandingOverIsDroppedWhenSpotifyTakesIt() = runTest {
+        val player = fakePlayer()
+        val controller = controller(player)
+        val seen = eventsOf(controller)
+        val gate = startHandingOverR1(player, controller)
+
+        controller.remove("r1")
+        runCurrent()
+        assertEquals(listOf(r1), controller.queue.value.items, "the removal waits for Spotify's answer")
+        assertEquals(emptyList(), seen)
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(r1, controller.handedOver.value, "Spotify has it: nothing can be pulled back")
+        assertTrue(controller.queue.value.items.isEmpty())
+        assertEquals(emptyList(), seen, "not removed")
+
+        player.plays(r1.track, progressMs = 1_000)
+        advance(1_000)
+        assertEquals(listOf<RequestEvent>(RequestEvent.Started(r1)), seen.map { it.event }, "only started")
+    }
+
+    @Test
+    fun removeWhileHandingOverAppliesWhenSpotifyRefuses() = runTest {
+        val player = fakePlayer()
+        player.addToQueueResults.add(SpotifyResult.Failed("HTTP 503"))
+        val controller = controller(player)
+        val seen = eventsOf(controller)
+        val gate = startHandingOverR1(player, controller)
+
+        controller.remove("r1")
+        runCurrent()
+        assertEquals(listOf(r1), controller.queue.value.items)
+
+        gate.complete(Unit)
+        runCurrent()
+        assertTrue(controller.queue.value.items.isEmpty())
+        assertNull(controller.handedOver.value)
+        assertEquals(listOf<RequestEvent>(RequestEvent.Removed(r1, RemoveReason.Streamer)), seen.map { it.event })
+        assertTrue(seen.single().saved.queue.items.isEmpty(), "emitted after the save")
+
+        advance(3_000)
+        assertEquals(1, player.callsTo("addToQueue").size, "not sent again")
+        assertEquals(1, seen.size, "removed once")
+    }
+
+    @Test
+    fun removeMatchingDuringTheHandOverDoesNotPickIt() = runTest {
+        val player = fakePlayer()
+        val controller = controller(player)
+        val seen = eventsOf(controller)
+        val gate = startHandingOverR1(player, controller, behind = listOf(r2))
+
+        var offered: List<Request>? = null
+        val removed = controller.removeMatching(RemoveReason.StreamEnded) { offered = it; it + r1 } // R1 named anyway
+        assertEquals(listOf(r2), offered, "the request being handed over is not offered")
+        assertEquals(listOf(r2), removed)
+        assertEquals(listOf(r1), controller.queue.value.items)
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(r1, controller.handedOver.value)
+        assertEquals(listOf<RequestEvent>(RequestEvent.Removed(r2, RemoveReason.StreamEnded)), seen.map { it.event })
+    }
+
+    @Test
+    fun removeDuringTheHandOverOfASkipWaitsToo() = runTest {
+        val player = fakePlayer()
+        val controller = controller(player) // not started: only the skip talks to Spotify
+        val seen = eventsOf(controller)
+        controller.enqueue(r1)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        player.addToQueueGate = gate
+        launch { controller.skip() }
+        runCurrent()
+        assertEquals(listOf(r1.track.uri), player.callsTo("addToQueue").map { it.arg })
+
+        controller.remove("r1", RemoveReason.WrongSong)
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(r1, controller.handedOver.value)
+        assertEquals(listOf("addToQueue", "skipNext"), player.calls.map { it.name })
+        assertEquals(emptyList(), seen)
+    }
+
+    @Test
+    fun stoppingDuringTheHandOverEndsItAsRefused() = runTest {
+        val player = fakePlayer()
+        val controller = controller(player)
+        val seen = eventsOf(controller)
+        startHandingOverR1(player, controller)
+        controller.remove("r1", RemoveReason.ModRemove)
+        runCurrent()
+        assertEquals(listOf(r1), controller.queue.value.items, "the removal waits for Spotify's answer")
+        assertEquals(emptyList(), seen)
+
+        controller.stop() // cancels the tick while Spotify has not answered
+        runCurrent()
+        assertTrue(controller.queue.value.items.isEmpty())
+        assertNull(controller.handedOver.value)
+        assertEquals(listOf<RequestEvent>(RequestEvent.Removed(r1, RemoveReason.ModRemove)), seen.map { it.event })
     }
 
     @Test

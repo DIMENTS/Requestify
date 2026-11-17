@@ -649,13 +649,13 @@ class PlaybackControllerTest {
         assertEquals(listOf(r1.track.uri), player.callsTo("addToQueue").map { it.arg }) // still in flight
 
         controller.enqueue(r3)
-        controller.remove("r1")
+        controller.remove("r1") // being handed over: the removal waits for Spotify's answer
         controller.move("r3", 0)
         runCurrent()
-        assertEquals(listOf(r3, r2), controller.queue.value.items)
-        assertEquals(listOf(r3, r2), store().load().queue.items)
+        assertEquals(listOf(r3, r1, r2), controller.queue.value.items)
+        assertEquals(listOf(r3, r1, r2), store().load().queue.items)
 
-        gate.complete(Unit) // Spotify has R1, so it counts as handed over even though it was removed meanwhile
+        gate.complete(Unit) // Spotify has R1: it is handed over, and the removal asked for meanwhile is dropped
         runCurrent()
         assertEquals(listOf(r3, r2), controller.queue.value.items)
         val saved = store().load()

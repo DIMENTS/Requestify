@@ -218,6 +218,16 @@ class PlaybackController(
     /** Events of changes not saved yet, in order; [persistAndEmit] sends them. Guarded by [stateMutex]. */
     private val unsentEvents = mutableListOf<RequestEvent>()
 
+    /**
+     * The head being handed over: from the state section that picks it until the one that applies Spotify's answer
+     * ([handOver]). It is still queued, but for removals it counts as handed over already: [removeMatching] does not
+     * offer it to its pick, and a [remove] of it is only remembered. When Spotify took it, it is handed over and the
+     * removal is dropped (nothing can be pulled back from Spotify's queue), without [RequestEvent.Removed]; when
+     * Spotify refused, it stays queued, or is removed now when a removal was remembered. So a request is never both
+     * removed and started. Only holders of [spotifyMutex] set it. Guarded by [stateMutex].
+     */
+    private var handingOver: HandingOver? = null
+
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var loop: Job? = null
 
@@ -268,29 +278,35 @@ class PlaybackController(
 
     /**
      * Takes the request with [id] out of the queue; one handed over or playing stays. [RequestEvent.Removed] tells
-     * [why].
+     * [why]. While it is being handed over ([handingOver]) the removal waits for Spotify's answer: when Spotify took
+     * it, it stays handed over and nothing is removed.
      */
     fun remove(id: String, why: RemoveReason = RemoveReason.Streamer) {
         change {
-            val request = _queue.value.items.firstOrNull { it.id == id } ?: return@change
-            _queue.value = _queue.value.remove(id)
-            unsentEvents += RequestEvent.Removed(request, why)
+            val sending = handingOver
+            if (sending != null && sending.request.id == id) {
+                if (sending.removal == null) sending.removal = why // the first removal asked for counts
+            } else {
+                removeQueued(id, why)
+            }
         }
     }
 
     /**
      * Takes the queued requests that [pick] chooses from the queue out of it in one step, and returns them in queue
-     * order. Picks that are not queued (handed over, playing or unknown) are left alone. Each removed request gets a
+     * order. Picks that are not queued (handed over, playing or unknown) are left alone, and the request being
+     * handed over ([handingOver]) is not offered to [pick]: it counts as handed over. Each removed request gets a
      * [RequestEvent.Removed] for [why]. Waits until the saved state is loaded.
      */
     suspend fun removeMatching(why: RemoveReason, pick: (List<Request>) -> List<Request>): List<Request> {
         awaitLoaded()
         return withState {
-            val queued = _queue.value.items
-            val ids = pick(queued).mapTo(HashSet()) { it.id }
-            val removed = queued.filter { it.id in ids }
+            val offered = _queue.value.items.filter { it.id != handingOver?.request?.id }
+            val picked = pick(offered).mapTo(HashSet()) { it.id }
+            val removed = offered.filter { it.id in picked }
             if (removed.isNotEmpty()) {
-                _queue.value = RequestQueue(queued.filterNot { it.id in ids })
+                val removedIds = removed.mapTo(HashSet()) { it.id } // never the one being handed over
+                _queue.value = RequestQueue(_queue.value.items.filterNot { it.id in removedIds })
                 removed.forEach { unsentEvents += RequestEvent.Removed(it, why) }
                 wake.trySend(Unit) // under the lock, like [syncLocked]
             }
@@ -315,6 +331,13 @@ class PlaybackController(
     /** Caller holds [stateMutex]. */
     private fun isKnown(id: String): Boolean =
         _queue.value.items.any { it.id == id } || _handedOver.value?.id == id || playing?.id == id
+
+    /** Takes the queued request with [id] out, with a [RequestEvent.Removed] for [why]. Caller holds [stateMutex]. */
+    private fun removeQueued(id: String, why: RemoveReason) {
+        val request = _queue.value.items.firstOrNull { it.id == id } ?: return
+        _queue.value = _queue.value.remove(id)
+        unsentEvents += RequestEvent.Removed(request, why)
+    }
 
     /** What [decide][submit] sees: the state with the request playing now. Caller holds [stateMutex]. */
     private fun stateSnapshot() =
@@ -341,10 +364,10 @@ class PlaybackController(
      */
     suspend fun skip() {
         spotifyMutex.withLock {
-            val head = if (syncState()) withState { handOverCandidate(liveTrackId()) } else null
+            val head = if (syncState()) withState { pickForHandOver(liveTrackId()) } else null
             if (head != null) {
-                val result = player.addToQueue(head.track.uri)
-                withState { if (result is SpotifyResult.Ok) markHandedOver(head) else _health.value = healthOf(result) }
+                val result = handOver(head)
+                if (result !is SpotifyResult.Ok) withState { _health.value = healthOf(result) }
             }
             val skipped = player.skipNext()
             stateMutex.withLock { commandAnswered(skipped) }
@@ -538,11 +561,9 @@ class PlaybackController(
             if (recentAskedUnder != null && recent != null) lastPlayedBook.answeredRecentlyPlayed(recent, recentAskedUnder)
             if (track?.id != lastTrackId) settleTrackChange(track?.id, spotifyQueue)
             _nowPlaying.value = lastPlayedBook.show(cp, playing, _nowPlaying.value, ::withPlayIntent)
-            if (remainingMs != null && remainingMs <= config.handoverLeadMs) handOverCandidate(track?.id) else null
+            if (remainingMs != null && remainingMs <= config.handoverLeadMs) pickForHandOver(track?.id) else null
         }
-        val handOverResult = head?.let { player.addToQueue(it.track.uri) }
-        // Saved at once: Spotify has it, so it must not wait for (or be lost with) the read below.
-        if (head != null && handOverResult is SpotifyResult.Ok) withState { markHandedOver(head) }
+        val handOverResult = head?.let { handOver(it) }
         if (cp == null) upcomingBook.reset() // read again as soon as something is active
         // After the hand-over, so Spotify's queue already has it.
         val upcoming = if (upcomingBook.due(cp != null, track?.id, handOverResult)) {
@@ -636,7 +657,41 @@ class PlaybackController(
     private fun handOverCandidate(currentTrackId: String?): Request? =
         _queue.value.head?.takeIf { requestsOpen.value && _handedOver.value == null && it.track.id != currentTrackId }
 
-    /** Spotify has [request] now, even if it was moved or removed meanwhile: take it out of the current queue. */
+    /** [handOverCandidate], which is [handingOver] from now on. Caller holds [spotifyMutex] and [stateMutex]. */
+    private fun pickForHandOver(currentTrackId: String?): Request? =
+        handOverCandidate(currentTrackId)?.also { handingOver = HandingOver(it) }
+
+    /**
+     * Sends [head], just picked by [pickForHandOver], to Spotify's queue, and applies the answer at once in a state
+     * section of its own ([handOverAnswered]): when Spotify has it, that is saved at once, so it does not wait for
+     * (nor is lost with) a later call. The answer is applied even when the call throws or the sequence is cancelled
+     * (as refused then), so [handingOver] always ends. Caller holds [spotifyMutex].
+     */
+    private suspend fun handOver(head: Request): SpotifyResult<Unit> {
+        var result: SpotifyResult<Unit>? = null
+        try {
+            result = player.addToQueue(head.track.uri)
+            return result
+        } finally {
+            withContext(NonCancellable) { withState { handOverAnswered(added = result is SpotifyResult.Ok) } }
+        }
+    }
+
+    /**
+     * Ends [handingOver]: when [added], the request is handed over and a removal asked for meanwhile is dropped;
+     * otherwise it stays queued, unless a removal was asked for meanwhile: then it is removed now. Caller holds
+     * [stateMutex].
+     */
+    private fun handOverAnswered(added: Boolean) {
+        val sending = handingOver ?: return
+        handingOver = null
+        if (added) markHandedOver(sending.request) else sending.removal?.let { removeQueued(sending.request.id, it) }
+    }
+
+    /**
+     * Spotify has [request] now, even if it was moved meanwhile (a removal waits for the answer, see
+     * [handingOver]): take it out of the current queue.
+     */
     private fun markHandedOver(request: Request) {
         _handedOver.value = request
         _queue.value = _queue.value.remove(request.id)
@@ -734,4 +789,9 @@ class PlaybackController(
 
     /** A pause or resume Spotify has not confirmed yet: [shown] is what it showed, until [untilEpochMs]. */
     private class PlayIntent(val shown: NowPlaying, val untilEpochMs: Long)
+
+    /** [request] is being sent to Spotify's queue; [removal] is the first removal asked for meanwhile. */
+    private class HandingOver(val request: Request) {
+        var removal: RemoveReason? = null
+    }
 }
