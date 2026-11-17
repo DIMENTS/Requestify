@@ -19,6 +19,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import nl.diments.requestify.core.auth.TokenResult
 import nl.diments.requestify.core.model.Track
 
 class SpotifyApiTest {

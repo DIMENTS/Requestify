@@ -16,6 +16,7 @@ data class Settings(
     val darkMode: DarkMode = DarkMode.System,
     val language: AppLanguage = AppLanguage.System,
     val paidPriority: Boolean = true,
+    val twitch: TwitchSettings = TwitchSettings(),
 )
 
 /** Saved in settings.json under the stable names below: never change them, or saved settings are lost. */
