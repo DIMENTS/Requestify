@@ -80,6 +80,8 @@ data class Redemption(
     val redeemedAtEpochMs: Long,
 )
 
+/** Sent to Helix by name, and saved by name in redemptions.json: never rename a value. */
+@Serializable
 enum class RedemptionStatus { FULFILLED, CANCELED }
 
 /**
