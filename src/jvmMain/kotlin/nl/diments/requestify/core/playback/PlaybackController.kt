@@ -11,8 +11,11 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -20,6 +23,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.queue.PersistedPlayback
@@ -108,7 +112,8 @@ data class PlaybackConfig(
  * A failed Spotify call never drops a request: it stays where it was and the next tick tries again.
  *
  * Nothing is handed over or saved before the saved state has been read. While it cannot be read ([loadError]),
- * edits wait in order and are applied on top of it once a later tick or edit reads it.
+ * edits wait in order and are applied on top of it once a later tick or edit reads it; [submit] and
+ * [removeMatching] wait for it themselves, as they answer with what they did.
  *
  * Besides the polls, Spotify's queue ([upcoming]) and its recently played song are read only when something
  * changed or a while has passed, never on every poll. Neither ever changes [health], but when Spotify asks to wait
@@ -179,6 +184,15 @@ class PlaybackController(
      */
     val loadError: StateFlow<String?> = _loadError.asStateFlow()
 
+    private val _events = MutableSharedFlow<RequestEvent>(extraBufferCapacity = Channel.UNLIMITED)
+
+    /**
+     * Requests that started playing or were removed from the queue, in order, each once its change is saved: while
+     * saving fails they wait for the save that succeeds, so nothing acts on a change a restart would undo. Without
+     * replay: a collector sees what is emitted after it subscribed, and a slow one misses nothing.
+     */
+    val events: SharedFlow<RequestEvent> = _events.asSharedFlow()
+
     private val spotifyMutex = Mutex()
     private val stateMutex = Mutex()
 
@@ -198,7 +212,11 @@ class PlaybackController(
      */
     private var commandFoundNoDevice = false
 
+    /** Edits made before the saved state could be read, in order. Guarded by [stateMutex]. */
     private val waitingEdits = mutableListOf<() -> Unit>()
+
+    /** Events of changes not saved yet, in order; [persistAndEmit] sends them. Guarded by [stateMutex]. */
+    private val unsentEvents = mutableListOf<RequestEvent>()
 
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var loop: Job? = null
@@ -227,20 +245,94 @@ class PlaybackController(
 
     /** Adds [request] unless a request with its id is already queued, handed over or playing. */
     fun enqueue(request: Request) {
-        change {
-            val known = _queue.value.items.any { it.id == request.id } ||
-                _handedOver.value?.id == request.id ||
-                playing?.id == request.id
-            if (!known) _queue.value = _queue.value.add(request, paidPriority())
+        change { if (!isKnown(request.id)) _queue.value = _queue.value.add(request, paidPriority()) }
+    }
+
+    /**
+     * Adds [request] when [decide], given the state as it is now, returns no reason against it. Deciding and adding
+     * are one step under [stateMutex], so two requests at once can never both pass a limit. A request whose id is
+     * already queued, handed over or playing is not added again, nor decided on: it is accepted where it is. Waits
+     * until the saved state is loaded.
+     */
+    suspend fun submit(request: Request, decide: (PlaybackSnapshot) -> RejectReason?): SubmitOutcome {
+        awaitLoaded()
+        return withState {
+            if (!isKnown(request.id)) {
+                decide(stateSnapshot())?.let { return@withState SubmitOutcome.Rejected(it) }
+                _queue.value = _queue.value.add(request, paidPriority())
+                wake.trySend(Unit) // under the lock, like [syncLocked]
+            }
+            whereIs(request.id)
         }
     }
 
-    fun remove(id: String) {
-        change { _queue.value = _queue.value.remove(id) }
+    /**
+     * Takes the request with [id] out of the queue; one handed over or playing stays. [RequestEvent.Removed] tells
+     * [why].
+     */
+    fun remove(id: String, why: RemoveReason = RemoveReason.Streamer) {
+        change {
+            val request = _queue.value.items.firstOrNull { it.id == id } ?: return@change
+            _queue.value = _queue.value.remove(id)
+            unsentEvents += RequestEvent.Removed(request, why)
+        }
+    }
+
+    /**
+     * Takes the queued requests that [pick] chooses from the queue out of it in one step, and returns them in queue
+     * order. Picks that are not queued (handed over, playing or unknown) are left alone. Each removed request gets a
+     * [RequestEvent.Removed] for [why]. Waits until the saved state is loaded.
+     */
+    suspend fun removeMatching(why: RemoveReason, pick: (List<Request>) -> List<Request>): List<Request> {
+        awaitLoaded()
+        return withState {
+            val queued = _queue.value.items
+            val ids = pick(queued).mapTo(HashSet()) { it.id }
+            val removed = queued.filter { it.id in ids }
+            if (removed.isNotEmpty()) {
+                _queue.value = RequestQueue(queued.filterNot { it.id in ids })
+                removed.forEach { unsentEvents += RequestEvent.Removed(it, why) }
+                wake.trySend(Unit) // under the lock, like [syncLocked]
+            }
+            removed
+        }
+    }
+
+    /**
+     * The state as shown, for `!song` and `!queue`, read without the lock. [PlaybackSnapshot.playing] is the request
+     * of [nowPlaying], so it can lag a poll behind the request that plays, and while Spotify has nothing active it is
+     * the request of the [NowPlayingKind.LastPlayed] card.
+     */
+    fun snapshot(): PlaybackSnapshot {
+        val now = _nowPlaying.value
+        return PlaybackSnapshot(_queue.value.items, _handedOver.value, now?.request, _history.value, now)
     }
 
     fun move(id: String, toIndex: Int) {
         change { _queue.value = _queue.value.move(id, toIndex) }
+    }
+
+    /** Caller holds [stateMutex]. */
+    private fun isKnown(id: String): Boolean =
+        _queue.value.items.any { it.id == id } || _handedOver.value?.id == id || playing?.id == id
+
+    /** What [decide][submit] sees: the state with the request playing now. Caller holds [stateMutex]. */
+    private fun stateSnapshot() =
+        PlaybackSnapshot(_queue.value.items, _handedOver.value, playing, _history.value, _nowPlaying.value)
+
+    /**
+     * Where the known request with [id] is, and about how long until it plays: the rest of the track shown now, the
+     * handed-over one, then the queued ones before it. Caller holds [stateMutex].
+     */
+    private fun whereIs(id: String): SubmitOutcome.Accepted {
+        if (playing?.id == id) return SubmitOutcome.Accepted(0, 0)
+        val restOfTrackMs = _nowPlaying.value?.let { it.track.durationMs - it.positionAt(clock()) } ?: 0
+        if (_handedOver.value?.id == id) return SubmitOutcome.Accepted(0, restOfTrackMs)
+        val index = _queue.value.items.indexOfFirst { it.id == id }
+        check(index >= 0) { "request $id is not known" }
+        val handedOverMs = _handedOver.value?.track?.durationMs ?: 0
+        val queuedBeforeMs = _queue.value.items.take(index).sumOf { it.track.durationMs }
+        return SubmitOutcome.Accepted(index + 1, restOfTrackMs + handedOverMs + queuedBeforeMs)
     }
 
     /**
@@ -365,6 +457,11 @@ class PlaybackController(
     /** [syncLocked] under [stateMutex]. */
     private suspend fun syncState(): Boolean = stateMutex.withLock { syncLocked() }
 
+    /** Reads the saved state if needed, trying again every [PlaybackConfig.idlePollMs] until it can be read. */
+    private suspend fun awaitLoaded() {
+        while (!syncState()) delay(config.idlePollMs)
+    }
+
     /**
      * Reads the saved state the first time, applies the edits that waited for it and saves when the state changed
      * (so it also retries a failed save). False while the saved state cannot be read: nothing is applied or saved
@@ -378,7 +475,7 @@ class PlaybackController(
             edits.forEach { it() }
             wake.trySend(Unit) // under the lock, so a tick that reads the queue after this drains it
         }
-        persistIfChanged()
+        persistAndEmit()
         return true
     }
 
@@ -392,7 +489,7 @@ class PlaybackController(
         try {
             block()
         } finally {
-            persistIfChanged()
+            persistAndEmit()
         }
     }
 
@@ -509,9 +606,9 @@ class PlaybackController(
     }
 
     /**
-     * Spotify moved on to [trackId]: the playing request is done, and the handed-over one either plays now or,
-     * when [spotifyQueue] no longer has it, goes back to the head. A failed queue check never gets here, so
-     * [lastTrackId] stays put and the next tick settles the change again.
+     * Spotify moved on to [trackId]: the playing request is done, and the handed-over one either plays now
+     * ([RequestEvent.Started]) or, when [spotifyQueue] no longer has it, goes back to the head. A failed queue check
+     * never gets here, so [lastTrackId] stays put and the next tick settles the change again.
      */
     private fun settleTrackChange(trackId: String?, spotifyQueue: List<String>?) {
         playing?.let {
@@ -524,6 +621,7 @@ class PlaybackController(
         if (sent != null && sent.track.id == trackId) {
             playing = sent
             _handedOver.value = null
+            unsentEvents += RequestEvent.Started(sent)
         } else if (sent != null && spotifyQueue != null && sent.track.id !in spotifyQueue) {
             _queue.value = _queue.value.addFirst(sent)
             _handedOver.value = null
@@ -597,21 +695,37 @@ class PlaybackController(
         return true
     }
 
-    /** Saves when the state differs from the last successful save; a failure shows in [persistError]. */
-    private suspend fun persistIfChanged() {
+    /**
+     * [persistIfChanged], then, once everything is saved, emits the [unsentEvents] in order. While saving fails they
+     * wait for the save that succeeds. Caller holds [stateMutex].
+     */
+    private suspend fun persistAndEmit() {
+        if (!persistIfChanged() || unsentEvents.isEmpty()) return
+        val events = unsentEvents.toList()
+        unsentEvents.clear()
+        events.forEach { _events.tryEmit(it) } // never fails: the buffer is unlimited
+    }
+
+    /**
+     * Saves when the state differs from the last successful save; a failure shows in [persistError]. True when
+     * everything is saved.
+     */
+    private suspend fun persistIfChanged(): Boolean {
         val snapshot = PersistedPlayback(_queue.value, _handedOver.value, playing, _history.value, lastPlayedBook.lastPlayed)
         if (snapshot == lastSaved) {
             _persistError.value = null // e.g. an unsaved edit was undone: nothing is left unsaved
-            return
+            return true
         }
-        try {
+        return try {
             withContext(ioDispatcher + NonCancellable) { store.save(snapshot) }
             lastSaved = snapshot
             _persistError.value = null
+            true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             _persistError.value = e.toString()
+            false
         }
     }
 

@@ -11,7 +11,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import nl.diments.requestify.core.model.Payment
+import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
@@ -124,5 +127,41 @@ class SavedFormatCompatTest {
         val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value
         assertEquals(Settings(themeMode = ThemeMode.Album), loaded)
         assertNothingMovedAside()
+    }
+
+    /** Rejections are saved in rejected.json: each reason keeps its name and fields. */
+    @Test
+    fun everyRejectReasonKeepsItsSavedName() {
+        val saved = listOf(
+            RejectReason.NotATrack("album") to """{"type":"not_a_track","kind":"album"}""",
+            RejectReason.NoMatch to """{"type":"no_match"}""",
+            RejectReason.Unplayable to """{"type":"unplayable"}""",
+            RejectReason.SpotifyUnavailable to """{"type":"spotify_unavailable"}""",
+            RejectReason.ViewerBlocked to """{"type":"viewer_blocked"}""",
+            RejectReason.TrackBlocked to """{"type":"track_blocked"}""",
+            RejectReason.ArtistBlocked to """{"type":"artist_blocked"}""",
+            RejectReason.Explicit to """{"type":"explicit"}""",
+            RejectReason.TooShort(30_000) to """{"type":"too_short","minMs":30000}""",
+            RejectReason.TooLong(420_000) to """{"type":"too_long","maxMs":420000}""",
+            RejectReason.Closed to """{"type":"closed"}""",
+            RejectReason.QueueFull(25) to """{"type":"queue_full","max":25}""",
+            RejectReason.ViewerLimit(2) to """{"type":"viewer_limit","max":2}""",
+            RejectReason.Cooldown(180_000) to """{"type":"cooldown","remainingMs":180000}""",
+            RejectReason.Duplicate to """{"type":"duplicate"}""",
+            RejectReason.BelowMinimum(100) to """{"type":"below_minimum","minBits":100}""",
+        )
+        val subclasses = RejectReason.serializer().descriptor.getElementDescriptor(1) // the sealed subclasses
+        val checkedNames = saved.map { (_, json) ->
+            AppJson.instance.parseToJsonElement(json).jsonObject.getValue("type").jsonPrimitive.content
+        }
+        assertEquals(
+            (0 until subclasses.elementsCount).map(subclasses::getElementName).sorted(),
+            checkedNames.sorted(),
+            "every reason is checked here",
+        )
+        for ((reason, json) in saved) {
+            assertEquals(json, AppJson.instance.encodeToString(RejectReason.serializer(), reason))
+            assertEquals(reason, AppJson.instance.decodeFromString(RejectReason.serializer(), json))
+        }
     }
 }
