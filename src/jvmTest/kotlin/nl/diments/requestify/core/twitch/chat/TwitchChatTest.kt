@@ -209,6 +209,20 @@ class TwitchChatTest {
     }
 
     @Test
+    fun blockedViewerGetsNoReplyForAnyRejection() = runTest {
+        val h = harness()
+        h.intake.blockViewer("u1", "login_u1", null)
+        h.message("msg1", "!sr https://open.spotify.com/album/$idA", viewer = "u1")
+        h.message("msg2", "!sr ${link(idC.replace('C', 'Z'))}", viewer = "u1") // no such track
+        h.message("probe", "!song", viewer = "u2")
+
+        awaitUntil("probe reply") { h.twitch.sends.isNotEmpty() }
+        settle()
+        assertEquals(listOf("probe"), h.twitch.sends.map { it.replyTo })
+        assertTrue(h.rejectedEntries.isEmpty())
+    }
+
+    @Test
     fun followersLevelChecksOnceAndCaches() = runTest {
         val h = harness()
         h.setPermission(ChatPermission.Followers)

@@ -61,7 +61,8 @@ class ChatReplies {
     suspend fun outcome(outcome: IntakeOutcome, mention: String?, refundedPoints: Boolean): String? = when (outcome) {
         is IntakeOutcome.Accepted -> mentioned(mention, accepted(outcome))
         is IntakeOutcome.Rejected -> {
-            if (outcome.reason == RejectReason.ViewerBlocked) {
+            // Not listed = a free request of a blocked viewer: no audience for trolls, whatever the reason.
+            if (outcome.reason == RejectReason.ViewerBlocked || !outcome.listed) {
                 null
             } else {
                 val text = reason(outcome.reason)
