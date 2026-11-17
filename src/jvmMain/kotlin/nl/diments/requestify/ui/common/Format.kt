@@ -3,6 +3,9 @@ package nl.diments.requestify.ui.common
 import androidx.compose.runtime.Composable
 import java.math.BigDecimal
 import java.text.NumberFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Currency
 import java.util.Locale
 import nl.diments.requestify.core.model.Payment
@@ -65,3 +68,7 @@ fun requesterLabel(source: RequestSource, requester: Requester): String =
 
 private fun moneyOf(payment: Payment?): String =
     (payment as? Payment.Money)?.let { formatMoney(it.amountCents, it.currency, Locale.getDefault()) }.orEmpty()
+
+/** A day and a short month in the [locale]'s language and the system's time zone: "12 Nov", "12 nov.". */
+fun formatShortDate(epochMs: Long, locale: Locale = Locale.getDefault()): String =
+    DateTimeFormatter.ofPattern("d MMM", locale).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(epochMs))

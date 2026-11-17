@@ -243,4 +243,26 @@
     <string name="twitch_command_blacklist">Blacklist</string>
     <string name="twitch_command_blank">Vul een naam in</string>
     <string name="twitch_command_duplicate">Een ander commando gebruikt deze naam al</string>
+    <string name="nav_blacklist">Blacklist</string>
+    <string name="blacklist_subtitle">Verzoeken voor deze nummers, artiesten en kijkers worden geweigerd. Zelf toevoegen kan nog steeds.</string>
+    <string name="blacklist_tab_songs">Nummers · %1$d</string>
+    <string name="blacklist_tab_artists">Artiesten · %1$d</string>
+    <string name="blacklist_tab_viewers">Kijkers · %1$d</string>
+    <string name="blacklist_placeholder_songs">Zoek een nummer of plak een Spotify-link</string>
+    <string name="blacklist_placeholder_artists">Zoek een artiest of plak een Spotify-link</string>
+    <string name="blacklist_placeholder_viewers">Twitch-naam, zoals @troll</string>
+    <string name="blacklist_viewers_need_twitch">Koppel Twitch om kijkers te blokkeren</string>
+    <string name="blacklist_empty_songs">Geen geblokkeerde nummers</string>
+    <string name="blacklist_empty_artists">Geen geblokkeerde artiesten</string>
+    <string name="blacklist_empty_viewers">Geen geblokkeerde kijkers</string>
+    <string name="blacklist_by_you">door jou · %1$s</string>
+    <string name="blacklist_by_mod">door @%1$s · %2$s</string>
+    <string name="blacklist_unblock">%1$s deblokkeren</string>
+    <string name="blacklist_no_results">Niets gevonden</string>
+    <string name="blacklist_viewer_not_found">Geen Twitch-account met die naam</string>
+    <string name="blacklist_twitch_unavailable">Twitch reageert niet. Probeer het zo opnieuw.</string>
+    <string name="blacklist_wrong_link_songs">Hier kunnen alleen nummers worden geblokkeerd, geen %1$s</string>
+    <string name="blacklist_wrong_link_artists">Hier kunnen alleen artiesten worden geblokkeerd, geen %1$s</string>
+    <string name="blacklist_wrong_link_generic">Die link past hier niet</string>
+    <string name="spotify_kind_track">nummers</string>
 </resources>

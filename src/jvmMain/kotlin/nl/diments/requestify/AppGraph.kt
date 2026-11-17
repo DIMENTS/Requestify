@@ -47,6 +47,7 @@ import nl.diments.requestify.core.twitch.TwitchSession
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
 import nl.diments.requestify.core.twitch.eventsub.EventSubClient
 import nl.diments.requestify.core.twitch.eventsub.KtorEventSubConnector
+import nl.diments.requestify.ui.blacklist.BlacklistViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 import nl.diments.requestify.ui.setup.TwitchSetupViewModel
@@ -154,6 +155,15 @@ class AppGraph(
 
     /** Keeps EventSub and the login in step, and reports Twitch's health to the connection chip. */
     val twitchSession: TwitchSession = TwitchSession(twitchAuth, twitchApi, eventSub, settings, scope, clock = System::currentTimeMillis)
+
+    val blacklistScreen = BlacklistViewModel(
+        store = blacklist,
+        intake = intake,
+        catalog = spotify,
+        lookupViewer = twitchApi::userByLogin,
+        twitchConnected = twitchSession.connected,
+        scope = scope,
+    )
 
     val twitchSetup = TwitchSetupViewModel(
         auth = twitchAuth,

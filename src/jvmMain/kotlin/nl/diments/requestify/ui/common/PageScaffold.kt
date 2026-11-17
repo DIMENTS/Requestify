@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,14 +25,15 @@ private val PageMaxWidth = 760.dp
 /**
  * A page beside the rail (Connections, Settings): its headline, an optional [subtitle] under it, then [content]
  * [Spacing.l] apart. It starts where Home starts, [Spacing.xl] from the rail and the title bar, left-aligned
- * (never centred, so switching pages doesn't move the content sideways), and scrolls when taller than the window.
+ * (never centred, so switching pages doesn't move the content sideways), and scrolls when taller than the window. A page
+ * with a lazy list passes `scrolls = false`: it then fills the window and gives its list the rest with `weight(1f)`.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun PageScaffold(title: String, subtitle: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+fun PageScaffold(title: String, subtitle: String? = null, scrolls: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+    Box(Modifier.fillMaxSize().then(if (scrolls) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
         Column(
-            Modifier.padding(Spacing.xl).widthIn(max = PageMaxWidth).fillMaxWidth(),
+            Modifier.padding(Spacing.xl).widthIn(max = PageMaxWidth).fillMaxWidth().then(if (scrolls) Modifier else Modifier.fillMaxHeight()),
             verticalArrangement = Arrangement.spacedBy(Spacing.l),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {

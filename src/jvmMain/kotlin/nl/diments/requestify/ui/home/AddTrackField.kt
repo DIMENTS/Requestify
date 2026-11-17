@@ -50,6 +50,7 @@ import nl.diments.requestify.resources.spotify_kind_artist
 import nl.diments.requestify.resources.spotify_kind_episode
 import nl.diments.requestify.resources.spotify_kind_playlist
 import nl.diments.requestify.resources.spotify_kind_show
+import nl.diments.requestify.resources.spotify_kind_track
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.formatDuration
@@ -181,10 +182,11 @@ private fun messageText(message: AddMessage): String = when (message) {
 }
 
 /** Plural nouns for the link kinds [nl.diments.requestify.core.spotify.classifySpotifyInput] reports. */
-private fun kindName(kind: String): StringResource? = when (kind) {
+internal fun kindName(kind: String): StringResource? = when (kind) {
     "album" -> Res.string.spotify_kind_album
     "playlist" -> Res.string.spotify_kind_playlist
     "artist" -> Res.string.spotify_kind_artist
+    "track" -> Res.string.spotify_kind_track
     "episode" -> Res.string.spotify_kind_episode
     "show" -> Res.string.spotify_kind_show
     else -> null

@@ -243,4 +243,26 @@
     <string name="twitch_command_blacklist">Blacklist</string>
     <string name="twitch_command_blank">Enter a name</string>
     <string name="twitch_command_duplicate">Another command already uses this name</string>
+    <string name="nav_blacklist">Blacklist</string>
+    <string name="blacklist_subtitle">Requests for these songs, artists and viewers are turned away. You can still add them yourself.</string>
+    <string name="blacklist_tab_songs">Songs · %1$d</string>
+    <string name="blacklist_tab_artists">Artists · %1$d</string>
+    <string name="blacklist_tab_viewers">Viewers · %1$d</string>
+    <string name="blacklist_placeholder_songs">Search for a song or paste a Spotify link</string>
+    <string name="blacklist_placeholder_artists">Search for an artist or paste a Spotify link</string>
+    <string name="blacklist_placeholder_viewers">Twitch name, like @troll</string>
+    <string name="blacklist_viewers_need_twitch">Connect Twitch to block viewers</string>
+    <string name="blacklist_empty_songs">No blocked songs</string>
+    <string name="blacklist_empty_artists">No blocked artists</string>
+    <string name="blacklist_empty_viewers">No blocked viewers</string>
+    <string name="blacklist_by_you">blocked by you · %1$s</string>
+    <string name="blacklist_by_mod">blocked by @%1$s · %2$s</string>
+    <string name="blacklist_unblock">Unblock %1$s</string>
+    <string name="blacklist_no_results">Nothing found</string>
+    <string name="blacklist_viewer_not_found">No Twitch account with that name</string>
+    <string name="blacklist_twitch_unavailable">Couldn’t reach Twitch. Try again in a moment.</string>
+    <string name="blacklist_wrong_link_songs">Only songs can be blocked here, not %1$s</string>
+    <string name="blacklist_wrong_link_artists">Only artists can be blocked here, not %1$s</string>
+    <string name="blacklist_wrong_link_generic">That link doesn’t fit here</string>
+    <string name="spotify_kind_track">songs</string>
 </resources>

@@ -135,7 +135,7 @@ class AppScaffoldTest {
         setContent { AppScaffold(graph()) }
         waitForIdle()
         val add = onNodeWithContentDescription("Add a track").getBoundsInRoot()
-        val items = listOf("Home", "Connections", "Rules", "Settings").map { railItem(it) }
+        val items = listOf("Home", "Connections", "Rules", "Blacklist", "Settings").map { railItem(it) }
 
         items.forEach { item ->
             assertEquals(item.centerX().value, add.centerX().value, absoluteTolerance = 1f, "add button over $item")
@@ -192,7 +192,7 @@ class AppScaffoldTest {
     @Test
     fun railHasRules() = runDesktopComposeUiTest(width = 1180, height = 760) {
         assertEquals(
-            listOf(Destination.Home, Destination.Connections, Destination.Rules, Destination.Settings),
+            listOf(Destination.Home, Destination.Connections, Destination.Rules, Destination.Blacklist, Destination.Settings),
             Destination.entries,
         )
         val graph = graph()
