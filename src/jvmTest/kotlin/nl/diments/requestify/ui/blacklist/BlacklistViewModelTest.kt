@@ -11,6 +11,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -59,12 +61,12 @@ class BlacklistViewModelTest {
         var searchFailure: SpotifyResult<List<Track>>? = null
         val byQuery = mutableMapOf<String, List<Track>>()
 
-        /** While set, a track search waits for it before answering. */
-        var gate: CompletableDeferred<Unit>? = null
+        /** A track search for a query with a gate here waits for it, even when cancelled (a request already on the wire). */
+        val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
         override suspend fun searchTracks(query: String, limit: Int): SpotifyResult<List<Track>> {
             trackSearches += query
-            gate?.await()
+            gates[query]?.let { gate -> withContext(NonCancellable) { gate.await() } }
             return searchFailure ?: SpotifyResult.Ok(byQuery[query] ?: tracks)
         }
 
@@ -283,20 +285,27 @@ class BlacklistViewModelTest {
         val new = track("new")
         s.catalog.byQuery["first"] = listOf(old)
         s.catalog.byQuery["second"] = listOf(new)
-        val gate = CompletableDeferred<Unit>()
-        s.catalog.gate = gate
+        val firstGate = CompletableDeferred<Unit>()
+        val secondGate = CompletableDeferred<Unit>()
+        s.catalog.gates["first"] = firstGate
+        s.catalog.gates["second"] = secondGate
 
         s.vm.onInput("first")
-        advanceTimeBy(301) // the first search is out and waiting
+        advanceTimeBy(301) // the first search is on the wire
         runCurrent()
         s.vm.onInput("second") // the first answer is no longer wanted
         advanceTimeBy(301)
         runCurrent()
-        gate.complete(Unit)
-        runCurrent()
 
+        secondGate.complete(Unit) // the newer answer comes first
+        runCurrent()
+        assertEquals(listOf(BlockCandidate.Song(new)), s.vm.state.value.results)
+
+        firstGate.complete(Unit) // then the old one arrives late: it must not land
+        runCurrent()
         assertEquals(listOf(BlockCandidate.Song(new)), s.vm.state.value.results)
         assertEquals("second", s.vm.state.value.input)
+        assertEquals(false, s.vm.state.value.lookingUp)
     }
 
     @Test
@@ -308,14 +317,23 @@ class BlacklistViewModelTest {
         runCurrent()
         assertEquals(1, s.vm.state.value.results.size)
 
-        s.catalog.gate = CompletableDeferred()
+        val gate = CompletableDeferred<Unit>()
+        s.catalog.gates["song 2"] = gate
         s.vm.onInput("song 2") // looking up again; the old results are stale
+        advanceTimeBy(301)
         runCurrent()
         assertTrue(s.vm.state.value.lookingUp)
         assertEquals(false, s.vm.onSubmit("song 2"))
         assertEquals(false, s.vm.onSubmit("song"), "the stale results answer another input")
         runCurrent()
         assertTrue(s.parts.blacklist.blacklist.value.tracks.isEmpty())
+
+        gate.complete(Unit) // positive control: once the lookup is done, Enter blocks the first result
+        runCurrent()
+        assertEquals(false, s.vm.state.value.lookingUp)
+        assertTrue(s.vm.onSubmit("song 2"))
+        runCurrent()
+        assertEquals("t1", s.parts.blacklist.blacklist.value.tracks.single().track.id)
     }
 
     @Test
