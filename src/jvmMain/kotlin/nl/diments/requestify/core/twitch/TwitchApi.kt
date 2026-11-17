@@ -202,7 +202,10 @@ class TwitchApi(
                 "custom_rewards",
                 "redemptions",
                 params = params,
-            ) { body -> json.decodeFromString<RedemptionsDto>(body) }
+            ) { body ->
+                val parsed = json.decodeFromString<RedemptionsDto>(body)
+                RedemptionPage(parsed.data.map { it.toRedemption() }, parsed.pagination?.cursor)
+            }
             val dto = when (page) {
                 is TwitchResult.Ok -> page.value
                 is TwitchResult.NotFound -> return@withBroadcaster TwitchResult.NotFound
@@ -213,8 +216,8 @@ class TwitchApi(
                 is TwitchResult.RateLimited -> return@withBroadcaster page
                 is TwitchResult.Failed -> return@withBroadcaster page
             }
-            all += dto.data.map { it.toRedemption() }
-            val next = dto.pagination?.cursor?.takeIf { it.isNotBlank() && it != cursor }
+            all += dto.items
+            val next = dto.cursor?.takeIf { it.isNotBlank() && it != cursor }
             pages++
             if (next == null || pages >= MAX_PAGES) break
             cursor = next
@@ -264,6 +267,8 @@ class TwitchApi(
 
     private fun singleReward(body: String): Reward =
         json.decodeFromString<RewardsDto>(body).data.firstOrNull()?.toReward() ?: error("no reward in response")
+
+    private class RedemptionPage(val items: List<Redemption>, val cursor: String?)
 
     private class Raw(val status: Int, val rateLimitReset: String?, val body: String)
 

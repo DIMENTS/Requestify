@@ -358,4 +358,11 @@ class TwitchApiTest {
         }
         assertIs<CancellationException>(outcome.exceptionOrNull())
     }
+
+    @Test
+    fun malformedRedemptionTimestampIsFailedNotThrown() = runBlocking<Unit> {
+        val body = fixture("redemptions-page2.json").replace("2026-11-17T18:31:00Z", "yesterday-ish")
+        val result = api { respond(body, HttpStatusCode.OK, json) }.unfulfilledRedemptions("rw-1")
+        assertIs<TwitchResult.Failed>(result)
+    }
 }
