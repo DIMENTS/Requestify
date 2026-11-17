@@ -25,6 +25,7 @@ val SPOTIFY_SCOPES = listOf(
     "user-modify-playback-state",
     "user-read-currently-playing",
     "user-read-private",
+    "user-read-recently-played",
 )
 
 /**

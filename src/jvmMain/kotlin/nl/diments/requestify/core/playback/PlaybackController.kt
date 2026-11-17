@@ -453,6 +453,7 @@ class PlaybackController(
         SpotifyResult.LoggedOut -> SpotifyHealth.LoggedOut
         is SpotifyResult.RateLimited -> SpotifyHealth.RateLimited(clock() + retryAfterMs(result))
         is SpotifyResult.Failed -> SpotifyHealth.Unreachable(result.message)
+        SpotifyResult.MissingPermission -> SpotifyHealth.Unreachable("missing permission")
     }
 
     /** Never shorter than [PlaybackConfig.nearEndPollMs], so a `Retry-After: 0` cannot make the loop spin. */

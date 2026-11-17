@@ -360,4 +360,66 @@ class SpotifyApiTest {
         assertNull(tracks[0].albumArtUrl)
         assertEquals("https://i.scdn.co/image/b2", tracks[1].albumArtUrl)
     }
+
+    @Test
+    fun previousPostsToPlayerPrevious() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val result = api { req -> seen = req; respond("", HttpStatusCode.NoContent) }.skipPrevious()
+        assertEquals(Unit, result.ok())
+        assertEquals(HttpMethod.Post, seen!!.method)
+        assertEquals("/v1/me/player/previous", seen.url.encodedPath)
+    }
+
+    @Test
+    fun userQueueMapsTracksAndDropsUnusable() = runBlocking<Unit> {
+        val body = """{"queue":[{"id":"q1","uri":"spotify:track:q1","name":"Q1","type":"track","artists":[{"name":"A"}]},$localFile,""" +
+            """{"id":"ep1","uri":"spotify:episode:ep1","name":"Ep","type":"episode"},""" +
+            """{"id":"q2","uri":"spotify:track:q2","name":"Q2","type":"track","artists":[]}]}"""
+        val tracks = api { respond(body, HttpStatusCode.OK, json) }.userQueue().ok()
+        assertEquals(listOf("Q1", "Q2"), tracks.map(Track::name))
+        assertEquals(listOf("q1", "q2"), tracks.map(Track::id))
+    }
+
+    @Test
+    fun recentlyPlayedMapsTrackAndPlayedAt() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val recent = checkNotNull(api { req -> seen = req; fixtureOk("recently-played.json") }.recentlyPlayed().ok())
+        assertEquals("Midnight City", recent.track.name)
+        assertEquals(1794907800000L, recent.playedAtEpochMs)
+        assertEquals("/v1/me/player/recently-played", seen!!.url.encodedPath)
+        assertEquals("1", seen.url.parameters["limit"])
+    }
+
+    @Test
+    fun recentlyPlayedEmptyIsOkNull() = runBlocking<Unit> {
+        assertNull(api { respond("""{"items":[]}""", HttpStatusCode.OK, json) }.recentlyPlayed().ok())
+    }
+
+    @Test
+    fun recentlyPlayedWithBadDateOrTrackIsOkNull() = runBlocking<Unit> {
+        val badDate = """{"items":[{"played_at":"yesterday","track":{"id":"a","uri":"spotify:track:a","name":"A"}}]}"""
+        assertNull(api { respond(badDate, HttpStatusCode.OK, json) }.recentlyPlayed().ok())
+        val badTrack = """{"items":[{"played_at":"2026-11-17T09:30:00.000Z","track":$localFile}]}"""
+        assertNull(api { respond(badTrack, HttpStatusCode.OK, json) }.recentlyPlayed().ok())
+    }
+
+    @Test
+    fun insufficientScopeIsMissingPermission() = runBlocking<Unit> {
+        val result = api {
+            respond("""{"error":{"status":403,"message":"Insufficient client scope"}}""", HttpStatusCode.Forbidden, json)
+        }.recentlyPlayed()
+        assertEquals(SpotifyResult.MissingPermission, result)
+    }
+
+    @Test
+    fun premiumRequiredStaysPremiumRequired() = runBlocking<Unit> {
+        val result = api {
+            respond(
+                """{"error":{"status":403,"message":"Premium required, scope irrelevant","reason":"PREMIUM_REQUIRED"}}""",
+                HttpStatusCode.Forbidden,
+                json,
+            )
+        }.skipPrevious()
+        assertEquals(SpotifyResult.PremiumRequired, result)
+    }
 }

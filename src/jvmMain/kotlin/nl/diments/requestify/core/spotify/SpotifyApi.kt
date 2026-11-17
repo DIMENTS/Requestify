@@ -9,6 +9,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.URLBuilder
 import io.ktor.http.appendPathSegments
+import java.time.Instant
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -30,6 +31,9 @@ sealed interface SpotifyResult<out T> {
 
     /** Not logged in to Spotify at all (never, or logged out). */
     data object LoggedOut : SpotifyResult<Nothing>
+
+    /** Spotify refused the call because the login was granted without the needed scope: log in again to grant it. */
+    data object MissingPermission : SpotifyResult<Nothing>
     data class Failed(val message: String) : SpotifyResult<Nothing>
 }
 
@@ -53,13 +57,23 @@ const val TOKEN_UNAVAILABLE = "token unavailable"
 /** [track] is null while an ad or a podcast episode plays. */
 data class CurrentlyPlaying(val track: Track?, val progressMs: Long, val isPlaying: Boolean)
 
+/** The last track that played and when it started, in epoch milliseconds. */
+data class RecentTrack(val track: Track, val playedAtEpochMs: Long)
+
 /** The port the playback controller uses. */
 interface SpotifyPlayer {
     /** `Ok(null)` when nothing is playing (HTTP 204). */
     suspend fun currentlyPlaying(): SpotifyResult<CurrentlyPlaying?>
     suspend fun userQueueTrackIds(): SpotifyResult<List<String>>
+
+    /** The user queue as usable tracks, in order (items without a usable track are dropped). */
+    suspend fun userQueue(): SpotifyResult<List<Track>>
+
+    /** The most recently played track, `Ok(null)` when there is none. */
+    suspend fun recentlyPlayed(): SpotifyResult<RecentTrack?>
     suspend fun addToQueue(trackUri: String): SpotifyResult<Unit>
     suspend fun skipNext(): SpotifyResult<Unit>
+    suspend fun skipPrevious(): SpotifyResult<Unit>
     suspend fun pause(): SpotifyResult<Unit>
     suspend fun resume(): SpotifyResult<Unit>
 }
@@ -101,11 +115,27 @@ class SpotifyApi(
             json.decodeFromString<QueueDto>(body).queue.filter { it.type == "track" }.mapNotNull { it.id?.takeIf(String::isNotBlank) }
         }
 
+    override suspend fun userQueue(): SpotifyResult<List<Track>> =
+        execute(HttpMethod.Get, "me", "player", "queue") { body ->
+            json.decodeFromString<TrackQueueDto>(body).queue.filter { it.type == "track" }.mapNotNull { it.toTrackOrNull() }
+        }
+
+    override suspend fun recentlyPlayed(): SpotifyResult<RecentTrack?> =
+        execute(HttpMethod.Get, "me", "player", "recently-played", params = listOf("limit" to "1")) { body ->
+            val item = json.decodeFromString<RecentlyPlayedDto>(body).items.firstOrNull() ?: return@execute null
+            val track = item.track?.toTrackOrNull() ?: return@execute null
+            val playedAt = runCatching { Instant.parse(item.playedAt).toEpochMilli() }.getOrNull() ?: return@execute null
+            RecentTrack(track, playedAt)
+        }
+
     override suspend fun addToQueue(trackUri: String): SpotifyResult<Unit> =
         execute(HttpMethod.Post, "me", "player", "queue", params = listOf("uri" to trackUri)) { }
 
     override suspend fun skipNext(): SpotifyResult<Unit> =
         execute(HttpMethod.Post, "me", "player", "next") { }
+
+    override suspend fun skipPrevious(): SpotifyResult<Unit> =
+        execute(HttpMethod.Post, "me", "player", "previous") { }
 
     override suspend fun pause(): SpotifyResult<Unit> =
         execute(HttpMethod.Put, "me", "player", "pause") { }
@@ -189,11 +219,7 @@ class SpotifyApi(
 
     private fun <T> map(raw: Raw, onSuccess: (String) -> T): SpotifyResult<T> = when (raw.status) {
         200, 201, 202, 204 -> SpotifyResult.Ok(onSuccess(raw.body))
-        403 -> if (errorReason(raw.body) == "PREMIUM_REQUIRED") {
-            SpotifyResult.PremiumRequired
-        } else {
-            SpotifyResult.Failed("HTTP 403")
-        }
+        403 -> forbidden(raw.body)
         404 -> if (errorReason(raw.body) == "NO_ACTIVE_DEVICE") {
             SpotifyResult.NoActiveDevice
         } else {
@@ -203,6 +229,15 @@ class SpotifyApi(
             raw.retryAfter?.trim()?.toLongOrNull()?.takeIf { it >= 0 }?.let { it * 1000 } ?: DEFAULT_RETRY_AFTER_MS,
         )
         else -> SpotifyResult.Failed("HTTP ${raw.status}")
+    }
+
+    private fun forbidden(body: String): SpotifyResult<Nothing> {
+        val error = runCatching { json.decodeFromString<ErrorEnvelope>(body).error }.getOrNull()
+        return when {
+            error?.reason == "PREMIUM_REQUIRED" -> SpotifyResult.PremiumRequired
+            error?.message?.contains("scope", ignoreCase = true) == true -> SpotifyResult.MissingPermission
+            else -> SpotifyResult.Failed("HTTP 403")
+        }
     }
 
     private fun errorReason(body: String): String? =
@@ -217,7 +252,7 @@ class SpotifyApi(
     private class ErrorEnvelope(val error: ErrorBody? = null)
 
     @Serializable
-    private class ErrorBody(val reason: String? = null)
+    private class ErrorBody(val reason: String? = null, val message: String? = null)
 
     @Serializable
     private class CurrentlyPlayingDto(
@@ -228,6 +263,15 @@ class SpotifyApi(
 
     @Serializable
     private class QueueDto(val queue: List<QueueItemDto> = emptyList())
+
+    @Serializable
+    private class TrackQueueDto(val queue: List<TrackDto> = emptyList())
+
+    @Serializable
+    private class RecentlyPlayedDto(val items: List<RecentItemDto> = emptyList())
+
+    @Serializable
+    private class RecentItemDto(@SerialName("played_at") val playedAt: String? = null, val track: TrackDto? = null)
 
     @Serializable
     private class QueueItemDto(val id: String? = null, val type: String? = null)

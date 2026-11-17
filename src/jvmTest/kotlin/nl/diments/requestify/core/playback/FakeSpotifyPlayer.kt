@@ -3,6 +3,7 @@ package nl.diments.requestify.core.playback
 import kotlinx.coroutines.CompletableDeferred
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.spotify.CurrentlyPlaying
+import nl.diments.requestify.core.spotify.RecentTrack
 import nl.diments.requestify.core.spotify.SpotifyPlayer
 import nl.diments.requestify.core.spotify.SpotifyResult
 
@@ -17,6 +18,9 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     /** When set, [currentlyPlaying] throws it instead of answering. */
     var currentlyPlayingError: Exception? = null
     var userQueueResult: SpotifyResult<List<String>> = SpotifyResult.Ok(emptyList())
+    var queueTracks: SpotifyResult<List<Track>> = SpotifyResult.Ok(emptyList())
+    var previousResult: SpotifyResult<Unit> = SpotifyResult.Ok(Unit)
+    var recentResult: SpotifyResult<RecentTrack?> = SpotifyResult.Ok(null)
 
     /** Answers for the next [addToQueue] calls, in order; `Ok` once used up. */
     val addToQueueResults = ArrayDeque<SpotifyResult<Unit>>()
@@ -64,6 +68,16 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
         return userQueueResult
     }
 
+    override suspend fun userQueue(): SpotifyResult<List<Track>> {
+        record("userQueue")
+        return queueTracks
+    }
+
+    override suspend fun recentlyPlayed(): SpotifyResult<RecentTrack?> {
+        record("recentlyPlayed")
+        return recentResult
+    }
+
     override suspend fun addToQueue(trackUri: String): SpotifyResult<Unit> {
         record("addToQueue", trackUri)
         addToQueueGate?.await()
@@ -73,6 +87,11 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     override suspend fun skipNext(): SpotifyResult<Unit> {
         record("skipNext")
         return SpotifyResult.Ok(Unit)
+    }
+
+    override suspend fun skipPrevious(): SpotifyResult<Unit> {
+        record("skipPrevious")
+        return previousResult
     }
 
     override suspend fun pause(): SpotifyResult<Unit> = playCommand("pause", isPlaying = false)

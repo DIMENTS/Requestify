@@ -80,9 +80,16 @@ class SpotifyAuthTest {
         assertTrue("code_challenge=CHAL" in url)
         assertTrue("state=ST" in url)
         assertEquals(
-            "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-private",
+            "user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-private " +
+                "user-read-recently-played",
             Url(url).parameters["scope"],
         )
+    }
+
+    @Test
+    fun authorizeUrlIncludesRecentlyPlayedScope() {
+        val url = auth(InMemorySecretStore()) { error("no http") }.authorizeUrl("CHAL", "ST")
+        assertTrue("user-read-recently-played" in checkNotNull(Url(url).parameters["scope"]).split(" "))
     }
 
     @Test

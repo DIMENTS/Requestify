@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "played_at": "2026-11-17T09:30:00.000Z",
+      "track": {
+        "id": "1B75hgRqe7A4fwee3g3Wmu",
+        "uri": "spotify:track:1B75hgRqe7A4fwee3g3Wmu",
+        "name": "Midnight City",
+        "type": "track",
+        "duration_ms": 243000,
+        "explicit": false,
+        "artists": [{"name": "M83"}],
+        "album": {"images": [{"url": "https://i.scdn.co/image/medium", "width": 300}]}
+      }
+    }
+  ]
+}
