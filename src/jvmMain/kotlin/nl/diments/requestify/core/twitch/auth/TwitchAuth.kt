@@ -109,6 +109,9 @@ class TwitchAuth(
     @Volatile
     private var cached: AccessToken? = null
 
+    /** A rotated refresh token the secret store would not take; guarded by [stateLock]. */
+    private var pendingRefresh: String? = null
+
     private val _status = MutableStateFlow<TwitchAuthStatus>(
         if (secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN) != null) TwitchAuthStatus.LoggedIn else TwitchAuthStatus.LoggedOut,
     )
@@ -170,26 +173,46 @@ class TwitchAuth(
     }
 
     private suspend fun finishLogin(startGeneration: Long, access: String, expiresIn: Long, refresh: String): DeviceLoginResult {
-        val ok = synchronized(stateLock) {
-            if (generation != startGeneration) return@synchronized false
+        val loginGeneration = synchronized(stateLock) {
+            if (generation != startGeneration) return DeviceLoginResult.Failed("cancelled")
+            // Saved first: when that fails nothing has changed and the user can simply try again.
+            try {
+                secrets.put(SecretKeys.TWITCH_REFRESH_TOKEN, refresh)
+            } catch (_: IOException) {
+                return DeviceLoginResult.Failed("could not save the login")
+            } catch (_: SecurityException) {
+                return DeviceLoginResult.Failed("could not save the login")
+            }
             generation++
-            secrets.put(SecretKeys.TWITCH_REFRESH_TOKEN, refresh)
+            pendingRefresh = null
             cached = AccessToken(access, clock() + expiresIn * 1000)
             _status.value = TwitchAuthStatus.LoggedIn
-            true
+            generation
         }
-        if (!ok) return DeviceLoginResult.Failed("cancelled")
         return when (val who = whoAmI(access)) {
             is Identity.Known -> DeviceLoginResult.Success(who.userId, who.login)
             // Without the account the login is no use: undo it, the user can simply try again.
             else -> {
-                try {
-                    logout()
-                } catch (_: IOException) {
-                } catch (_: SecurityException) {
-                }
+                rollBackLogin(loginGeneration)
                 DeviceLoginResult.Failed("could not read the Twitch account")
             }
+        }
+    }
+
+    /** Undoes the login of [loginGeneration] only: a newer login, logout or revocation is left alone. */
+    private fun rollBackLogin(loginGeneration: Long) = synchronized(stateLock) {
+        if (generation != loginGeneration) return@synchronized
+        generation++
+        cached = null
+        pendingRefresh = null
+        _status.value = try {
+            secrets.remove(SecretKeys.TWITCH_REFRESH_TOKEN)
+            TwitchAuthStatus.LoggedOut
+        } catch (_: IOException) {
+            // Still on disk, so it must not look logged out or logged in: ask for a new login, which replaces it.
+            TwitchAuthStatus.LoginNeeded("could not undo the login")
+        } catch (_: SecurityException) {
+            TwitchAuthStatus.LoginNeeded("could not undo the login")
         }
     }
 
@@ -287,7 +310,10 @@ class TwitchAuth(
         val startGeneration = synchronized(stateLock) { generation }
         // Twitch already refused this login: asking again cannot help, only a new login can.
         if (_status.value is TwitchAuthStatus.LoginNeeded) return Obtained.Missing(TokenResult.LoginNeeded)
-        val refreshToken = secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN)
+        // A rotated token that could not be saved yet is the live one; the saved one is already used up.
+        val refreshToken = synchronized(stateLock) {
+            pendingRefresh?.also { if (trySave(it)) pendingRefresh = null }
+        } ?: secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN)
         if (refreshToken == null) {
             synchronized(stateLock) {
                 if (generation == startGeneration) {
@@ -313,7 +339,9 @@ class TwitchAuth(
                 synchronized(stateLock) {
                     if (generation != startGeneration) return@synchronized superseded()
                     // Persist the rotated refresh token BEFORE the new access token is used.
-                    token.refreshToken?.let { secrets.put(SecretKeys.TWITCH_REFRESH_TOKEN, it) }
+                    // When it cannot be saved the session goes on with it in memory (Twitch has already used up the
+                    // old one) and every later refresh tries to save it again.
+                    token.refreshToken?.let { pendingRefresh = if (trySave(it)) null else it }
                     val access = AccessToken(token.accessToken, clock() + token.expiresIn * 1000)
                     cached = access
                     _status.value = TwitchAuthStatus.LoggedIn
@@ -349,8 +377,18 @@ class TwitchAuth(
         },
     )
 
+    private fun trySave(refresh: String): Boolean = try {
+        secrets.put(SecretKeys.TWITCH_REFRESH_TOKEN, refresh)
+        true
+    } catch (_: IOException) {
+        false
+    } catch (_: SecurityException) {
+        false
+    }
+
     /** Drops the saved login and enters [TwitchAuthStatus.LoginNeeded]. Caller holds [stateLock]. */
     private fun forget(reason: String) {
+        pendingRefresh = null
         try {
             secrets.remove(SecretKeys.TWITCH_REFRESH_TOKEN)
         } catch (_: IOException) {
@@ -373,6 +411,7 @@ class TwitchAuth(
         secrets.remove(SecretKeys.TWITCH_REFRESH_TOKEN)
         generation++
         cached = null
+        pendingRefresh = null
         _status.value = TwitchAuthStatus.LoggedOut
     }
 

@@ -22,6 +22,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -359,5 +360,195 @@ class TwitchAuthTest {
         assertFailsWith<IOException> { a.logout() }
         assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
         assertEquals("r2", stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+    }
+
+    /** A store whose put and remove fail while the matching flag is set, like a secrets file held by another program. */
+    private class FlakyStore(private val inner: SecretStore) : SecretStore by inner {
+        @Volatile var failPut = false
+        @Volatile var failRemove = false
+
+        override fun put(key: String, value: String) {
+            if (failPut) throw IOException("secrets file in use")
+            inner.put(key, value)
+        }
+
+        override fun remove(key: String) {
+            if (failRemove) throw IOException("secrets file in use")
+            inner.remove(key)
+        }
+    }
+
+    private val code = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = Long.MAX_VALUE / 2, intervalMs = 1)
+
+    @Test
+    fun refreshThatCannotSaveTheRotatedTokenKeepsTheSessionAndUsesIt() = runBlocking {
+        val stored = secretsWith("r1")
+        val secrets = FlakyStore(stored).apply { failPut = true }
+        val sent = mutableListOf<String?>()
+        var n = 0
+        val a = auth(secrets) { req ->
+            sent += form(req)["refresh_token"]
+            n++
+            tokens("a$n", "r${n + 1}")
+        }
+        assertEquals(TokenResult.Ok("a1"), a.token())
+        assertEquals("r1", stored.get(SecretKeys.TWITCH_REFRESH_TOKEN), "the stale token is all the store has")
+        assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
+        secrets.failPut = false
+        assertEquals(TokenResult.Ok("a2"), a.token(forceRefresh = true))
+        assertEquals(listOf<String?>("r1", "r2"), sent, "the rotated token is used, not the stale stored one")
+        assertEquals("r3", stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+    }
+
+    @Test
+    fun unsavedRotatedTokenIsSavedAgainEvenWhenTheNextRefreshFails() = runBlocking {
+        val stored = secretsWith("r1")
+        val secrets = FlakyStore(stored).apply { failPut = true }
+        var n = 0
+        val a = auth(secrets) { if (n++ == 0) tokens("a1", "r2") else respond("", HttpStatusCode.ServiceUnavailable) }
+        assertEquals(TokenResult.Ok("a1"), a.token())
+        secrets.failPut = false
+        assertEquals(TokenResult.Unavailable, a.token(forceRefresh = true))
+        assertEquals("r2", stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+    }
+
+    @Test
+    fun loginThatCannotBeSavedFailsAndChangesNothing() = runTest {
+        val secrets = FlakyStore(InMemorySecretStore()).apply { failPut = true }
+        var validations = 0
+        val a = virtual(secrets, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else { validations++; valid() }
+        }
+        assertIs<DeviceLoginResult.Failed>(a.awaitDeviceLogin(code))
+        assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
+        assertEquals(0, validations)
+        assertEquals(TokenResult.LoggedOut, a.token())
+    }
+
+    @Test
+    fun loginWhoseAccountCannotBeReadIsRolledBack() = runTest {
+        val stored = InMemorySecretStore()
+        val a = virtual(stored, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else respond("", HttpStatusCode.InternalServerError)
+        }
+        assertIs<DeviceLoginResult.Failed>(a.awaitDeviceLogin(code))
+        assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
+        assertEquals(TokenResult.LoggedOut, a.token())
+    }
+
+    @Test
+    fun rollbackThatCannotRemoveTheSecretAsksForANewLogin() = runTest {
+        val secrets = FlakyStore(InMemorySecretStore()).apply { failRemove = true }
+        val a = virtual(secrets, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else respond("", HttpStatusCode.InternalServerError)
+        }
+        assertIs<DeviceLoginResult.Failed>(a.awaitDeviceLogin(code))
+        assertTrue(a.status.value is TwitchAuthStatus.LoginNeeded)
+    }
+
+    @Test
+    fun rollbackLeavesANewerStateAlone() = runBlocking {
+        val stored = InMemorySecretStore()
+        val validating = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val a = auth(stored) { req ->
+            if (req.url.encodedPath == "/oauth2/token") {
+                tokens("a1", "r1")
+            } else {
+                validating.complete(Unit)
+                release.await()
+                respond("", HttpStatusCode.InternalServerError)
+            }
+        }
+        val login = async(Dispatchers.Default) { a.awaitDeviceLogin(code) }
+        validating.await()
+        a.markLoginNeeded("revoked meanwhile")
+        release.complete(Unit)
+        assertIs<DeviceLoginResult.Failed>(login.await())
+        assertEquals(TwitchAuthStatus.LoginNeeded("revoked meanwhile"), a.status.value)
+    }
+
+    @Test
+    fun refreshFinishingAfterLogoutIsDropped() = runBlocking {
+        val stored = secretsWith()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val a = auth(stored) { entered.complete(Unit); release.await(); tokens("a1", "r2") }
+        val pending = async(Dispatchers.Default) { a.token() }
+        entered.await()
+        a.logout()
+        release.complete(Unit)
+        assertEquals(TokenResult.LoggedOut, pending.await())
+        assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN), "the stale answer is not saved")
+        assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
+    }
+
+    @Test
+    fun refreshFinishingAfterMarkLoginNeededIsDropped() = runBlocking {
+        val stored = secretsWith()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val a = auth(stored) { entered.complete(Unit); release.await(); tokens("a1", "r2") }
+        val pending = async(Dispatchers.Default) { a.token() }
+        entered.await()
+        a.markLoginNeeded("revoked")
+        release.complete(Unit)
+        assertEquals(TokenResult.LoginNeeded, pending.await())
+        assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertEquals(TwitchAuthStatus.LoginNeeded("revoked"), a.status.value)
+    }
+
+    @Test
+    fun pollingSurvivesANetworkError() = runTest {
+        var polls = 0
+        val a = virtual(InMemorySecretStore(), this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") {
+                if (polls++ == 0) throw IOException("offline") else tokens("a1", "r1")
+            } else {
+                valid()
+            }
+        }
+        val c = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertEquals(DeviceLoginResult.Success("42", "diments"), a.awaitDeviceLogin(c))
+        assertEquals(2, polls)
+    }
+
+    @Test
+    fun slowDownAddsFiveSecondsToTheInterval() = runTest {
+        val pollTimes = mutableListOf<Long>()
+        val a = virtual(InMemorySecretStore(), this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") {
+                pollTimes += currentTime
+                if (pollTimes.size == 1) {
+                    respond("""{"status":400,"message":"slow_down"}""", HttpStatusCode.BadRequest, json)
+                } else {
+                    tokens("a1", "r1")
+                }
+            } else {
+                valid()
+            }
+        }
+        val c = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertIs<DeviceLoginResult.Success>(a.awaitDeviceLogin(c))
+        assertEquals(listOf(5_000L, 15_000L), pollTimes)
+    }
+
+    @Test
+    fun loginCancelledWhilePollingIsFailedAndNotSaved() = runTest {
+        val stored = InMemorySecretStore()
+        lateinit var a: TwitchAuth
+        a = virtual(stored, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") {
+                a.markLoginNeeded("revoked")
+                tokens("a1", "r1")
+            } else {
+                valid()
+            }
+        }
+        val c = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertEquals(DeviceLoginResult.Failed("cancelled"), a.awaitDeviceLogin(c))
+        assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertEquals(TwitchAuthStatus.LoginNeeded("revoked"), a.status.value)
     }
 }
