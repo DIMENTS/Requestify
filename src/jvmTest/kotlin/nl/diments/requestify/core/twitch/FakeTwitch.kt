@@ -9,6 +9,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 
 /**
@@ -21,6 +22,12 @@ internal class FakeTwitch(private val now: () -> Long = { 0L }, dispatcher: Coro
 
     /** Twitch cannot give a device code (the id server is down). */
     var deviceDown = false
+
+    /** While set, the profile request waits for it. */
+    var usersGate: CompletableDeferred<Unit>? = null
+
+    /** While set, `/oauth2/validate` waits for it. */
+    var validateGate: CompletableDeferred<Unit>? = null
 
     /** Helix cannot give the user's profile. */
     var usersDown = false
@@ -60,9 +67,18 @@ internal class FakeTwitch(private val now: () -> Long = { 0L }, dispatcher: Coro
                                 respond("""{"status":400,"message":"authorization_pending"}""", HttpStatusCode.BadRequest, json)
                             }
                         path == "/oauth2/validate" -> {
+                            validateGate?.await()
                             validations += now()
                             respond(
                                 """{"client_id":"cid","login":"diments","scopes":[],"user_id":"42","expires_in":5000}""",
+                                HttpStatusCode.OK,
+                                json,
+                            )
+                        }
+                        path == "/helix/users" && usersGate != null -> {
+                            usersGate?.await()
+                            respond(
+                                """{"data":[{"id":"42","login":"diments","display_name":"DIMENTS","broadcaster_type":"$broadcasterType"}]}""",
                                 HttpStatusCode.OK,
                                 json,
                             )

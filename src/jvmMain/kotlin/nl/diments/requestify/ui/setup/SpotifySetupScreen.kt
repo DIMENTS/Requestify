@@ -74,7 +74,7 @@ import nl.diments.requestify.resources.setup_copy
 import nl.diments.requestify.resources.setup_device_hint
 import nl.diments.requestify.resources.setup_device_ok
 import nl.diments.requestify.resources.setup_extra_permission
-import nl.diments.requestify.resources.setup_intro
+import nl.diments.requestify.resources.connections_intro
 import nl.diments.requestify.resources.setup_log_in_again
 import nl.diments.requestify.resources.setup_logged_in
 import nl.diments.requestify.resources.setup_logging_in
@@ -123,7 +123,7 @@ private val StepBadgeSize = 36.dp
 @Composable
 fun SpotifySetupScreen(vm: SpotifySetupViewModel, twitch: TwitchSetupViewModel) {
     val state by vm.state.collectAsState()
-    PageScaffold(stringResource(Res.string.nav_connections), subtitle = stringResource(Res.string.setup_intro)) {
+    PageScaffold(stringResource(Res.string.nav_connections), subtitle = stringResource(Res.string.connections_intro)) {
         SpotifyCard(state, vm)
         TwitchCard(twitch)
     }

@@ -73,7 +73,7 @@
     <string name="nav_settings">Settings</string>
 
     <!-- Connections: Spotify setup -->
-    <string name="setup_intro">Connect Requestify to your own Spotify app. You only need to do this once.</string>
+    <string name="connections_intro">Connect Requestify to Spotify and Twitch. You only need to do this once.</string>
     <string name="setup_spotify">Spotify</string>
     <string name="setup_status_connected">Connected</string>
     <string name="setup_status_not_connected">Not connected</string>
@@ -212,7 +212,7 @@
     <string name="twitch_login_expired">Your Twitch login has expired. Log in again.</string>
     <string name="twitch_requesting_code">Asking Twitch for a code…</string>
     <string name="twitch_code_title">Log in to Twitch</string>
-    <string name="twitch_code_hint">Your browser opens twitch.tv/activate. Enter this code there:</string>
+    <string name="twitch_code_hint">Enter this code at twitch.tv/activate:</string>
     <string name="twitch_open_browser">Open browser</string>
     <string name="twitch_waiting">Waiting until you confirm…</string>
     <string name="twitch_code_expired">The code ran out. Try again.</string>

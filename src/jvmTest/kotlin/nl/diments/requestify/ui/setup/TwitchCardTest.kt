@@ -173,5 +173,11 @@ class TwitchCardTest {
         onNodeWithText("Your Twitch login has expired. Log in again.").assertIsDisplayed()
         onNodeWithText("Login expired").assertIsDisplayed()
         onNode(hasText("Log in again as DIMENTS") and hasClickAction()).assertIsDisplayed()
+        // The account stays reachable: its settings and Log out are still there.
+        onNodeWithText("!sr in chat").assertIsDisplayed()
+        onNode(hasText("Log out") and hasClickAction()).performClick()
+        waitForIdle()
+        onNode(hasText("Log in with Twitch") and hasClickAction()).assertIsDisplayed()
+        assertEquals(null, p.settings.settings.value.twitch.account)
     }
 }

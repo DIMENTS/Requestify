@@ -106,7 +106,7 @@ class AppScaffoldTest {
     fun firstRunOpensTheSpotifySetup() = runDesktopComposeUiTest(width = 1180, height = 760) {
         setContent { AppScaffold(graph()) }
         waitForIdle()
-        onNodeWithText("Connect Requestify to your own Spotify app. You only need to do this once.").assertIsDisplayed()
+        onNodeWithText("Connect Requestify to Spotify and Twitch. You only need to do this once.").assertIsDisplayed()
         onNodeWithText("Create a Spotify app").assertIsDisplayed()
         onNodeWithText("Paste the Client ID").assertExists()
     }

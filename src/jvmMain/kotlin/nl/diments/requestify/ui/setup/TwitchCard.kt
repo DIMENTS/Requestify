@@ -144,7 +144,8 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
     val motion = MaterialTheme.motionScheme
     val phase = when {
         login is TwitchLoginState.Requesting || login is TwitchLoginState.ShowingCode -> Phase.LoggingIn
-        status == TwitchAuthStatus.LoggedIn && account != null -> Phase.LoggedIn
+        // An account that is set up keeps its card even when the login is dead, so it can still be logged out.
+        account != null -> Phase.LoggedIn
         else -> Phase.LoggedOut
     }
     Surface(
@@ -176,9 +177,9 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
                 },
             ) { shown ->
                 when (shown) {
-                    Phase.LoggedOut -> LoggedOutContent(login, status, account, vm)
+                    Phase.LoggedOut -> LoggedOutContent(login, status, vm)
                     Phase.LoggingIn -> CodePanel(login, vm)
-                    Phase.LoggedIn -> if (account != null) LoggedInContent(account, vm) else Box(Modifier)
+                    Phase.LoggedIn -> if (account != null) LoggedInContent(account, login, status != TwitchAuthStatus.LoggedIn, vm) else Box(Modifier)
                 }
             }
             if (saveFailed) {
@@ -190,7 +191,7 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
 
 /** Not logged in, or the login is dead: why, and the button. */
 @Composable
-private fun LoggedOutContent(login: TwitchLoginState, status: TwitchAuthStatus, account: TwitchAccount?, vm: TwitchSetupViewModel) {
+private fun LoggedOutContent(login: TwitchLoginState, status: TwitchAuthStatus, vm: TwitchSetupViewModel) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl).padding(top = Spacing.m),
         verticalArrangement = Arrangement.spacedBy(Spacing.m),
@@ -204,15 +205,39 @@ private fun LoggedOutContent(login: TwitchLoginState, status: TwitchAuthStatus, 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        when (login) {
-            TwitchLoginState.Expired -> ErrorText(stringResource(Res.string.twitch_code_expired))
-            TwitchLoginState.Failed -> ErrorText(stringResource(Res.string.twitch_login_failed))
-            TwitchLoginState.Unreachable -> ErrorText(stringResource(Res.string.twitch_unreachable))
-            else -> Unit
-        }
+        LoginErrorText(login)
         Button(onClick = vm::onLogin, shapes = ButtonDefaults.shapes()) {
-            val name = account?.takeIf { status is TwitchAuthStatus.LoginNeeded }?.displayName
-            Text(if (name != null) stringResource(Res.string.twitch_login_again_as, name) else stringResource(Res.string.twitch_login))
+            Text(stringResource(Res.string.twitch_login))
+        }
+    }
+}
+
+/** Why the last login did not work, in the card's own words; nothing when it did not fail. */
+@Composable
+private fun LoginErrorText(login: TwitchLoginState) {
+    when (login) {
+        TwitchLoginState.Expired -> ErrorText(stringResource(Res.string.twitch_code_expired))
+        TwitchLoginState.Failed -> ErrorText(stringResource(Res.string.twitch_login_failed))
+        TwitchLoginState.Unreachable -> ErrorText(stringResource(Res.string.twitch_unreachable))
+        else -> Unit
+    }
+}
+
+/** The login is dead: it says so, with a one-click way back in as the same account. The settings below stay usable. */
+@Composable
+private fun DeadLoginBanner(account: TwitchAccount, login: TwitchLoginState, vm: TwitchSetupViewModel) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl).padding(bottom = Spacing.s),
+    ) {
+        Column(Modifier.padding(Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
+            Text(stringResource(Res.string.twitch_login_expired), style = MaterialTheme.typography.bodyMedium)
+            LoginErrorText(login)
+            Button(onClick = vm::onLogin, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(Res.string.twitch_login_again_as, account.displayName))
+            }
         }
     }
 }
@@ -301,11 +326,12 @@ private fun CopyCodeButton(onCopy: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun LoggedInContent(account: TwitchAccount, vm: TwitchSetupViewModel) {
+private fun LoggedInContent(account: TwitchAccount, login: TwitchLoginState, loginDead: Boolean, vm: TwitchSetupViewModel) {
     val settings by vm.settings.collectAsState()
     val twitch = settings.twitch
     val eligibleForBits = account.broadcasterType == "affiliate" || account.broadcasterType == "partner"
     Column(Modifier.padding(top = Spacing.m)) {
+        if (loginDead) DeadLoginBanner(account, login, vm)
         AccountRow(account, onLogout = vm::onLogout)
 
         SectionHeader(stringResource(Res.string.twitch_section_chat), AppIcons.Chat)

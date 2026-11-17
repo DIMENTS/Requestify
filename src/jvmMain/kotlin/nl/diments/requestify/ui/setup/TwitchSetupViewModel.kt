@@ -4,6 +4,8 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -118,11 +120,16 @@ class TwitchSetupViewModel(
                 }
                 _login.value = TwitchLoginState.ShowingCode(code)
                 _login.value = when (val result = auth.awaitDeviceLogin(code)) {
-                    is DeviceLoginResult.Success -> if (saveAccount(result)) TwitchLoginState.Idle else TwitchLoginState.Failed
+                    // Past this point the user has confirmed: the account step is not cut short by a cancel.
+                    is DeviceLoginResult.Success ->
+                        if (withContext(NonCancellable) { saveAccount(result) }) TwitchLoginState.Idle else TwitchLoginState.Failed
                     DeviceLoginResult.Expired -> TwitchLoginState.Expired
                     is DeviceLoginResult.Failed -> TwitchLoginState.Failed
                 }
             } catch (e: CancellationException) {
+                // Cancelled while the login was being completed inside TwitchAuth: it may be logged in already,
+                // and without an account that login is half of one. Undo it.
+                withContext(NonCancellable) { undoLoginWithoutAccount() }
                 throw e
             } catch (_: Exception) {
                 _login.value = TwitchLoginState.Failed
@@ -148,17 +155,34 @@ class TwitchSetupViewModel(
 
     /** Forgets the login and the account. When the saved login cannot be removed, nothing changes and [saveFailed] is set. */
     fun onLogout() {
+        val account = store.settings.value.twitch.account
+        // The account goes first: when that cannot be saved nothing has changed, and the login is not half undone.
+        if (!save { it.copy(twitch = it.twitch.copy(account = null)) }) return
         try {
             auth.logout()
         } catch (_: IOException) {
-            _saveFailed.value = true
+            restoreAfterFailedLogout(account)
             return
         } catch (_: SecurityException) {
-            _saveFailed.value = true
+            restoreAfterFailedLogout(account)
             return
         }
         _login.value = TwitchLoginState.Idle
-        save { it.copy(twitch = it.twitch.copy(account = null)) }
+    }
+
+    /** The saved login could not be removed: it stays, so the account that goes with it comes back. */
+    private fun restoreAfterFailedLogout(account: TwitchAccount?) {
+        if (account != null) store.tryUpdate { it.copy(twitch = it.twitch.copy(account = account)) }
+        _saveFailed.value = true
+    }
+
+    private fun undoLoginWithoutAccount() {
+        if (auth.status.value != TwitchAuthStatus.LoggedIn || store.settings.value.twitch.account != null) return
+        try {
+            auth.logout()
+        } catch (_: IOException) {
+        } catch (_: SecurityException) {
+        }
     }
 
     fun onChatEnabled(on: Boolean) = save { it.copy(twitch = it.twitch.copy(chatEnabled = on)) }

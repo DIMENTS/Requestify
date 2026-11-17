@@ -73,7 +73,7 @@
     <string name="nav_settings">Instellingen</string>
 
     <!-- Connections: Spotify setup -->
-    <string name="setup_intro">Koppel Requestify aan je eigen Spotify-app. Dat hoef je maar één keer te doen.</string>
+    <string name="connections_intro">Koppel Requestify aan Spotify en Twitch. Dat hoef je maar één keer te doen.</string>
     <string name="setup_spotify">Spotify</string>
     <string name="setup_status_connected">Gekoppeld</string>
     <string name="setup_status_not_connected">Niet gekoppeld</string>
@@ -212,7 +212,7 @@
     <string name="twitch_login_expired">Je Twitch-login is verlopen. Log opnieuw in.</string>
     <string name="twitch_requesting_code">Code opvragen bij Twitch…</string>
     <string name="twitch_code_title">Inloggen bij Twitch</string>
-    <string name="twitch_code_hint">Je browser opent twitch.tv/activate. Vul daar deze code in:</string>
+    <string name="twitch_code_hint">Vul deze code in op twitch.tv/activate:</string>
     <string name="twitch_open_browser">Browser openen</string>
     <string name="twitch_waiting">Wachten tot je bevestigt…</string>
     <string name="twitch_code_expired">De code is verlopen. Probeer het opnieuw.</string>

@@ -4,7 +4,10 @@ import java.nio.file.Path
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.createDirectory
+import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteRecursively
+import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -13,6 +16,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -178,5 +182,53 @@ class TwitchSetupViewModelTest {
         p.vm.onCommandName { it.copy(skip = "next") } // fixed: saved, errors gone
         assertEquals("next", p.settings.settings.value.twitch.commands.skip)
         assertTrue(p.vm.commandErrors.value.isEmpty())
+    }
+
+    @Test
+    fun cancellingWhileTheAccountIsLookedUpStillFinishesTheLogin() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val p = parts { usersGate = gate }
+        p.vm.onLogin()
+        runCurrent()
+        advanceTimeBy(10.seconds) // approved; the profile request is now waiting
+        runCurrent()
+
+        p.vm.onCancelLogin()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(TwitchAuthStatus.LoggedIn, p.auth.status.value)
+        assertEquals("DIMENTS", p.settings.settings.value.twitch.account?.displayName, "never logged in without an account")
+    }
+
+    @Test
+    fun cancellingWhileTwitchIsAskedWhoLoggedInLeavesNoHalfLogin() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val p = parts { validateGate = gate }
+        p.vm.onLogin()
+        runCurrent()
+        advanceTimeBy(10.seconds) // the tokens are saved; TwitchAuth is asking who logged in
+        runCurrent()
+
+        p.vm.onCancelLogin()
+        runCurrent()
+        assertEquals(TwitchAuthStatus.LoggedOut, p.auth.status.value)
+        assertNull(p.secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertNull(p.settings.settings.value.twitch.account)
+    }
+
+    @Test
+    fun logoutThatCannotClearTheAccountChangesNothing() = runTest {
+        val p = parts(loggedIn = true, account = account)
+        // Writing the settings fails while a non-empty directory sits where the file goes.
+        val file = dir.resolve("twitch-settings.json")
+        file.deleteExisting()
+        file.createDirectory()
+        file.resolve("keep").writeText("x")
+
+        p.vm.onLogout()
+        assertTrue(p.vm.saveFailed.value)
+        assertEquals(TwitchAuthStatus.LoggedIn, p.auth.status.value, "still logged in")
+        assertEquals("r0", p.secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertEquals(account, p.settings.settings.value.twitch.account)
     }
 }
