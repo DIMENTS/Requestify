@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -77,14 +76,19 @@ import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
 import nl.diments.requestify.ui.theme.SourceChip
+import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
-/** Connected list rows: 4 dp apart, 20 dp corners on the outside of the group, 6 dp between rows. */
-private val RowGap = 4.dp
+/** Connected list rows: [Spacing.xs] apart, 20 dp corners on the outside of the group, 6 dp between rows. */
+private val RowGap = Spacing.xs
 private val OuterCorner = 20.dp
 private val InnerCorner = 6.dp
+
+/** A queue row's drag handle icon ([Spacing.s] around it), and the room its remove button takes (a touch target). */
+private val DragHandleSize = 20.dp
+private val RemoveButtonSize = 48.dp
 
 private enum class QueueTab { Queue, Played }
 
@@ -106,17 +110,20 @@ fun QueuePane(
 ) {
     var tab by rememberSaveable { mutableStateOf(QueueTab.Queue) }
     val motion = MaterialTheme.motionScheme
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(Res.string.home_queue_title), style = MaterialTheme.typography.headlineMediumEmphasized)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            QueueTabs(tab, queueSize = state.queue.size, onSelect = { tab = it })
-            Spacer(Modifier.weight(1f))
-            if (state.queueDurationMs > 0) {
-                Text(
-                    stringResource(Res.string.home_queue_total, formatDuration(state.queueDurationMs)),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
+            Text(stringResource(Res.string.home_queue_title), style = MaterialTheme.typography.headlineMediumEmphasized)
+            Row {
+                QueueTabs(tab, queueSize = state.queue.size, onSelect = { tab = it }, Modifier.alignByBaseline())
+                Spacer(Modifier.weight(1f))
+                if (state.queueDurationMs > 0) {
+                    Text(
+                        stringResource(Res.string.home_queue_total, formatDuration(state.queueDurationMs)),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                }
             }
         }
         AnimatedVisibility(
@@ -158,8 +165,8 @@ fun QueuePane(
 /** The Expressive successor of segmented buttons: a connected button group; the checked one turns into a pill. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
         ToggleButton(
             checked = selected == QueueTab.Queue,
             onCheckedChange = { onSelect(QueueTab.Queue) },
@@ -225,7 +232,7 @@ private fun QueueList(
         state = listState,
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(RowGap),
-        contentPadding = PaddingValues(bottom = 16.dp),
+        contentPadding = PaddingValues(bottom = Spacing.l),
     ) {
         if (handedOver != null) {
             item(key = HANDED_OVER_KEY) {
@@ -233,7 +240,7 @@ private fun QueueList(
                     handedOver,
                     Modifier
                         .animateItem(motion.defaultEffectsSpec(), motion.defaultSpatialSpec(), motion.fastEffectsSpec())
-                        .padding(bottom = 8.dp),
+                        .padding(bottom = Spacing.s),
                 )
             }
         }
@@ -303,14 +310,14 @@ private fun QueueRow(
     val elevation by animateDpAsState(if (dragging) 8.dp else 0.dp, motion.fastSpatialSpec())
     Surface(shape = shape, color = color, shadowElevation = elevation) {
         Row(
-            modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 AppIcons.DragIndicator,
                 contentDescription = stringResource(Res.string.home_drag_to_reorder),
                 tint = scheme.outline,
-                modifier = dragHandle.padding(8.dp).size(20.dp),
+                modifier = dragHandle.padding(Spacing.s).size(DragHandleSize),
             )
             RequestDetails(request, Modifier.weight(1f))
             IconButton(onClick = { onRemove(request.id) }, shapes = IconButtonDefaults.shapes()) {
@@ -333,10 +340,10 @@ private fun HandedOverRow(request: Request, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
-        Column(Modifier.padding(top = 10.dp, bottom = 8.dp)) {
+        Column(Modifier.padding(vertical = Spacing.s), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = Spacing.l),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(AppIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -345,9 +352,13 @@ private fun HandedOverRow(request: Request, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelLargeEmphasized,
                 )
             }
+            // Lined up with the queue rows' details: past the drag handle, short of the remove button.
             RequestDetails(
                 request,
-                Modifier.padding(start = 40.dp, end = 52.dp, top = 6.dp),
+                Modifier.padding(
+                    start = Spacing.xs + Spacing.s + DragHandleSize + Spacing.s,
+                    end = Spacing.xs + RemoveButtonSize,
+                ),
                 secondaryColor = LocalContentColor.current,
             )
         }
@@ -363,14 +374,14 @@ private fun PlayedList(history: List<PlayedEntry>, modifier: Modifier = Modifier
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(RowGap),
-        contentPadding = PaddingValues(bottom = 16.dp),
+        contentPadding = PaddingValues(bottom = Spacing.l),
     ) {
         itemsIndexed(history, key = { _, entry -> "${entry.request.id}@${entry.playedAtEpochMs}" }) { index, entry ->
             Surface(
                 shape = connectedShape(index, history.size, dragging = false),
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
             ) {
-                RequestDetails(entry.request, Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp))
+                RequestDetails(entry.request, Modifier.padding(horizontal = Spacing.l, vertical = Spacing.s))
             }
         }
     }
@@ -384,7 +395,7 @@ private fun RequestDetails(
     secondaryColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     val typography = MaterialTheme.typography
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.m), verticalAlignment = Alignment.CenterVertically) {
         AlbumArt(request.track.albumArtUrl, Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)))
         Column(Modifier.weight(1f)) {
             Text(request.track.name, style = typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -396,7 +407,7 @@ private fun RequestDetails(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             SourceChip(request.source, sourceLabel(request))
             Text(requesterLabel(request), style = typography.labelMedium, color = secondaryColor, maxLines = 1)
         }
@@ -423,7 +434,7 @@ private fun RequestDetails(
 @Composable
 private fun EmptyState(text: String, modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
             Icon(
                 AppIcons.MusicNote,
                 contentDescription = null,

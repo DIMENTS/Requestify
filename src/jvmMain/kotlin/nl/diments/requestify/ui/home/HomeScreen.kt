@@ -22,12 +22,20 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.ui.theme.RequestifyTheme
+import nl.diments.requestify.ui.theme.Spacing
 import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
 
 /** From this width of Home the panes sit side by side; below it Now Playing moves above the queue. */
 private val WideLayoutMinWidth = 900.dp
-private val NowPlayingWidth = 320.dp
+
+/**
+ * Beside the queue, Now Playing takes this share of Home's width, within [NowPlayingMinWidth]..[NowPlayingMaxWidth]:
+ * at the default window size its art and details then about fill the card's height, and the queue keeps its room.
+ */
+private const val NOW_PLAYING_SHARE = 0.36f
+private val NowPlayingMinWidth = 320.dp
+private val NowPlayingMaxWidth = 400.dp
 
 /**
  * The Home screen: the queue on the left, Now Playing on the right. It uses the app theme of its caller; Now
@@ -66,12 +74,15 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
                 }
             }
             if (wide) {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Whole dp, so the panes and the gap between them land on whole pixels.
+                val nowPlayingWidth = (maxWidth * NOW_PLAYING_SHARE).coerceIn(NowPlayingMinWidth, NowPlayingMaxWidth)
+                    .value.toInt().dp
+                Row(Modifier.padding(Spacing.xl), horizontalArrangement = Arrangement.spacedBy(Spacing.xl)) {
                     queuePane(state, Modifier.weight(1f).fillMaxHeight())
-                    nowPlayingPane(Modifier.width(NowPlayingWidth).fillMaxHeight())
+                    nowPlayingPane(Modifier.width(nowPlayingWidth).fillMaxHeight())
                 }
             } else {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
                     nowPlayingPane(Modifier.fillMaxWidth())
                     queuePane(state, Modifier.weight(1f).fillMaxWidth())
                 }

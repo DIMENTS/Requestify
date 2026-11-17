@@ -15,15 +15,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -104,32 +101,25 @@ import nl.diments.requestify.resources.setup_step_login_title
 import nl.diments.requestify.resources.setup_step_redirect_body
 import nl.diments.requestify.resources.setup_step_redirect_title
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.PageScaffold
 import nl.diments.requestify.ui.common.SpotifyStatusChip
+import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 private const val DASHBOARD_URL = "https://developer.spotify.com/dashboard"
 private const val COPIED_CONFIRMATION_MS = 2_000L
-private val ContentMaxWidth = 760.dp
+
+/** The connection badge is as tall as an M3 chip. */
+private val BadgeHeight = 32.dp
+private val StepBadgeSize = 36.dp
 
 /** Connections: the guided Spotify setup, one numbered step at a time, with a live result at the end. */
 @Composable
 fun SpotifySetupScreen(vm: SpotifySetupViewModel) {
     val state by vm.state.collectAsState()
-    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth().padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(stringResource(Res.string.nav_connections), style = MaterialTheme.typography.headlineMediumEmphasized)
-            Text(
-                stringResource(Res.string.setup_intro),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.size(8.dp))
-            SpotifyCard(state, vm)
-        }
+    PageScaffold(stringResource(Res.string.nav_connections), subtitle = stringResource(Res.string.setup_intro)) {
+        SpotifyCard(state, vm)
     }
 }
 
@@ -141,7 +131,7 @@ private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(Res.string.setup_spotify), style = MaterialTheme.typography.titleLargeEmphasized)
                 Spacer(Modifier.weight(1f))
@@ -187,11 +177,9 @@ private fun ConnectionBadge(auth: SpotifyAuthStatus) {
             Triple(Res.string.setup_status_login_expired, scheme.errorContainer, scheme.onErrorContainer)
     }
     Surface(shape = CircleShape, color = container, contentColor = content) {
-        Text(
-            stringResource(text),
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+        Box(Modifier.heightIn(min = BadgeHeight).padding(horizontal = Spacing.m), contentAlignment = Alignment.Center) {
+            Text(stringResource(text), style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 
@@ -204,9 +192,9 @@ private fun Step(
     done: Boolean,
     content: @Composable () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.l)) {
         StepBadge(number, done)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
             Text(stringResource(title), style = MaterialTheme.typography.titleMediumEmphasized)
             if (body != null) {
                 Text(
@@ -234,14 +222,14 @@ private fun StepBadge(number: Int, done: Boolean) {
     ) { isDone ->
         if (isDone) {
             Box(
-                Modifier.size(36.dp).background(scheme.primary, MaterialShapes.Cookie9Sided.toShape()),
+                Modifier.size(StepBadgeSize).background(scheme.primary, MaterialShapes.Cookie9Sided.toShape()),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(AppIcons.Check, contentDescription = null, tint = scheme.onPrimary, modifier = Modifier.size(20.dp))
             }
         } else {
             Box(
-                Modifier.size(36.dp).background(scheme.secondaryContainer, CircleShape),
+                Modifier.size(StepBadgeSize).background(scheme.secondaryContainer, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("$number", style = MaterialTheme.typography.titleMediumEmphasized, color = scheme.onSecondaryContainer)
@@ -258,20 +246,25 @@ private fun CopyableText(text: String) {
     val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     val motion = MaterialTheme.motionScheme
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
         Surface(
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
             modifier = Modifier.weight(1f, fill = false),
         ) {
-            SelectionContainer {
-                Text(
-                    text,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                )
+            // As tall as the button beside it.
+            Box(
+                Modifier.heightIn(min = ButtonDefaults.MinHeight).padding(horizontal = Spacing.m),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                SelectionContainer {
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         OutlinedButton(
@@ -345,7 +338,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
         state.loggingIn -> LoginPhase.LoggingIn
         else -> LoginPhase.LoggedOut
     }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
         if (state.auth is SpotifyAuthStatus.LoginNeeded && phase == LoginPhase.LoggedOut) {
             ErrorText(stringResource(Res.string.setup_login_expired))
         }
@@ -366,7 +359,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                     Text(stringResource(Res.string.setup_login))
                 }
                 LoginPhase.LoggingIn -> Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.m),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LoadingIndicator(Modifier.size(40.dp))
@@ -376,7 +369,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                     }
                 }
                 LoginPhase.LoggedIn -> Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.m),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(AppIcons.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -393,7 +386,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
                 Text(stringResource(Res.string.setup_browser_failed), style = MaterialTheme.typography.bodyMedium)
                 CopyableText(url.orEmpty())
             }
@@ -424,8 +417,8 @@ private fun CheckResult(state: SpotifySetupState) {
         )
         return
     }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m), verticalAlignment = Alignment.CenterVertically) {
             when (state.premium) {
                 null -> {
                     LoadingIndicator(Modifier.size(24.dp))
@@ -436,7 +429,7 @@ private fun CheckResult(state: SpotifySetupState) {
                 PremiumCheck.Unknown -> ResultLine(AppIcons.Info, scheme.onSurfaceVariant, Res.string.setup_premium_unknown)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m), verticalAlignment = Alignment.CenterVertically) {
             SpotifyStatusChip(state.health)
             val hint = when (state.health) {
                 SpotifyHealth.Ok -> Res.string.setup_device_ok
@@ -468,5 +461,9 @@ private fun ErrorText(text: String) {
 
 @Composable
 private fun ButtonIcon(icon: ImageVector) {
-    Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 8.dp).size(ButtonDefaults.IconSize))
+    Icon(
+        icon,
+        contentDescription = null,
+        modifier = Modifier.padding(end = ButtonDefaults.IconSpacing).size(ButtonDefaults.IconSize),
+    )
 }

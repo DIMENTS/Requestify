@@ -9,12 +9,15 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -37,6 +40,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
@@ -70,6 +74,7 @@ import nl.diments.requestify.ui.settings.SettingsScreen
 import nl.diments.requestify.ui.setup.SpotifySetupScreen
 import nl.diments.requestify.ui.setup.isValidSpotifyClientId
 import nl.diments.requestify.ui.theme.RequestifyTheme
+import nl.diments.requestify.ui.theme.Spacing
 import nl.diments.requestify.ui.theme.albumSeedFrom
 import nl.diments.requestify.ui.theme.albumSeedOrPrevious
 import nl.diments.requestify.ui.theme.resolveDark
@@ -143,7 +148,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                         ) {
                             ProblemBanner(
                                 stringResource(Res.string.settings_load_failed),
-                                Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
+                                Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl),
                             )
                         }
                         AnimatedContent(
@@ -177,23 +182,33 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     }
 }
 
-/** The Expressive navigation rail (collapsed): the "Add" FAB on top, then one item per destination. */
+/** The collapsed M3 navigation rail's width; its items are centred in it. */
+private val CollapsedRailWidth = 96.dp
+
+/**
+ * The Expressive navigation rail (collapsed), under the title bar: the "Add" FAB on top, then one item per
+ * destination, all centred on one vertical line. The rail itself keeps the M3 gap between the FAB and the items.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AppRail(selected: Destination, onSelect: (Destination) -> Unit, onAdd: () -> Unit) {
     WideNavigationRail(
         header = {
-            val addLabel = stringResource(Res.string.nav_add)
-            TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Right),
-                tooltip = { PlainTooltip { Text(addLabel) } },
-                state = rememberTooltipState(),
-            ) {
-                FloatingActionButton(onClick = onAdd) {
-                    Icon(AppIcons.Add, contentDescription = addLabel)
+            // The rail places its header at its start edge; centre the FAB over the items.
+            Box(Modifier.width(CollapsedRailWidth), contentAlignment = Alignment.Center) {
+                val addLabel = stringResource(Res.string.nav_add)
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Right),
+                    tooltip = { PlainTooltip { Text(addLabel) } },
+                    state = rememberTooltipState(),
+                ) {
+                    FloatingActionButton(onClick = onAdd) {
+                        Icon(AppIcons.Add, contentDescription = addLabel)
+                    }
                 }
             }
         },
+        contentPadding = PaddingValues(vertical = Spacing.m),
     ) {
         Destination.entries.forEach { destination ->
             WideNavigationRailItem(

@@ -16,15 +16,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -73,8 +69,10 @@ import nl.diments.requestify.resources.settings_theme
 import nl.diments.requestify.resources.settings_theme_dark
 import nl.diments.requestify.resources.settings_theme_light
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.PageScaffold
 import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.theme.BrandSeed
+import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -90,7 +88,6 @@ internal val CustomSeedPresets: List<Color> = listOf(
     Color(0xFFD81B60), // pink
 )
 
-private val ContentMaxWidth = 760.dp
 private val SwatchSize = 48.dp
 
 private enum class ColourSource { Album, Custom }
@@ -108,55 +105,49 @@ fun SettingsScreen(settings: SettingsStore) {
         saveFailed = !settings.tryUpdate(change)
     }
     val motion = MaterialTheme.motionScheme
-    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth().padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+    PageScaffold(stringResource(Res.string.nav_settings)) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(stringResource(Res.string.nav_settings), style = MaterialTheme.typography.headlineMediumEmphasized)
-            Surface(
-                shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Text(stringResource(Res.string.settings_appearance), style = MaterialTheme.typography.titleLargeEmphasized)
-                    AnimatedVisibility(
-                        visible = saveFailed,
-                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                        exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
-                    ) {
-                        ProblemBanner(stringResource(Res.string.save_failed))
-                    }
-                    ColourSetting(current.themeMode) { mode -> save { it.copy(themeMode = mode) } }
-                    Setting(Res.string.settings_theme) {
-                        ChoiceGroup(
-                            options = DarkMode.entries,
-                            selected = current.darkMode,
-                            label = {
-                                when (it) {
-                                    DarkMode.System -> Res.string.settings_system
-                                    DarkMode.Light -> Res.string.settings_theme_light
-                                    DarkMode.Dark -> Res.string.settings_theme_dark
-                                }
-                            },
-                            onSelect = { mode -> save { it.copy(darkMode = mode) } },
-                        )
-                    }
-                    Setting(Res.string.settings_language, hint = Res.string.settings_language_restart) {
-                        ChoiceGroup(
-                            options = AppLanguage.entries,
-                            selected = current.language,
-                            label = {
-                                when (it) {
-                                    AppLanguage.System -> Res.string.settings_system
-                                    AppLanguage.English -> Res.string.settings_language_english
-                                    AppLanguage.Dutch -> Res.string.settings_language_dutch
-                                }
-                            },
-                            onSelect = { language -> save { it.copy(language = language) } },
-                        )
-                    }
+            Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
+                Text(stringResource(Res.string.settings_appearance), style = MaterialTheme.typography.titleLargeEmphasized)
+                AnimatedVisibility(
+                    visible = saveFailed,
+                    enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                    exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                ) {
+                    ProblemBanner(stringResource(Res.string.save_failed))
+                }
+                ColourSetting(current.themeMode) { mode -> save { it.copy(themeMode = mode) } }
+                Setting(Res.string.settings_theme) {
+                    ChoiceGroup(
+                        options = DarkMode.entries,
+                        selected = current.darkMode,
+                        label = {
+                            when (it) {
+                                DarkMode.System -> Res.string.settings_system
+                                DarkMode.Light -> Res.string.settings_theme_light
+                                DarkMode.Dark -> Res.string.settings_theme_dark
+                            }
+                        },
+                        onSelect = { mode -> save { it.copy(darkMode = mode) } },
+                    )
+                }
+                Setting(Res.string.settings_language, hint = Res.string.settings_language_restart) {
+                    ChoiceGroup(
+                        options = AppLanguage.entries,
+                        selected = current.language,
+                        label = {
+                            when (it) {
+                                AppLanguage.System -> Res.string.settings_system
+                                AppLanguage.English -> Res.string.settings_language_english
+                                AppLanguage.Dutch -> Res.string.settings_language_dutch
+                            }
+                        },
+                        onSelect = { language -> save { it.copy(language = language) } },
+                    )
                 }
             }
         }
@@ -198,9 +189,9 @@ private fun ColourSetting(mode: ThemeMode, onChange: (ThemeMode) -> Unit) {
 @Composable
 private fun SwatchRow(selectedArgb: Int?, onPick: (Color) -> Unit) {
     FlowRow(
-        modifier = Modifier.padding(top = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(top = Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+        verticalArrangement = Arrangement.spacedBy(Spacing.m),
     ) {
         CustomSeedPresets.forEachIndexed { index, colour ->
             Swatch(
@@ -247,7 +238,7 @@ private fun Swatch(colour: Color, selected: Boolean, label: String, onClick: () 
 
 @Composable
 private fun Setting(title: StringResource, hint: StringResource? = null, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
         Text(stringResource(title), style = MaterialTheme.typography.titleMediumEmphasized)
         content()
         if (hint != null) {

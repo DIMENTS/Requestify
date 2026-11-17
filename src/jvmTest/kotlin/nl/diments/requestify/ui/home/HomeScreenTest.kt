@@ -9,7 +9,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -22,6 +25,7 @@ import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,15 +67,18 @@ class HomeScreenTest {
     }
 
     /** A view model over a controller that is never started, so the screen shows a still state. */
-    private fun viewModel(): HomeViewModel {
-        val controller = PlaybackController(
-            player = FakeSpotifyPlayer { 0L },
-            store = QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }),
-            requestsOpen = MutableStateFlow(true),
-            paidPriority = { true },
-            scope = scope,
-            clock = { 0L },
-        )
+    private fun viewModel(): HomeViewModel = viewModelWith(controller(FakeSpotifyPlayer { 0L }))
+
+    private fun controller(player: FakeSpotifyPlayer) = PlaybackController(
+        player = player,
+        store = QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }),
+        requestsOpen = MutableStateFlow(true),
+        paidPriority = { true },
+        scope = scope,
+        clock = { 0L },
+    )
+
+    private fun viewModelWith(controller: PlaybackController): HomeViewModel {
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
         return HomeViewModel(controller, NoCatalog, settings, scope, clock = { 0L })
     }
@@ -98,6 +105,61 @@ class HomeScreenTest {
         waitForIdle()
         assertTrue(nowPlayingIsAboveTheQueue(), "880 dp for Home: Now Playing above the queue")
     }
+
+    // Home at a 1180×760 dp window: the window minus the 96 dp rail and the 40 dp title bar.
+    private val wideWidth = 1084.dp
+    private val wideHeight = 720.dp
+
+    @Test
+    fun queueAndNowPlayingStartOnOneLineInsideThePagePadding() =
+        runDesktopComposeUiTest(width = wideWidth.value.toInt(), height = wideHeight.value.toInt()) {
+            setContent { HomeScreen(viewModel(), albumSeed = null) }
+            val headline = onNodeWithText("Queue").getBoundsInRoot()
+            val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
+            val addField = onNode(hasSetTextAction()).getBoundsInRoot()
+
+            assertEquals(24.dp, headline.left, "from the rail")
+            assertEquals(24.dp, headline.top, "from the title bar")
+            assertEquals(headline.top, card.top, "the queue headline and Now Playing start on one line")
+            assertEquals(wideWidth - 24.dp, card.right, "from the window's right edge")
+            assertEquals(wideHeight - 24.dp, card.bottom, "from the window's bottom edge")
+            assertEquals(24.dp, card.left - addField.right, "between the panes")
+        }
+
+    @Test
+    fun narrowHomeKeepsThePagePaddingWithNowPlayingOnTop() = runDesktopComposeUiTest(width = 664, height = 720) {
+        setContent { HomeScreen(viewModel(), albumSeed = null) } // a 760 dp window minus the rail
+        val headline = onNodeWithText("Queue").getBoundsInRoot()
+        val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
+
+        assertEquals(24.dp, card.left)
+        assertEquals(24.dp, card.top)
+        assertEquals(664.dp - 24.dp, card.right)
+        assertEquals(24.dp, headline.left)
+        assertEquals(card.bottom + 24.dp, headline.top, "between the panes")
+    }
+
+    @Test
+    fun nowPlayingLeavesNoEmptyBandUnderItsControls() =
+        runDesktopComposeUiTest(width = wideWidth.value.toInt(), height = wideHeight.value.toInt()) {
+            val player = FakeSpotifyPlayer { 0L }
+            player.plays(Track("np", "spotify:track:np", "Midnight City", listOf("M83"), 243_000, false, null), 141_000)
+            val controller = controller(player)
+            val vm = viewModelWith(controller)
+            controller.start()
+            setContent { HomeScreen(vm, albumSeed = null) }
+            waitUntil(timeoutMillis = 5_000) { vm.state.value.nowPlaying != null }
+            waitForIdle()
+            val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
+            val label = onNodeWithText("NOW PLAYING").getBoundsInRoot()
+            val title = onNodeWithText("Midnight City").getBoundsInRoot()
+            val playPause = onNodeWithContentDescription("Pause").getBoundsInRoot()
+            val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
+
+            assertTrue(card.bottom - skip.bottom <= 48.dp, "empty band under the controls: ${card.bottom - skip.bottom}")
+            assertEquals(label.left, title.left, "the label and the title share one start edge")
+            assertEquals(title.left, playPause.left, "the controls start on that edge too, not centred")
+        }
 
     @Test
     fun typedTextSurvivesTheLayoutSwitch() = runDesktopComposeUiTest(width = 1180, height = 760) {

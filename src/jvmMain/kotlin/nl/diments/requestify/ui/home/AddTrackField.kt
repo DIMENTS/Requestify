@@ -53,6 +53,7 @@ import nl.diments.requestify.resources.spotify_kind_show
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.formatDuration
+import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -110,7 +111,7 @@ fun AddTrackField(
             onExpandedChange = {},
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = Spacing.s)) {
                 results.forEach { track -> ResultRow(track, enabled = !resultsStale, onClick = { pick(track) }) }
             }
         }
@@ -135,7 +136,7 @@ private fun MessageLine(message: AddMessage?) {
                 messageText(shown),
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (shown == AddMessage.SpotifyUnavailable) scheme.error else scheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
+                modifier = Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.s),
             )
         }
     }

@@ -1,9 +1,11 @@
 package nl.diments.requestify.ui
 
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -11,6 +13,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import com.sun.nio.file.ExtendedOpenOption
@@ -28,6 +32,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +46,7 @@ import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.ui.settings.CustomSeedPresets
 import nl.diments.requestify.ui.theme.BrandSeed
+import nl.diments.requestify.ui.window.TitleBarHeight
 
 @OptIn(ExperimentalTestApi::class, ExperimentalPathApi::class)
 class AppScaffoldTest {
@@ -122,6 +128,49 @@ class AppScaffoldTest {
         onNodeWithText("Queue").assertExists()
         onNode(hasSetTextAction()).assertIsFocused()
     }
+
+    @Test
+    fun theAddButtonIsCentredOverTheRailItemsAndClearOfTheWindowEdge() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        setContent { AppScaffold(graph()) }
+        waitForIdle()
+        val add = onNodeWithContentDescription("Add a track").getBoundsInRoot()
+        val items = listOf("Home", "Connections", "Settings").map { railItem(it) }
+
+        items.forEach { item ->
+            assertEquals(item.centerX().value, add.centerX().value, absoluteTolerance = 1f, "add button over $item")
+        }
+        assertTrue(add.left >= 16.dp, "the add button is ${add.left} from the window's left edge")
+        assertEquals(TitleBarHeight + 12.dp, add.top, "from the title bar to the add button")
+        assertEquals(40.dp, items.first().top - add.bottom, "from the add button to the first item")
+    }
+
+    @Test
+    fun everyPageStartsWhereHomeStarts() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        setContent { AppScaffold(graph()) } // a first run opens on Connections
+        waitForIdle()
+        val connections = headline("Connections")
+        onNode(hasText("Home") and hasClickAction()).performClick()
+        waitForIdle()
+        val home = headline("Queue")
+        onNode(hasText("Settings") and hasClickAction()).performClick()
+        waitForIdle()
+        val settings = headline("Settings")
+
+        // The rail is 96 dp wide; pages keep 24 dp from it and from the title bar.
+        assertEquals(96.dp + 24.dp, home.left, "Home's content start")
+        assertEquals(TitleBarHeight + 24.dp, home.top, "Home's top line")
+        for ((page, bounds) in listOf("Connections" to connections, "Settings" to settings)) {
+            assertEquals(home.left, bounds.left, "$page's headline starts where Home's does")
+            assertEquals(home.top, bounds.top, "$page's headline is on Home's top line")
+        }
+    }
+
+    private fun ComposeUiTest.railItem(label: String): DpRect = onNode(hasText(label) and hasClickAction()).getBoundsInRoot()
+
+    /** A page's headline: its text, not the rail item with the same label. */
+    private fun ComposeUiTest.headline(text: String): DpRect = onNode(hasText(text) and !hasClickAction()).getBoundsInRoot()
+
+    private fun DpRect.centerX() = (left + right) / 2
 
     @Test
     fun customColourIsChosenInSettings() = runDesktopComposeUiTest(width = 1180, height = 760) {

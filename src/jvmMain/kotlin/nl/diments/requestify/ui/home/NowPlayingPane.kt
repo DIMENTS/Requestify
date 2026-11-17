@@ -13,19 +13,18 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonGroup
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -56,11 +55,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.delay
@@ -81,17 +82,27 @@ import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
 import nl.diments.requestify.ui.theme.SourceChip
+import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
+
+/** The Now Playing card's test tag. */
+internal const val NOW_PLAYING_PANE_TAG = "now-playing"
 
 private val PaneCorner = 32.dp
 
 /** Asymmetric art corners (top-start, top-end, bottom-end, bottom-start). */
 private val ArtCorners = listOf(36.dp, 36.dp, 12.dp, 36.dp)
 
+/** The art's side in the [compact] pane: about as tall as the track info beside it. */
+private val CompactArtSize = 112.dp
+
 /**
- * Right side of Home: what Spotify plays now, who asked for it, live progress and the play/pause + skip group.
- * [compact] lays it out as a row (art beside the details) for narrow windows, where it sits above the queue.
- * [clock] is wall time, the clock [NowPlaying.sampledAtEpochMs] is on.
+ * Right side of Home: what Spotify plays now, who asked for it, live progress and the play/pause + skip group,
+ * all on one start edge. The art is on top; the track info, progress and controls sit at the bottom of the card
+ * and the art takes the height they leave (square, at most the card's width); once the art is that wide, the
+ * whole stack is centred instead. [compact] is for narrow windows, where the pane sits above the queue: the art
+ * beside the track info, and under them the controls with the progress filling the rest of the row. [clock] is
+ * wall time, the clock [NowPlaying.sampledAtEpochMs] is on.
  */
 @Composable
 fun NowPlayingPane(
@@ -102,49 +113,67 @@ fun NowPlayingPane(
     compact: Boolean = false,
     clock: () -> Long = System::currentTimeMillis,
 ) {
-    Surface(modifier, shape = RoundedCornerShape(PaneCorner), color = MaterialTheme.colorScheme.surfaceContainer) {
-        when {
-            nowPlaying == null -> Idle(compact)
-            compact -> Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PoppingArt(nowPlaying.track, Modifier.size(136.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Details(nowPlaying, onTogglePause, onSkip, compact = true, clock)
+    Surface(
+        modifier.testTag(NOW_PLAYING_PANE_TAG),
+        shape = RoundedCornerShape(PaneCorner),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        val art = @Composable { artModifier: Modifier ->
+            if (nowPlaying == null) {
+                AlbumArt(null, artModifier.clip(artShape(1f)))
+            } else {
+                PoppingArt(nowPlaying.track, artModifier)
+            }
+        }
+        val info = @Composable { if (nowPlaying == null) IdleInfo() else TrackInfo(nowPlaying, compact) }
+        val controls = @Composable { playing: NowPlaying ->
+            Controls(isPlaying = playing.isPlaying, onTogglePause = onTogglePause, onSkip = onSkip)
+        }
+        if (compact) {
+            Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xl),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    art(Modifier.size(CompactArtSize))
+                    Box(Modifier.weight(1f)) { info() }
+                }
+                if (nowPlaying != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.l),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        controls(nowPlaying)
+                        Box(Modifier.weight(1f)) { Progress(nowPlaying, clock) }
+                    }
                 }
             }
-            else -> Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+        } else {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(Spacing.xl),
+                verticalArrangement = Arrangement.spacedBy(Spacing.l, Alignment.CenterVertically),
             ) {
-                Label()
-                PoppingArt(nowPlaying.track, Modifier.fillMaxWidth().aspectRatio(1f))
-                Details(nowPlaying, onTogglePause, onSkip, compact = false, clock)
+                BoxWithConstraints(Modifier.weight(1f, fill = false)) {
+                    art(Modifier.size(min(maxWidth, maxHeight)))
+                }
+                info()
+                if (nowPlaying != null) {
+                    Progress(nowPlaying, clock)
+                    controls(nowPlaying)
+                }
             }
         }
     }
 }
 
+/** The label over the track and who asked for it. */
 @Composable
-private fun ColumnScope.Details(
-    nowPlaying: NowPlaying,
-    onTogglePause: () -> Unit,
-    onSkip: () -> Unit,
-    compact: Boolean,
-    clock: () -> Long,
-) {
-    if (compact) Label()
-    TrackText(nowPlaying.track, compact)
-    RequestLine(nowPlaying.request)
-    Progress(nowPlaying, clock)
-    Controls(
-        isPlaying = nowPlaying.isPlaying,
-        onTogglePause = onTogglePause,
-        onSkip = onSkip,
-        modifier = Modifier.align(if (compact) Alignment.Start else Alignment.CenterHorizontally),
-    )
+private fun TrackInfo(nowPlaying: NowPlaying, compact: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+        Label()
+        TrackText(nowPlaying.track, compact)
+        RequestLine(nowPlaying.request)
+    }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -158,36 +187,18 @@ private fun Label() {
     )
 }
 
+/** Nothing plays: the label, and how to get something here. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun Idle(compact: Boolean) {
-    val idleArt = @Composable { modifier: Modifier -> AlbumArt(null, modifier.clip(artShape(1f))) }
-    val text = @Composable {
+private fun IdleInfo() {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+        Label()
         Text(stringResource(Res.string.now_playing_idle_title), style = MaterialTheme.typography.headlineSmallEmphasized)
         Text(
             stringResource(Res.string.now_playing_idle_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-    if (compact) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            idleArt(Modifier.size(136.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Label()
-                text()
-            }
-        }
-    } else {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Label()
-            idleArt(Modifier.fillMaxWidth().aspectRatio(1f))
-            text()
-        }
     }
 }
 
@@ -279,7 +290,7 @@ private fun RequestLine(request: Request?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
                 SourceChip(shown.source, sourceLabel(shown))
                 Text(
                     requesterLabel(shown),
@@ -300,7 +311,7 @@ private fun Progress(nowPlaying: NowPlaying, clock: () -> Long) {
     val durationMs = nowPlaying.track.durationMs
     val position = rememberLivePosition(nowPlaying, clock)
     val elapsed by remember { derivedStateOf { formatDuration(position.longValue) } }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         LinearWavyProgressIndicator(
             progress = { if (durationMs > 0) position.longValue.toFloat() / durationMs else 0f },
             modifier = Modifier.fillMaxWidth(),
