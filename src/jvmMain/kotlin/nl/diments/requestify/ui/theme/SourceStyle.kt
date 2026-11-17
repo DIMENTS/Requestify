@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.core.model.RequestSource
@@ -48,8 +49,14 @@ fun SourceChip(source: RequestSource, label: String, modifier: Modifier = Modifi
     }
 }
 
-/** How tall a [SourceChip] is at the current text size: one line of its label and the room above and below it. */
+/**
+ * How tall a [SourceChip] is at the current density and text size: one line of its label and the room above and
+ * below it, in whole pixels as it is laid out.
+ */
 @Composable
-fun sourceChipHeight(): Dp =
-    with(LocalDensity.current) { MaterialTheme.typography.labelMedium.lineHeight.toDp() } +
-        ChipPadding.calculateTopPadding() + ChipPadding.calculateBottomPadding()
+fun sourceChipHeight(): Dp {
+    val label = rememberTextMeasurer().measure("H", MaterialTheme.typography.labelMedium).size.height
+    return with(LocalDensity.current) {
+        (label + ChipPadding.calculateTopPadding().roundToPx() + ChipPadding.calculateBottomPadding().roundToPx()).toDp()
+    }
+}

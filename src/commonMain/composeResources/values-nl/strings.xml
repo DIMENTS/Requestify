@@ -52,6 +52,7 @@
     <string name="now_playing_pause">Pauzeren</string>
     <string name="now_playing_previous">Vorige</string>
     <string name="now_playing_skip">Overslaan</string>
+    <string name="now_playing_no_time">–:––</string>
 
     <!-- Spotify status -->
     <string name="spotify_status_ok">Spotify verbonden</string>

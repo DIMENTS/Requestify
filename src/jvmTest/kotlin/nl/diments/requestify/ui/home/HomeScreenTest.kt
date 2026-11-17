@@ -179,7 +179,7 @@ class HomeScreenTest {
         }
 
     @Test
-    fun typedTextSurvivesTheLayoutSwitch()= runDesktopComposeUiTest(width = 1180, height = 760) {
+    fun typedTextSurvivesTheLayoutSwitch() = runDesktopComposeUiTest(width = 1180, height = 760) {
         val vm = viewModel()
         var railWidth by mutableStateOf(0.dp)
         setContent {

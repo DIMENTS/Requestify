@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CornerSize
@@ -64,7 +65,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -84,6 +87,7 @@ import nl.diments.requestify.resources.now_playing_idle_title
 import nl.diments.requestify.resources.now_playing_label
 import nl.diments.requestify.resources.now_playing_label_last_played
 import nl.diments.requestify.resources.now_playing_label_paused
+import nl.diments.requestify.resources.now_playing_no_time
 import nl.diments.requestify.resources.now_playing_own_music
 import nl.diments.requestify.resources.now_playing_pause
 import nl.diments.requestify.resources.now_playing_play
@@ -101,6 +105,9 @@ import org.jetbrains.compose.resources.stringResource
 
 /** The Now Playing card's test tag. */
 internal const val NOW_PLAYING_PANE_TAG = "now-playing"
+
+/** The test tag of the room kept for the track details (see [Details]). */
+internal const val NOW_PLAYING_DETAILS_TAG = "now-playing-details"
 
 private val PaneCorner = 32.dp
 
@@ -223,8 +230,15 @@ private fun ArtOverDetails(availableHeight: Int, content: @Composable () -> Unit
  */
 @Composable
 private fun Details(nowPlaying: NowPlaying?, compact: Boolean) {
-    Box(Modifier.height(detailsHeight(compact)), contentAlignment = Alignment.BottomStart) {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+    Box(
+        Modifier.height(detailsHeight(compact)).testTag(NOW_PLAYING_DETAILS_TAG),
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        // Measured at its own height, so nothing in it is ever squeezed (if it did not fit, it would show above).
+        Column(
+            Modifier.wrapContentHeight(Alignment.Bottom, unbounded = true),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s),
+        ) {
             Label(nowPlaying)
             if (nowPlaying == null) {
                 Title(stringResource(Res.string.now_playing_idle_title), compact)
@@ -244,20 +258,29 @@ private fun Details(nowPlaying: NowPlaying?, compact: Boolean) {
 }
 
 /**
- * How tall the details are in every state, from the type scale at the current text size: the label, two lines of
- * title, the artist and the requester row, with the gaps between them. (Nothing playing needs less: its message
- * takes at most two body lines where the artist and the requester row go.)
+ * How tall the details are in every state: the label, two lines of title, the artist and the requester row with
+ * the gaps between them, in whole pixels as they are laid out at the current density and text size, so they
+ * always fit exactly. (Nothing playing needs less: its message takes at most two body lines where the artist and
+ * the requester row go.)
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun detailsHeight(compact: Boolean): Dp {
+    val measurer = rememberTextMeasurer()
     val typography = MaterialTheme.typography
-    val lines = with(LocalDensity.current) {
-        typography.labelMediumEmphasized.lineHeight.toDp() + titleStyle(compact).lineHeight.toDp() * 2 +
-            typography.titleMedium.lineHeight.toDp()
+    val title = titleStyle(compact)
+    val requesterRow = requesterRowHeight()
+    return with(LocalDensity.current) {
+        val px = measurer.linesHeight(typography.labelMediumEmphasized, 1) + Spacing.s.roundToPx() +
+            measurer.linesHeight(title, 2) + measurer.linesHeight(typography.titleMedium, 1) +
+            Spacing.s.roundToPx() + requesterRow.roundToPx()
+        px.toDp()
     }
-    return lines + Spacing.s + requesterRowHeight() + Spacing.s
 }
+
+/** How many pixels [lines] lines of [style] take, measured the way a Text lays them out. */
+private fun TextMeasurer.linesHeight(style: TextStyle, lines: Int): Int =
+    measure(List(lines) { "H" }.joinToString("\n"), style).size.height
 
 /** NOW PLAYING while playing (or with nothing to show), PAUSED while paused, LAST PLAYED for the last song played. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -395,12 +418,15 @@ private fun RequestLine(request: Request?) {
 
 /** The requester row is as tall as a source chip (or a line of the name beside it), with a chip or without. */
 @Composable
-private fun requesterRowHeight(): Dp =
-    maxOf(sourceChipHeight(), with(LocalDensity.current) { MaterialTheme.typography.labelLarge.lineHeight.toDp() })
+private fun requesterRowHeight(): Dp {
+    val nameLine = rememberTextMeasurer().linesHeight(MaterialTheme.typography.labelLarge, 1)
+    return with(LocalDensity.current) { maxOf(sourceChipHeight().roundToPx(), nameLine).toDp() }
+}
 
 /**
  * The wavy bar flattens while paused; between polls the position runs on locally. With nothing playing the bar
- * is empty and the times are left out, their line kept.
+ * is empty and the times are placeholders, as in Spotify (an empty text lays out a pixel shorter at some text
+ * sizes, which would move what is under it).
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -416,10 +442,11 @@ private fun Progress(nowPlaying: NowPlaying?, clock: () -> Long) {
         )
         val timeStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
         val timeColor = MaterialTheme.colorScheme.onSurfaceVariant
+        val noTime = stringResource(Res.string.now_playing_no_time)
         Row {
-            Text(if (nowPlaying == null) "" else elapsed, style = timeStyle, color = timeColor)
+            Text(if (nowPlaying == null) noTime else elapsed, style = timeStyle, color = timeColor)
             Spacer(Modifier.weight(1f))
-            Text(if (nowPlaying == null) "" else formatDuration(durationMs), style = timeStyle, color = timeColor)
+            Text(if (nowPlaying == null) noTime else formatDuration(durationMs), style = timeStyle, color = timeColor)
         }
     }
 }

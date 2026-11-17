@@ -27,6 +27,7 @@ import kotlin.math.abs
 import kotlin.test.assertTrue
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlin.test.AfterTest
@@ -184,31 +185,57 @@ class NowPlayingPaneTest {
         "skip" to onNodeWithContentDescription("Skip").getBoundsInRoot(),
     )
 
-    /** Shows each of [everyState] in turn in one card of one size and checks that no control moved. */
-    private fun assertControlsKeepTheirPlace(layout: String, size: Modifier, compact: Boolean) = runComposeUiTest {
-        var nowPlaying by mutableStateOf(everyState.first().second)
-        setContent { Pane(nowPlaying, clock = { 0L }, modifier = size, compact = compact) }
-        val placed = everyState.map { (name, state) ->
-            nowPlaying = state
-            waitForIdle()
-            name to controlBounds()
-        }
-        val (firstName, first) = placed.first()
-        for ((name, bounds) in placed.drop(1)) {
-            for ((control, rect) in bounds) {
-                val expected = first.getValue(control)
-                val off = listOf(rect.left - expected.left, rect.top - expected.top, rect.right - expected.right, rect.bottom - expected.bottom)
-                    .maxOf { abs(it.value) }
-                assertTrue(off <= 0.5f, "$layout: the $control is at $rect for $name but at $expected for $firstName")
+    /** 100 % and 150 % Windows scaling, and large text: rounding to whole pixels differs at each. */
+    private val densities = listOf(Density(1f, 1f), Density(1.5f, 1f), Density(1f, 1.6f))
+
+    /**
+     * Shows each of [everyState] in turn in one card of one size, at each of [densities], and checks that no control
+     * moved and that the track details always fit the room kept for them (they never reach above it).
+     */
+    private fun assertControlsKeepTheirPlace(size: Modifier, compact: Boolean) {
+        val problems = densities.flatMap { density -> problemsAt(density, size, compact) }
+        assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
+
+    private fun problemsAt(density: Density, size: Modifier, compact: Boolean): List<String> {
+        val problems = mutableListOf<String>()
+        // Room for the 320×640 dp card at 150 %.
+        runDesktopComposeUiTest(width = 1200, height = 1200) {
+            var nowPlaying by mutableStateOf(everyState.first().second)
+            setContent {
+                CompositionLocalProvider(LocalDensity provides density) {
+                    Pane(nowPlaying, clock = { 0L }, modifier = size, compact = compact)
+                }
+            }
+            val placed = everyState.map { (name, state) ->
+                nowPlaying = state
+                waitForIdle()
+                val block = onNodeWithTag(NOW_PLAYING_DETAILS_TAG, useUnmergedTree = true).fetchSemanticsNode()
+                val contentTop = block.children.minOf { it.boundsInRoot.top }
+                if (contentTop < block.boundsInRoot.top) {
+                    problems += "$density, $name: the details reach ${block.boundsInRoot.top - contentTop} px above their room"
+                }
+                name to controlBounds()
+            }
+            val (firstName, first) = placed.first()
+            for ((name, bounds) in placed.drop(1)) {
+                for ((control, rect) in bounds) {
+                    val expected = first.getValue(control)
+                    val off = listOf(rect.left - expected.left, rect.top - expected.top, rect.right - expected.right, rect.bottom - expected.bottom)
+                        .maxOf { abs(it.value) }
+                    if (off > 0.5f) problems += "$density: the $control is at $rect for $name but at $expected for $firstName"
+                }
             }
         }
+        return problems
     }
 
     @Test
-    fun controlsKeepTheirPlaceInEveryState() {
-        assertControlsKeepTheirPlace("wide", Modifier.width(320.dp).height(640.dp), compact = false)
-        assertControlsKeepTheirPlace("narrow", Modifier.width(700.dp), compact = true)
-    }
+    fun controlsKeepTheirPlaceInEveryStateWide() =
+        assertControlsKeepTheirPlace(Modifier.width(320.dp).height(640.dp), compact = false)
+
+    @Test
+    fun controlsKeepTheirPlaceInEveryStateNarrow() = assertControlsKeepTheirPlace(Modifier.width(700.dp), compact = true)
 
     @Test
     fun buttonsArePreviousPlayNextInOrder() {
