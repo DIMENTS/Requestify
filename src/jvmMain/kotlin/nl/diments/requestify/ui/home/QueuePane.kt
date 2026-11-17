@@ -64,6 +64,7 @@ import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+
 private enum class QueueTab { Queue, Played }
 
 /**
@@ -320,6 +321,7 @@ private fun dropIndex(shown: List<Request>, queue: List<Request>, id: String): I
     return 0
 }
 
+/** In place of the requests while there are none, above Spotify's own next tracks: one quiet line. */
 @Composable
 private fun NoRequestsYet(modifier: Modifier = Modifier) {
     Text(

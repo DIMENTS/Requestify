@@ -51,7 +51,6 @@ import nl.diments.requestify.ui.theme.SourceChip
 import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
 
-
 /** The test tag of each row of the queue list, requests and Spotify's own tracks alike. */
 internal const val QUEUE_ROW_TAG = "queue-row"
 
@@ -159,7 +158,6 @@ internal fun QueueRowLayout(
         }
     }
 }
-
 
 /** The request Spotify already has: distinct, and neither draggable nor removable. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
