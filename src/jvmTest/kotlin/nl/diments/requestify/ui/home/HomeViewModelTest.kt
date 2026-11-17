@@ -76,6 +76,7 @@ class HomeViewModelTest {
         val controller: PlaybackController,
         val catalog: FakeCatalog,
         val player: FakeSpotifyPlayer,
+        val parts: IntakeParts,
     )
 
     private fun TestScope.home(catalog: FakeCatalog = FakeCatalog()): Home {
@@ -94,16 +95,19 @@ class HomeViewModelTest {
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val parts = intakeParts(dir, controller, catalog, settings, backgroundScope) { testScheduler.currentTime }
         var ids = 0
         val vm = HomeViewModel(
             controller = controller,
             catalog = catalog,
             settings = settings,
+            intake = parts.intake,
+            rejected = parts.rejected,
             scope = backgroundScope,
             clock = { testScheduler.currentTime },
             newId = { "new-${++ids}" },
         )
-        return Home(vm, controller, catalog, player)
+        return Home(vm, controller, catalog, player, parts)
     }
 
     /** Lets any search debounce pass and runs everything due, background work included (unlike advanceUntilIdle). */
@@ -337,5 +341,115 @@ class HomeViewModelTest {
         settle()
         assertEquals(false, home.vm.state.value.loadFailing)
         assertEquals(listOf("saved", "r1", "r2"), home.vm.state.value.queue.map { it.id })
+    }
+
+    private fun viewerRequest(id: String) = Request(
+        id, track("t-$id").copy(artistIds = listOf("art-$id")), Requester("Viewer $id", "viewer$id", "u-$id"),
+        RequestSource.CHAT, null, createdAtEpochMs = 1L,
+    )
+
+    @Test
+    fun blockSongFromNowPlayingBlocksAndSkips() = runTest {
+        val home = home()
+        home.player.plays(track("now"))
+        home.controller.start()
+        settle()
+
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
+        settle()
+
+        assertEquals(listOf("now"), home.parts.blacklist.blacklist.value.tracks.map { it.track.id })
+        assertEquals(1, home.player.callsTo("skipNext").size)
+    }
+
+    @Test
+    fun blockArtistFromNowPlayingBlocksTheArtistAndSkips() = runTest {
+        val home = home()
+        val now = track("now").copy(artists = listOf("Daft Punk"), artistIds = listOf("dp"))
+        home.player.plays(now)
+        home.controller.start()
+        settle()
+
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Artist(now))
+        settle()
+
+        assertEquals(listOf("dp" to "Daft Punk"), home.parts.blacklist.blacklist.value.artists.map { it.id to it.name })
+        assertEquals(1, home.player.callsTo("skipNext").size)
+    }
+
+    @Test
+    fun blockViewerFromNowPlayingDoesNotSkip() = runTest {
+        val home = home()
+        home.player.plays(track("now"))
+        home.controller.start()
+        settle()
+
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Viewer(Requester("Fan", "fan", "42")))
+        settle()
+
+        assertEquals(listOf("42"), home.parts.blacklist.blacklist.value.viewers.map { it.twitchUserId })
+        assertEquals(0, home.player.callsTo("skipNext").size)
+    }
+
+    @Test
+    fun blockingFromTheQueueSweepsTheQueueAndNeverSkips() = runTest {
+        val home = home()
+        val keep = viewerRequest("keep")
+        val gone = viewerRequest("gone")
+        home.controller.enqueue(keep)
+        home.controller.enqueue(gone)
+        settle()
+
+        home.vm.onBlock(BlockTarget.Song(gone.track))
+        settle()
+
+        assertEquals(listOf("keep"), home.vm.state.value.queue.map { it.id })
+        assertEquals(0, home.player.callsTo("skipNext").size)
+    }
+
+    @Test
+    fun rejectedEntriesAndThePaidBadgeFlowIntoState() = runTest {
+        val home = home()
+        settle()
+        assertEquals(emptyList(), home.vm.state.value.rejected)
+        assertEquals(0, home.vm.state.value.rejectedBadge)
+
+        val free = viewerRequest("free")
+        val paid = viewerRequest("paid").copy(source = RequestSource.BITS, payment = nl.diments.requestify.core.model.Payment.Bits(500))
+        listOf(free, paid).forEachIndexed { i, r ->
+            home.parts.rejected.add(
+                nl.diments.requestify.core.intake.RejectedEntry(
+                    r.id, r, "input", r.requester, r.source, r.payment,
+                    nl.diments.requestify.core.model.RejectReason.TooLong(420_000), atEpochMs = i.toLong(), refunded = false,
+                ),
+            )
+        }
+        settle()
+
+        assertEquals(listOf("paid", "free"), home.vm.state.value.rejected.map { it.id })
+        assertEquals(1, home.vm.state.value.rejectedBadge)
+    }
+
+    @Test
+    fun addAnywayQueuesTheRejectedRequestAndDismissDropsIt() = runTest {
+        val home = home()
+        val a = viewerRequest("a")
+        val b = viewerRequest("b")
+        listOf(a, b).forEach { r ->
+            home.parts.rejected.add(
+                nl.diments.requestify.core.intake.RejectedEntry(
+                    r.id, r, "input", r.requester, r.source, r.payment,
+                    nl.diments.requestify.core.model.RejectReason.TooLong(420_000), atEpochMs = 1L, refunded = false,
+                ),
+            )
+        }
+        settle()
+
+        home.vm.onAddAnyway("a")
+        home.vm.onDismiss("b")
+        settle()
+
+        assertEquals(listOf("a"), home.vm.state.value.queue.map { it.id })
+        assertEquals(emptyList(), home.vm.state.value.rejected)
     }
 }

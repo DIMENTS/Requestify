@@ -23,6 +23,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,11 +42,17 @@ import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.home_drag_to_reorder
 import nl.diments.requestify.resources.home_paid_request
-import nl.diments.requestify.resources.home_remove_request
+import nl.diments.requestify.resources.block_artist
+import nl.diments.requestify.resources.block_song
+import nl.diments.requestify.resources.block_viewer
+import nl.diments.requestify.resources.home_row_actions
+import nl.diments.requestify.resources.home_row_remove
 import nl.diments.requestify.resources.home_up_next_in_spotify
 import nl.diments.requestify.resources.queue_your_music
+import nl.diments.requestify.ui.common.ActionMenu
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.MenuAction
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
@@ -84,6 +93,7 @@ internal fun QueueRow(
     shape: RoundedCornerShape,
     dragging: Boolean,
     onRemove: (String) -> Unit,
+    onBlock: (BlockTarget) -> Unit,
     dragHandle: Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -106,12 +116,7 @@ internal fun QueueRow(
             )
         },
         remove = {
-            IconButton(onClick = { onRemove(request.id) }, shapes = IconButtonDefaults.shapes()) {
-                Icon(
-                    AppIcons.Close,
-                    contentDescription = stringResource(Res.string.home_remove_request, request.track.name),
-                )
-            }
+            RowMenu(request, onRemove, onBlock)
         },
     ) {
         RequestDetails(request, Modifier.weight(1f))
@@ -251,5 +256,32 @@ internal fun TrackDetails(
             modifier = Modifier.widthIn(min = 36.dp),
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * A queue row's last column: the menu button with Remove, Block song, Block artist and (for a request from a Twitch
+ * viewer) Block viewer. Blocking sweeps the queue, so the row may leave right after.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun RowMenu(request: Request, onRemove: (String) -> Unit, onBlock: (BlockTarget) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val actions = buildList {
+        add(MenuAction(stringResource(Res.string.home_row_remove), AppIcons.Close) { onRemove(request.id) })
+        add(MenuAction(stringResource(Res.string.block_song), AppIcons.Block) { onBlock(BlockTarget.Song(request.track)) })
+        add(MenuAction(stringResource(Res.string.block_artist), AppIcons.MusicOff) { onBlock(BlockTarget.Artist(request.track)) })
+        if (request.requester.twitchUserId != null) {
+            add(MenuAction(stringResource(Res.string.block_viewer), AppIcons.PersonOff) { onBlock(BlockTarget.Viewer(request.requester)) })
+        }
+    }
+    Box {
+        IconButton(onClick = { expanded = true }, shapes = IconButtonDefaults.shapes()) {
+            Icon(
+                AppIcons.MoreVert,
+                contentDescription = stringResource(Res.string.home_row_actions, request.track.name),
+            )
+        }
+        ActionMenu(expanded, onDismiss = { expanded = false }, actions)
     }
 }

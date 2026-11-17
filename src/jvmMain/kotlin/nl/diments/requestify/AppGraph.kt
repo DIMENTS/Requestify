@@ -117,7 +117,7 @@ class AppGraph(
         clock = System::currentTimeMillis,
     )
 
-    val home = HomeViewModel(controller, spotify, settings, scope, clock = System::currentTimeMillis)
+    val home = HomeViewModel(controller, spotify, settings, intake, rejected, scope, clock = System::currentTimeMillis)
 
     val spotifySetup = SpotifySetupViewModel(settings, auth, spotify, controller, scope)
 

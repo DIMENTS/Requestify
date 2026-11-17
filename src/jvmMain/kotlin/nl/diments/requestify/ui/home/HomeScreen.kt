@@ -62,6 +62,9 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
                         onAddSubmit = vm::onAddSubmit,
                         onAddTrack = vm::onAddTrack,
                         onRemove = vm::onRemove,
+                        onBlock = { _, target -> vm.onBlock(target) },
+                        onAddAnyway = vm::onAddAnyway,
+                        onDismiss = vm::onDismiss,
                         onMove = vm::onMove,
                         modifier = modifier,
                         addFieldFocus = addFieldFocus,
@@ -70,7 +73,15 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
             }
             val nowPlayingPane = @Composable { modifier: Modifier ->
                 RequestifyTheme(nowPlayingSeed, dark) {
-                    NowPlayingPane(state.nowPlaying, vm::onPrevious, vm::onTogglePause, vm::onSkip, modifier, compact = !wide)
+                    NowPlayingPane(
+                        state.nowPlaying,
+                        vm::onPrevious,
+                        vm::onTogglePause,
+                        vm::onSkip,
+                        vm::onBlockCurrentAndSkip,
+                        modifier,
+                        compact = !wide,
+                    )
                 }
             }
             if (wide) {

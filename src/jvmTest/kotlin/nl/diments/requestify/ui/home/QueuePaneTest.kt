@@ -75,6 +75,9 @@ class QueuePaneTest {
                 onAddSubmit = { false },
                 onAddTrack = {},
                 onRemove = {},
+                onBlock = { _, _ -> },
+                onAddAnyway = {},
+                onDismiss = {},
                 onMove = onMove,
             )
         }
@@ -98,7 +101,7 @@ class QueuePaneTest {
     }
 
     @Test
-    fun rowShowsTheRequestAndRemovesIt() = runComposeUiTest {
+    fun rowShowsTheRequestAndRemovesItFromTheMenu() = runComposeUiTest {
         var removed: String? = null
         setContent {
             RequestifyTheme(BrandSeed, dark = true) {
@@ -108,6 +111,9 @@ class QueuePaneTest {
                     onAddSubmit = { false },
                     onAddTrack = {},
                     onRemove = { removed = it },
+                    onBlock = { _, _ -> },
+                    onAddAnyway = {},
+                    onDismiss = {},
                     onMove = { _, _ -> },
                 )
             }
@@ -118,7 +124,8 @@ class QueuePaneTest {
         onNodeWithText("DonoLink €5").assertIsDisplayed()
         onNodeWithText("kaasboer").assertIsDisplayed()
 
-        onNodeWithContentDescription("Remove Blinding Lights").performClick()
+        onNodeWithContentDescription("Actions for Blinding Lights").performClick()
+        onNodeWithText("Remove").performClick()
         assertEquals("r1", removed)
     }
 
@@ -132,6 +139,9 @@ class QueuePaneTest {
                     onAddSubmit = { false },
                     onAddTrack = {},
                     onRemove = {},
+                    onBlock = { _, _ -> },
+                    onAddAnyway = {},
+                    onDismiss = {},
                     onMove = { _, _ -> },
                 )
             }
@@ -150,6 +160,9 @@ class QueuePaneTest {
                     onAddSubmit = { false },
                     onAddTrack = {},
                     onRemove = {},
+                    onBlock = { _, _ -> },
+                    onAddAnyway = {},
+                    onDismiss = {},
                     onMove = { _, _ -> },
                 )
             }
@@ -172,6 +185,9 @@ class QueuePaneTest {
                     onAddSubmit = { false },
                     onAddTrack = {},
                     onRemove = {},
+                    onBlock = { _, _ -> },
+                    onAddAnyway = {},
+                    onDismiss = {},
                     onMove = { id, to -> moves += id to to },
                 )
             }
@@ -204,9 +220,9 @@ class QueuePaneTest {
         assertTrue(tops.zipWithNext().all { (a, b) -> a < b }, "top to bottom: $order, but the tops are $tops")
 
         onAllNodesWithText("Your music").assertCountEquals(3)
-        onAllNodesWithContentDescription("Remove", substring = true).assertCountEquals(2)
-        onNodeWithContentDescription("Remove Song 1").assertIsDisplayed()
-        onNodeWithContentDescription("Remove Song 2").assertIsDisplayed()
+        onAllNodesWithContentDescription("Actions for", substring = true).assertCountEquals(2)
+        onNodeWithContentDescription("Actions for Song 1").assertIsDisplayed()
+        onNodeWithContentDescription("Actions for Song 2").assertIsDisplayed()
         onAllNodesWithContentDescription("Drag to reorder").assertCountEquals(2)
         onNodeWithText("Queue · 2").assertIsDisplayed()
         onNodeWithText("Total 6:40").assertIsDisplayed() // the requests' total only
@@ -305,5 +321,74 @@ class QueuePaneTest {
         drag(handle, Offset(handle.x, below))
 
         assertEquals(listOf("r1" to 1), moves, "the last place among the requests, never past them")
+    }
+
+    private fun rejectedEntry(id: String, payment: Payment?, request: Request? = r1) = nl.diments.requestify.core.intake.RejectedEntry(
+        id, request, input = "in", requester = Requester("Viewer"), source = RequestSource.BITS, payment = payment,
+        reason = nl.diments.requestify.core.model.RejectReason.TooLong(420_000), atEpochMs = 1L, refunded = false,
+    )
+
+    @Test
+    fun rejectedTabShowsPaidBadge() = runComposeUiTest {
+        val rejected = listOf(
+            rejectedEntry("e1", Payment.Bits(500)),
+            rejectedEntry("e2", payment = null),
+        )
+        setContent { Pane(stateWith(emptyList()).copy(rejected = rejected, rejectedBadge = 1)) }
+
+        onNodeWithText("Rejected").assertIsDisplayed()
+        onNodeWithText("1").assertIsDisplayed() // the badge: one paid request waits for the streamer
+
+        onNodeWithText("Rejected").performClick()
+        waitForIdle()
+        onAllNodesWithText("Longer than 7:00").assertCountEquals(2)
+    }
+
+    @Test
+    fun noBadgeWithoutPaidRejections() = runComposeUiTest {
+        setContent { Pane(stateWith(emptyList()).copy(rejected = listOf(rejectedEntry("e2", null)), rejectedBadge = 0)) }
+        onNodeWithText("Rejected").assertIsDisplayed()
+        onNodeWithText("0").assertDoesNotExist()
+    }
+
+    @Test
+    fun rowMenuOffersBlockViewerOnlyForTwitchViewers() = runComposeUiTest {
+        val twitchViewer = Request(
+            "r2", Track("t2", "spotify:track:t2", "Song 2", listOf("Band"), 200_000, false, null, listOf("band-1")),
+            Requester("Fan", "fan", "42"), RequestSource.CHAT, null, createdAtEpochMs = 2L,
+        )
+        val blocks = mutableListOf<Pair<String, BlockTarget>>()
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                QueuePane(
+                    state = stateWith(listOf(r1, twitchViewer)),
+                    onAddInput = {},
+                    onAddSubmit = { false },
+                    onAddTrack = {},
+                    onRemove = {},
+                    onBlock = { request, target -> blocks += request.id to target },
+                    onAddAnyway = {},
+                    onDismiss = {},
+                    onMove = { _, _ -> },
+                )
+            }
+        }
+        // r1 is a DonoLink request: no Twitch viewer to block.
+        onNodeWithContentDescription("Actions for Blinding Lights").performClick()
+        onNodeWithText("Remove").assertIsDisplayed()
+        onNodeWithText("Block song").assertIsDisplayed()
+        onNodeWithText("Block artist").assertIsDisplayed()
+        onNodeWithText("Block viewer").assertDoesNotExist()
+        onNodeWithText("Block song").performClick()
+        waitForIdle()
+
+        onNodeWithContentDescription("Actions for Song 2").performClick()
+        onNodeWithText("Block viewer").assertIsDisplayed()
+        onNodeWithText("Block viewer").performClick()
+
+        assertEquals(
+            listOf("r1" to BlockTarget.Song(blindingLights), "r2" to BlockTarget.Viewer(twitchViewer.requester)),
+            blocks,
+        )
     }
 }

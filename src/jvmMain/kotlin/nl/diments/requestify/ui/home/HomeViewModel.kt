@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import nl.diments.requestify.core.intake.RejectedEntry
+import nl.diments.requestify.core.intake.RejectedStore
+import nl.diments.requestify.core.intake.RequestIntake
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
@@ -54,6 +57,9 @@ data class HomeUiState(
     val lookingUp: Boolean = false,
     val loadFailing: Boolean = false,
     val upcoming: List<Track> = emptyList(),
+    /** The Rejected tab, newest first, and [rejectedBadge]: how many of them are paid. */
+    val rejected: List<RejectedEntry> = emptyList(),
+    val rejectedBadge: Int = 0,
 )
 
 /** Runs on the caller's [scope] (an app-lifetime scope); it starts nothing that outlives it. */
@@ -61,6 +67,8 @@ class HomeViewModel(
     private val controller: PlaybackController,
     private val catalog: SpotifyCatalog,
     settings: SettingsStore,
+    private val intake: RequestIntake,
+    private val rejected: RejectedStore,
     private val scope: CoroutineScope,
     private val clock: () -> Long,
     private val newId: () -> String = { UUID.randomUUID().toString() },
@@ -84,6 +92,8 @@ class HomeViewModel(
 
     private class Storage(val persistError: String?, val loadError: String?)
 
+    private class Rejections(val entries: List<RejectedEntry>, val paidCount: Int)
+
     private val add = MutableStateFlow(AddState())
     private var lookup: Job? = null
 
@@ -100,6 +110,7 @@ class HomeViewModel(
         ),
         controller.health,
         combine(controller.persistError, controller.loadError, ::Storage),
+        combine(rejected.entries, rejected.paidCount, ::Rejections),
         add,
         ::uiState,
     ).stateIn(scope, SharingStarted.Eagerly, initialState())
@@ -154,6 +165,43 @@ class HomeViewModel(
 
     fun onMove(id: String, toIndex: Int) = controller.move(id, toIndex)
 
+    /** "Add anyway" on a rejected request: it is queued past the rules and leaves the Rejected list. */
+    fun onAddAnyway(id: String) = intake.addAnyway(id)
+
+    /** Takes a rejected request off the list. */
+    fun onDismiss(id: String) = intake.dismiss(id)
+
+    /** Blocks [target] for good: the queue is swept of what it now matches. Nothing is skipped. */
+    fun onBlock(target: BlockTarget) {
+        scope.launch { block(target) }
+    }
+
+    /**
+     * Now Playing's block menu: blocks [target], and skips the song when it is the song or its artist that was
+     * blocked. Blocking a viewer leaves what is playing alone.
+     */
+    fun onBlockCurrentAndSkip(target: BlockTarget) {
+        scope.launch {
+            block(target)
+            if (target !is BlockTarget.Viewer) controller.skip()
+        }
+    }
+
+    /** The streamer blocks: no moderator is named. A viewer without a login is blocked under their name. */
+    private suspend fun block(target: BlockTarget) {
+        when (target) {
+            is BlockTarget.Song -> intake.blockTrack(target.track, by = null)
+            is BlockTarget.Artist -> {
+                val id = target.track.artistIds.firstOrNull()
+                val name = target.track.artists.firstOrNull().orEmpty()
+                if (id != null || name.isNotBlank()) intake.blockArtist(id, name, by = null)
+            }
+            is BlockTarget.Viewer -> target.requester.twitchUserId?.let { userId ->
+                intake.blockViewer(userId, target.requester.login ?: target.requester.displayName, by = null)
+            }
+        }
+    }
+
     fun onPrevious() {
         scope.launch { controller.previous() }
     }
@@ -192,6 +240,7 @@ class HomeViewModel(
         ),
         controller.health.value,
         Storage(controller.persistError.value, controller.loadError.value),
+        Rejections(rejected.entries.value, rejected.paidCount.value),
         add.value,
     )
 
@@ -203,7 +252,13 @@ class HomeViewModel(
         nowPlaying: NowPlaying?,
     ) = Playback(queue.items, queue.totalDurationMs, handedOver, upcoming, history, nowPlaying)
 
-    private fun uiState(playback: Playback, health: SpotifyHealth, storage: Storage, add: AddState) = HomeUiState(
+    private fun uiState(
+        playback: Playback,
+        health: SpotifyHealth,
+        storage: Storage,
+        rejections: Rejections,
+        add: AddState,
+    ) = HomeUiState(
         queue = playback.queue,
         queueDurationMs = playback.queueDurationMs,
         history = playback.history,
@@ -216,10 +271,19 @@ class HomeViewModel(
         lookingUp = add.lookingUp,
         loadFailing = storage.loadError != null,
         upcoming = playback.upcoming,
+        rejected = rejections.entries,
+        rejectedBadge = rejections.paidCount,
     )
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
         const val SEARCH_LIMIT = 5
     }
+}
+
+/** What a block menu blocks: a song, a song's (first) artist, or the viewer who asked for it. */
+sealed interface BlockTarget {
+    data class Song(val track: Track) : BlockTarget
+    data class Artist(val track: Track) : BlockTarget
+    data class Viewer(val requester: Requester) : BlockTarget
 }

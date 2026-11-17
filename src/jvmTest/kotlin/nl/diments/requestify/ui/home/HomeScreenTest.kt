@@ -94,7 +94,8 @@ class HomeScreenTest {
 
     private fun viewModelWith(controller: PlaybackController): HomeViewModel {
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
-        return HomeViewModel(controller, NoCatalog, settings, scope, clock = { 0L })
+        val parts = intakeParts(dir, controller, NoCatalog, settings, scope, clock = { 0L })
+        return HomeViewModel(controller, NoCatalog, settings, parts.intake, parts.rejected, scope, clock = { 0L })
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.nowPlayingIsAboveTheQueue(): Boolean {
@@ -167,7 +168,7 @@ class HomeScreenTest {
             val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
             val label = onNodeWithText("NOW PLAYING").getBoundsInRoot()
             val title = onNodeWithText("Midnight City").getBoundsInRoot()
-            val firstButton = onNodeWithContentDescription("Previous").getBoundsInRoot() // the group starts with it
+            val firstButton = onNodeWithContentDescription("Block").getBoundsInRoot() // the group starts with it
             val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
 
             assertTrue(card.bottom - skip.bottom <= 48.dp, "empty band under the controls: ${card.bottom - skip.bottom}")

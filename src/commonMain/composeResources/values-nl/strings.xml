@@ -18,7 +18,6 @@
     <string name="queue_no_requests_yet">Nog geen verzoeken — nieuwe verzoeken verschijnen hier</string>
     <string name="home_save_failing">Wachtrij opslaan mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_load_failing">Opgeslagen wachtrij lezen mislukt — wordt opnieuw geprobeerd</string>
-    <string name="home_remove_request">%1$s verwijderen</string>
     <string name="home_drag_to_reorder">Sleep om te verplaatsen</string>
     <string name="home_paid_request">Betaald verzoek</string>
     <string name="requester_you">Jij</string>
@@ -150,4 +149,35 @@
     <string name="requests_tip_plain_closed">Verzoeken zijn dicht. Klik om ze te openen.</string>
     <string name="requests_tip_clears_at">Gratis verzoeken worden gewist om %1$s</string>
     <string name="requests_tip_clear_waits">Wissen wacht tot je de verzoeken sluit</string>
+
+    <!-- Home: rejected and blocking -->
+    <string name="home_rejected_tab">Geweigerd</string>
+    <string name="home_rejected_paid_badge">%1$d betaald</string>
+    <string name="home_rejected_empty">Er is niets geweigerd.</string>
+    <string name="rejected_add_anyway">Toch toevoegen</string>
+    <string name="rejected_dismiss">Weg</string>
+    <string name="rejected_refunded">%1$s · punten terug</string>
+    <string name="reject_not_a_track">Alleen nummers kunnen worden aangevraagd</string>
+    <string name="reject_no_match">Geen nummer gevonden</string>
+    <string name="reject_unplayable">Kan in jouw land niet worden afgespeeld</string>
+    <string name="reject_spotify_unavailable">Spotify was niet bereikbaar</string>
+    <string name="reject_blacklisted">Op de blacklist</string>
+    <string name="reject_explicit">Expliciete nummers zijn geblokkeerd</string>
+    <string name="reject_too_short">Korter dan %1$s</string>
+    <string name="reject_too_long">Langer dan %1$s</string>
+    <string name="reject_closed">Verzoeken waren dicht</string>
+    <string name="reject_queue_full">De wachtrij is vol (%1$d)</string>
+    <string name="reject_viewer_limit">Al %1$d verzoeken in de wachtrij</string>
+    <string name="reject_cooldown">Cooldown, nog %1$s</string>
+    <string name="reject_duplicate">Staat al in de wachtrij of is net gespeeld</string>
+    <string name="reject_below_minimum">Onder minimum (%1$d Bits)</string>
+    <string name="home_row_actions">Acties voor %1$s</string>
+    <string name="home_row_remove">Verwijderen</string>
+    <string name="block_song">Nummer blokkeren</string>
+    <string name="block_artist">Artiest blokkeren</string>
+    <string name="block_viewer">Kijker blokkeren</string>
+    <string name="now_playing_block">Blokkeren</string>
+    <string name="block_song_and_skip">Nummer blokkeren en overslaan</string>
+    <string name="block_artist_and_skip">Artiest blokkeren en overslaan</string>
+    <string name="block_viewer_named">@%1$s blokkeren</string>
 </resources>

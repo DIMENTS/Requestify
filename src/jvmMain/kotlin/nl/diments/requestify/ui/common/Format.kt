@@ -8,6 +8,7 @@ import java.util.Locale
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
+import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.requester_you
 import nl.diments.requestify.resources.source_bits
@@ -37,23 +38,30 @@ fun formatMoney(amountCents: Long, currency: String, locale: Locale): String {
 
 /** The text on a request's source chip, e.g. "!sr", "500 Bits" or "DonoLink €5". */
 @Composable
-fun sourceLabel(request: Request): String = when (request.source) {
+fun sourceLabel(request: Request): String = sourceLabel(request.source, request.payment)
+
+/** The same, for a [source] and [payment] that are not (yet) a [Request], like a rejected one. */
+@Composable
+fun sourceLabel(source: RequestSource, payment: Payment?): String = when (source) {
     RequestSource.MANUAL -> stringResource(Res.string.source_manual)
     RequestSource.CHAT -> stringResource(Res.string.source_chat)
     RequestSource.CHANNEL_POINTS -> stringResource(Res.string.source_channel_points)
-    RequestSource.BITS -> stringResource(Res.string.source_bits, (request.payment as? Payment.Bits)?.count ?: 0)
-    RequestSource.STREAMELEMENTS -> stringResource(Res.string.source_streamelements, moneyOf(request)).trim()
-    RequestSource.DONOLINK -> stringResource(Res.string.source_donolink, moneyOf(request)).trim()
+    RequestSource.BITS -> stringResource(Res.string.source_bits, (payment as? Payment.Bits)?.count ?: 0)
+    RequestSource.STREAMELEMENTS -> stringResource(Res.string.source_streamelements, moneyOf(payment)).trim()
+    RequestSource.DONOLINK -> stringResource(Res.string.source_donolink, moneyOf(payment)).trim()
 }
 
 /** Who asked: the viewer's name, or "You" for a track the streamer added. */
 @Composable
-fun requesterLabel(request: Request): String =
-    if (request.source == RequestSource.MANUAL) {
+fun requesterLabel(request: Request): String = requesterLabel(request.source, request.requester)
+
+@Composable
+fun requesterLabel(source: RequestSource, requester: Requester): String =
+    if (source == RequestSource.MANUAL) {
         stringResource(Res.string.requester_you)
     } else {
-        request.requester.displayName.ifBlank { request.requester.login.orEmpty() }
+        requester.displayName.ifBlank { requester.login.orEmpty() }
     }
 
-private fun moneyOf(request: Request): String =
-    (request.payment as? Payment.Money)?.let { formatMoney(it.amountCents, it.currency, Locale.getDefault()) }.orEmpty()
+private fun moneyOf(payment: Payment?): String =
+    (payment as? Payment.Money)?.let { formatMoney(it.amountCents, it.currency, Locale.getDefault()) }.orEmpty()

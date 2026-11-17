@@ -19,11 +19,13 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import kotlin.math.abs
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -59,10 +61,11 @@ class NowPlayingPaneTest {
         clock: () -> Long,
         modifier: Modifier = Modifier.width(320.dp),
         compact: Boolean = false,
+        onBlock: (BlockTarget) -> Unit = {},
     ) {
         RequestifyTheme(BrandSeed, dark = true) {
             NowPlayingPane(
-                nowPlaying, onPrevious = {}, onTogglePause = {}, onSkip = {},
+                nowPlaying, onPrevious = {}, onTogglePause = {}, onSkip = {}, onBlock = onBlock,
                 modifier = modifier, compact = compact, clock = clock,
             )
         }
@@ -192,9 +195,10 @@ class NowPlayingPaneTest {
 
     private val isProgressBar = SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 
-    /** Where the progress bar and each of the three buttons are. */
+    /** Where the progress bar and each of the four buttons are. */
     private fun ComposeUiTest.controlBounds(): Map<String, DpRect> = mapOf(
         "progress" to onNode(isProgressBar).getBoundsInRoot(),
+        "block" to onNodeWithContentDescription("Block").getBoundsInRoot(),
         "previous" to onNodeWithContentDescription("Previous").getBoundsInRoot(),
         "play/pause" to onNode(hasContentDescription("Pause") or hasContentDescription("Play")).getBoundsInRoot(),
         "skip" to onNodeWithContentDescription("Skip").getBoundsInRoot(),
@@ -254,16 +258,18 @@ class NowPlayingPaneTest {
     fun controlsKeepTheirPlaceInEveryStateNarrow() = assertControlsKeepTheirPlace(Modifier.width(700.dp), compact = true)
 
     @Test
-    fun buttonsArePreviousPlayNextInOrder() {
+    fun buttonsAreBlockPreviousPlayNextInOrderOnOneLine() {
         for (compact in listOf(false, true)) {
             runComposeUiTest {
                 setContent { Pane(polled(60_000), clock = { mainClock.currentTime }, compact = compact) }
+                val block = onNodeWithContentDescription("Block").getBoundsInRoot()
                 val previous = onNodeWithContentDescription("Previous").getBoundsInRoot()
                 val playPause = onNodeWithContentDescription("Pause").getBoundsInRoot()
                 val skip = onNodeWithContentDescription("Skip").getBoundsInRoot()
 
-                val order = "compact = $compact: previous $previous, pause $playPause, skip $skip"
-                assertTrue(previous.right <= playPause.left && playPause.right <= skip.left, order)
+                val order = "compact = $compact: block $block, previous $previous, pause $playPause, skip $skip"
+                assertTrue(block.right <= previous.left && previous.right <= playPause.left && playPause.right <= skip.left, order)
+                assertEquals((playPause.top + playPause.bottom).value, (block.top + block.bottom).value, 0.5f, "block sits on the buttons' centre line: $order")
             }
         }
     }
@@ -293,11 +299,43 @@ class NowPlayingPaneTest {
     fun idleDisablesControls() = runComposeUiTest {
         var nowPlaying by mutableStateOf<NowPlaying?>(null)
         setContent { Pane(nowPlaying, clock = { 0L }) }
-        for (button in listOf("Previous", "Play", "Skip")) onNodeWithContentDescription(button).assertIsNotEnabled()
+        for (button in listOf("Block", "Previous", "Play", "Skip")) onNodeWithContentDescription(button).assertIsNotEnabled()
 
         // The last played song can be resumed, and Spotify may still go back or forward on its last device.
         nowPlaying = NowPlaying(midnightCity, 60_000, isPlaying = false, request = null, sampledAtEpochMs = 0L, kind = NowPlayingKind.LastPlayed)
         waitForIdle()
-        for (button in listOf("Previous", "Play", "Skip")) onNodeWithContentDescription(button).assertIsEnabled()
+        for (button in listOf("Block", "Previous", "Play", "Skip")) onNodeWithContentDescription(button).assertIsEnabled()
+    }
+
+    private val viewerRequest by lazy {
+        Request("r2", midnightCity.copy(artistIds = listOf("m83")), Requester("StreamFan", "streamfan", "42"), RequestSource.CHAT, null, createdAtEpochMs = 1L)
+    }
+
+    @Test
+    fun blockMenuItems() = runComposeUiTest {
+        val blocked = mutableListOf<BlockTarget>()
+        var nowPlaying by mutableStateOf<NowPlaying?>(polled(60_000, viewerRequest))
+        setContent { Pane(nowPlaying, clock = { mainClock.currentTime }, onBlock = { blocked += it }) }
+
+        onNodeWithContentDescription("Block").performClick()
+        onNodeWithText("Block song and skip").assertIsDisplayed()
+        onNodeWithText("Block artist and skip").assertIsDisplayed()
+        onNodeWithText("Block @streamfan").assertIsDisplayed()
+        onNodeWithText("Block song and skip").performClick()
+        waitForIdle()
+        onNodeWithText("Block song and skip").assertDoesNotExist()
+
+        onNodeWithContentDescription("Block").performClick()
+        onNodeWithText("Block @streamfan").performClick()
+        waitForIdle()
+        assertEquals(listOf(BlockTarget.Song(midnightCity), BlockTarget.Viewer(viewerRequest.requester)), blocked)
+
+        // The streamer's own music has no viewer to block.
+        nowPlaying = polled(60_000)
+        waitForIdle()
+        onNodeWithContentDescription("Block").performClick()
+        onNodeWithText("Block artist and skip").assertIsDisplayed()
+        onNodeWithText("Block @streamfan").assertDoesNotExist()
+        onNodeWithText("Block viewer").assertDoesNotExist()
     }
 }

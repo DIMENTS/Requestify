@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -53,6 +56,8 @@ import nl.diments.requestify.resources.home_played_tab
 import nl.diments.requestify.resources.home_queue_empty
 import nl.diments.requestify.resources.home_queue_tab
 import nl.diments.requestify.resources.home_queue_title
+import nl.diments.requestify.resources.home_rejected_paid_badge
+import nl.diments.requestify.resources.home_rejected_tab
 import nl.diments.requestify.resources.home_queue_total
 import nl.diments.requestify.resources.home_save_failing
 import nl.diments.requestify.resources.queue_no_requests_yet
@@ -65,7 +70,7 @@ import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
-private enum class QueueTab { Queue, Played }
+private enum class QueueTab { Queue, Played, Rejected }
 
 /**
  * Left side of Home: the queue (drag to reorder, X to remove) with the request Spotify already has on top and
@@ -80,6 +85,9 @@ fun QueuePane(
     onAddSubmit: (String) -> Boolean,
     onAddTrack: (Track) -> Unit,
     onRemove: (String) -> Unit,
+    onBlock: (Request, BlockTarget) -> Unit,
+    onAddAnyway: (String) -> Unit,
+    onDismiss: (String) -> Unit,
     onMove: (id: String, toIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
     addFieldFocus: FocusRequester = remember { FocusRequester() },
@@ -90,7 +98,7 @@ fun QueuePane(
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
             Text(stringResource(Res.string.home_queue_title), style = MaterialTheme.typography.headlineMediumEmphasized)
             Row {
-                QueueTabs(tab, queueSize = state.queue.size, onSelect = { tab = it }, Modifier.alignByBaseline())
+                QueueTabs(tab, queueSize = state.queue.size, rejectedBadge = state.rejectedBadge, onSelect = { tab = it }, Modifier.alignByBaseline())
                 Spacer(Modifier.weight(1f))
                 if (state.queueDurationMs > 0) {
                     Text(
@@ -136,19 +144,30 @@ fun QueuePane(
                     handedOver = state.handedOver,
                     upcoming = state.upcoming,
                     onRemove = onRemove,
+                    onBlock = onBlock,
                     onMove = onMove,
                     modifier = Modifier.fillMaxSize(),
                 )
                 QueueTab.Played -> PlayedList(state.history, Modifier.fillMaxSize())
+                QueueTab.Rejected -> RejectedList(state.rejected, onAddAnyway, onDismiss, Modifier.fillMaxSize())
             }
         }
     }
 }
 
-/** The Expressive successor of segmented buttons: a connected button group; the checked one turns into a pill. */
+/**
+ * The Expressive successor of segmented buttons: a connected button group; the checked one turns into a pill. The
+ * Rejected tab carries a badge with the number of paid requests that were rejected ([rejectedBadge]).
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -> Unit, modifier: Modifier = Modifier) {
+private fun QueueTabs(
+    selected: QueueTab,
+    queueSize: Int,
+    rejectedBadge: Int,
+    onSelect: (QueueTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
         ToggleButton(
             checked = selected == QueueTab.Queue,
@@ -161,10 +180,29 @@ private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -
         ToggleButton(
             checked = selected == QueueTab.Played,
             onCheckedChange = { onSelect(QueueTab.Played) },
-            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+            shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
             modifier = Modifier.semantics { role = Role.RadioButton },
         ) {
             Text(stringResource(Res.string.home_played_tab))
+        }
+        ToggleButton(
+            checked = selected == QueueTab.Rejected,
+            onCheckedChange = { onSelect(QueueTab.Rejected) },
+            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+            modifier = Modifier.semantics { role = Role.RadioButton },
+        ) {
+            Text(stringResource(Res.string.home_rejected_tab))
+            if (rejectedBadge > 0) {
+                val paid = stringResource(Res.string.home_rejected_paid_badge, rejectedBadge)
+                Spacer(Modifier.width(Spacing.s))
+                Badge(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                    modifier = Modifier.semantics { contentDescription = paid },
+                ) {
+                    Text(rejectedBadge.toString())
+                }
+            }
         }
     }
 }
@@ -183,6 +221,7 @@ private fun QueueList(
     handedOver: Request?,
     upcoming: List<Track>,
     onRemove: (String) -> Unit,
+    onBlock: (Request, BlockTarget) -> Unit,
     onMove: (id: String, toIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -259,6 +298,7 @@ private fun QueueList(
                     shape = connectedShape(index, connectedRows, dragging),
                     dragging = dragging,
                     onRemove = onRemove,
+                    onBlock = { target -> onBlock(request, target) },
                     dragHandle = Modifier.draggableHandle(
                         onDragStarted = { draggingId = request.id },
                         onDragStopped = { drop(request.id) },
@@ -373,7 +413,7 @@ private fun PlayedList(history: List<PlayedEntry>, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun EmptyState(text: String, modifier: Modifier = Modifier) {
+internal fun EmptyState(text: String, modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
             Icon(

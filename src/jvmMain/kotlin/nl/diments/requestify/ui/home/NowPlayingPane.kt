@@ -40,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.WavyProgressIndicatorDefaults
@@ -82,6 +83,10 @@ import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.NowPlaying
 import nl.diments.requestify.core.playback.NowPlayingKind
 import nl.diments.requestify.resources.Res
+import nl.diments.requestify.resources.block_artist_and_skip
+import nl.diments.requestify.resources.block_song_and_skip
+import nl.diments.requestify.resources.block_viewer_named
+import nl.diments.requestify.resources.now_playing_block
 import nl.diments.requestify.resources.now_playing_idle_body
 import nl.diments.requestify.resources.now_playing_idle_title
 import nl.diments.requestify.resources.now_playing_label
@@ -95,6 +100,8 @@ import nl.diments.requestify.resources.now_playing_previous
 import nl.diments.requestify.resources.now_playing_skip
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
+import nl.diments.requestify.ui.common.MenuAction
+import nl.diments.requestify.ui.common.ActionMenu
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
@@ -136,6 +143,7 @@ fun NowPlayingPane(
     onPrevious: () -> Unit,
     onTogglePause: () -> Unit,
     onSkip: () -> Unit,
+    onBlock: (BlockTarget) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     clock: () -> Long = System::currentTimeMillis,
@@ -154,6 +162,7 @@ fun NowPlayingPane(
         }
         val details = @Composable { Details(nowPlaying, compact) }
         val progress = @Composable { Progress(nowPlaying, clock) }
+        val blockActions = blockActions(nowPlaying, onBlock)
         val controls = @Composable {
             Controls(
                 isPlaying = nowPlaying?.isPlaying == true,
@@ -161,6 +170,7 @@ fun NowPlayingPane(
                 onPrevious = onPrevious,
                 onTogglePause = onTogglePause,
                 onSkip = onSkip,
+                blockActions = blockActions,
             )
         }
         if (compact) {
@@ -478,7 +488,7 @@ private fun rememberLivePosition(nowPlaying: NowPlaying?, clock: () -> Long): Lo
 private const val PROGRESS_TICK_MS = 250L
 
 /**
- * Previous, play/pause (primary, wide; round while paused, squarer while playing) and skip, as an Expressive
+ * Block (a menu), previous, play/pause (primary, wide; round while paused, squarer while playing) and skip, as an Expressive
  * button group. With nothing to control they stay where they are, disabled.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -489,14 +499,17 @@ private fun Controls(
     onPrevious: () -> Unit,
     onTogglePause: () -> Unit,
     onSkip: () -> Unit,
+    blockActions: List<MenuAction>,
     modifier: Modifier = Modifier,
 ) {
     val playPauseLabel = stringResource(if (isPlaying) Res.string.now_playing_pause else Res.string.now_playing_play)
     val previousLabel = stringResource(Res.string.now_playing_previous)
     val skipLabel = stringResource(Res.string.now_playing_skip)
+    val blockLabel = stringResource(Res.string.now_playing_block)
     val motion = MaterialTheme.motionScheme
     val scheme = MaterialTheme.colorScheme
     ButtonGroup(overflowIndicator = {}, modifier = modifier) {
+        blockItem(blockActions, enabled, blockLabel)
         tonalItem(AppIcons.SkipPrevious, previousLabel, enabled, onPrevious)
         customItem(
             buttonGroupContent = {
@@ -565,5 +578,50 @@ private fun ButtonGroupScope.tonalItem(icon: ImageVector, label: String, enabled
         menuContent = { menu ->
             DropdownMenuItem(text = { Text(label) }, onClick = { onClick(); menu.dismiss() }, enabled = enabled)
         },
+    )
+}
+
+/** The actions of the block menu: the song, its artist and, for a request from a Twitch viewer, the viewer. */
+@Composable
+private fun blockActions(nowPlaying: NowPlaying?, onBlock: (BlockTarget) -> Unit): List<MenuAction> {
+    if (nowPlaying == null) return emptyList()
+    val song = stringResource(Res.string.block_song_and_skip)
+    val artist = stringResource(Res.string.block_artist_and_skip)
+    val requester = nowPlaying.request?.requester?.takeIf { it.twitchUserId != null }
+    val viewer = requester?.let { stringResource(Res.string.block_viewer_named, it.login ?: it.displayName) }
+    return buildList {
+        add(MenuAction(song, AppIcons.Block) { onBlock(BlockTarget.Song(nowPlaying.track)) })
+        add(MenuAction(artist, AppIcons.MusicOff) { onBlock(BlockTarget.Artist(nowPlaying.track)) })
+        if (requester != null && viewer != null) add(MenuAction(viewer, AppIcons.PersonOff) { onBlock(BlockTarget.Viewer(requester)) })
+    }
+}
+
+/**
+ * The group's first button: an outlined round block button that opens the block menu (not in the group's overflow
+ * menu: it has no room to open from there). Disabled, but in place, with nothing to block.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun ButtonGroupScope.blockItem(actions: List<MenuAction>, enabled: Boolean, label: String) {
+    customItem(
+        buttonGroupContent = {
+            val interaction = remember { MutableInteractionSource() }
+            var expanded by remember { mutableStateOf(false) }
+            // As tall as the group's other buttons, so the smaller block button sits on their centre line.
+            val button = IconButtonDefaults.smallContainerSize(IconButtonDefaults.IconButtonWidthOption.Uniform)
+            val row = IconButtonDefaults.mediumContainerSize(IconButtonDefaults.IconButtonWidthOption.Uniform)
+            Box(Modifier.size(button.width, row.height).animateWidth(interaction), contentAlignment = Alignment.Center) {
+                OutlinedIconButton(
+                    onClick = { expanded = true },
+                    enabled = enabled,
+                    shapes = IconButtonDefaults.shapes(),
+                    interactionSource = interaction,
+                    modifier = Modifier.size(button),
+                ) {
+                    Icon(AppIcons.Block, contentDescription = label, modifier = Modifier.size(IconButtonDefaults.smallIconSize))
+                }
+                ActionMenu(expanded && actions.isNotEmpty(), onDismiss = { expanded = false }, actions)
+            }
+        },
+        menuContent = {},
     )
 }
