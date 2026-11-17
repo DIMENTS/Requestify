@@ -335,12 +335,10 @@ class TwitchChatTest {
     }
 
     @Test
-    fun plainChatAndModCommandsAreIgnoredForNow() = runTest {
+    fun plainChatIsIgnored() = runTest {
         val h = harness()
         h.message("m1", "hello everyone")
-        h.message("m2", "!skip", badges = setOf("moderator"))
-        h.message("m3", "!remove 1", badges = setOf("moderator"))
-        h.message("m4", "!blacklist", badges = setOf("moderator"))
+        h.message("m2", "!skip") // a plain viewer cannot
         h.message("probe", "!song", viewer = "u2")
 
         awaitUntil("probe reply") { h.twitch.sends.isNotEmpty() }

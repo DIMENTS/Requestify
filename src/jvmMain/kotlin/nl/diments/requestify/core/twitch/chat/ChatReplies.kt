@@ -12,6 +12,7 @@ import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.chat_added
 import nl.diments.requestify.resources.chat_added_soon
 import nl.diments.requestify.resources.chat_already_next
+import nl.diments.requestify.resources.chat_blacklisted
 import nl.diments.requestify.resources.chat_denied_followers
 import nl.diments.requestify.resources.chat_denied_moderators
 import nl.diments.requestify.resources.chat_denied_subscribers
@@ -21,6 +22,7 @@ import nl.diments.requestify.resources.chat_queue_item
 import nl.diments.requestify.resources.chat_queue_next
 import nl.diments.requestify.resources.chat_queue_you
 import nl.diments.requestify.resources.chat_refunded
+import nl.diments.requestify.resources.chat_remove_none
 import nl.diments.requestify.resources.chat_rejected_artist_blocked
 import nl.diments.requestify.resources.chat_rejected_below_minimum
 import nl.diments.requestify.resources.chat_rejected_closed
@@ -41,6 +43,7 @@ import nl.diments.requestify.resources.chat_song_nothing
 import nl.diments.requestify.resources.chat_song_own_music
 import nl.diments.requestify.resources.chat_song_plain
 import nl.diments.requestify.resources.chat_song_requested
+import nl.diments.requestify.resources.chat_skipped
 import nl.diments.requestify.resources.chat_usage
 import nl.diments.requestify.resources.chat_wrongsong_none
 import nl.diments.requestify.resources.chat_wrongsong_removed
@@ -131,6 +134,24 @@ class ChatReplies {
         mention,
         if (removed == null) {
             getString(Res.string.chat_wrongsong_none)
+        } else {
+            getString(Res.string.chat_wrongsong_removed, removed.track.name, artistsOf(removed.track))
+        },
+    )
+
+    /** A moderator's `!skip`: the song that was playing. */
+    suspend fun skipped(track: Track, mention: String?): String =
+        mentioned(mention, getString(Res.string.chat_skipped, track.name, artistsOf(track)))
+
+    /** A moderator's `!blacklist`: the song that was blocked and skipped. */
+    suspend fun blacklisted(track: Track, mention: String?): String =
+        mentioned(mention, getString(Res.string.chat_blacklisted, track.name, artistsOf(track)))
+
+    /** A moderator's `!remove`: the removed request, or "No position n" ([position] is null without a number). */
+    suspend fun removed(removed: Request?, position: Int?, mention: String?): String = mentioned(
+        mention,
+        if (removed == null) {
+            getString(Res.string.chat_remove_none, position?.toString() ?: "n")
         } else {
             getString(Res.string.chat_wrongsong_removed, removed.track.name, artistsOf(removed.track))
         },

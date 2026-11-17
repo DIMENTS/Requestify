@@ -168,4 +168,7 @@
     <string name="chat_queue_empty">The queue is empty.</string>
     <string name="chat_wrongsong_removed">Removed: %1$s – %2$s</string>
     <string name="chat_wrongsong_none">You have no song in the queue.</string>
+    <string name="chat_skipped">Skipped: %1$s – %2$s</string>
+    <string name="chat_blacklisted">Blocked and skipped: %1$s – %2$s</string>
+    <string name="chat_remove_none">No position %1$s.</string>
 </resources>

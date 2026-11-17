@@ -13,6 +13,8 @@ import kotlinx.coroutines.sync.withLock
 import nl.diments.requestify.core.intake.IncomingRequest
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
+import nl.diments.requestify.core.model.Track
+import nl.diments.requestify.core.playback.NowPlayingKind
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.playback.RemoveReason
 import nl.diments.requestify.core.settings.ChatPermission
@@ -25,7 +27,8 @@ import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
 
 /**
  * Turns the broadcaster's chat into requests and answers: `!sr`, `!song`, `!queue` and `!wrongsong`, each answered as
- * a reply to the viewer's message through [sender]. The moderator commands are parsed but not handled yet.
+ * a reply to the viewer's message through [sender]. Moderators and the broadcaster also have `!skip`, `!remove n`
+ * and `!blacklist`; anyone else using them is ignored.
  *
  * Ignored: everything while chat is switched off, messages from another channel in a shared chat (their
  * `sourceBroadcasterId` is not the broadcaster's), and the app's own replies.
@@ -115,8 +118,10 @@ class TwitchChat(
             ChatCommand.Song -> reply(message, replies.song(controller.snapshot(), null))
             ChatCommand.Queue -> reply(message, replies.queue(controller.snapshot(), message.chatterId, null))
             ChatCommand.WrongSong -> wrongSong(message)
-            // Moderator commands are handled elsewhere (later); nothing is said for them here.
-            ChatCommand.Skip, is ChatCommand.Remove, ChatCommand.Blacklist -> Unit
+            // Moderator commands: anyone else is ignored without a word.
+            ChatCommand.Skip -> if (isModerator(message)) skip(message)
+            is ChatCommand.Remove -> if (isModerator(message)) remove(message, command.position)
+            ChatCommand.Blacklist -> if (isModerator(message)) blacklist(message)
         }
     }
 
@@ -180,6 +185,36 @@ class TwitchChat(
             listOfNotNull(newest?.value)
         }
         reply(message, replies.wrongSong(removed.firstOrNull(), null))
+    }
+
+    private fun isModerator(message: EventSubEvent.ChatMessage) = roleOf(message.badges) >= ChatRole.Moderator
+
+    /** The track that plays now, or null while Spotify has nothing active (the last-played card is not "playing"). */
+    private fun playingNow(): Track? =
+        controller.snapshot().nowPlaying?.takeIf { it.kind == NowPlayingKind.Live }?.track
+
+    /** Skips like the app's own skip (a request next is handed over first) and says which song it was. */
+    private suspend fun skip(message: EventSubEvent.ChatMessage) {
+        val track = playingNow() ?: return reply(message, replies.song(controller.snapshot(), null))
+        controller.skip()
+        reply(message, replies.skipped(track, null))
+    }
+
+    /** Removes queue position [position], numbered as `!queue` does; the request handed over cannot be removed. */
+    private suspend fun remove(message: EventSubEvent.ChatMessage, position: Int?) {
+        val removed = controller.removeMatching(RemoveReason.ModRemove) { offered ->
+            val target = position?.let { controller.snapshot().queue.getOrNull(it - 1) }
+            listOfNotNull(offered.firstOrNull { it.id == target?.id })
+        }
+        reply(message, replies.removed(removed.firstOrNull(), position, null))
+    }
+
+    /** Blocks the playing track (by the moderator's login) and skips it. */
+    private suspend fun blacklist(message: EventSubEvent.ChatMessage) {
+        val track = playingNow() ?: return reply(message, replies.song(controller.snapshot(), null))
+        intake.blockTrack(track, by = message.chatterLogin)
+        controller.skip()
+        reply(message, replies.blacklisted(track, null))
     }
 
     private fun reply(message: EventSubEvent.ChatMessage, text: String) = sender.send(text, message.messageId)
