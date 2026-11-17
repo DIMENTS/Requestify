@@ -189,11 +189,60 @@ class RequestsGateTest {
         assertFalse(after.open.value)
         assertEquals(1, cleared, "closing again clears at once")
         assertFalse(after.status.value.clearPostponed)
+    }
 
-        after.toggle()
-        after.toggle()
+    @Test
+    fun closingAfterAManualOpenAfterTheClearClearsAgain() = runTest {
+        val gate = gate()
+        gate.onLive(true)
+        gate.onLive(false)
+        wait(grace)
+        assertEquals(1, cleared)
+
+        gate.toggle() // a listening party after the stream: free requests come in
+        assertTrue(gate.open.value)
+        assertTrue(gate.status.value.clearPostponed)
+        gate.toggle()
         runCurrent()
-        assertEquals(1, cleared, "only the postponed clear runs on a close")
+        assertFalse(gate.open.value)
+        assertEquals(2, cleared, "the close clears what came in while open")
+        assertFalse(gate.status.value.clearPostponed)
+    }
+
+    @Test
+    fun goingLiveCancelsTheClearOwedByAManualOpenAfterTheClear() = runTest {
+        val gate = gate()
+        gate.onLive(true)
+        gate.onLive(false)
+        wait(grace)
+        gate.toggle()
+
+        gate.onLive(true)
+        assertFalse(gate.status.value.clearPostponed)
+        gate.toggle()
+        runCurrent()
+        assertFalse(gate.open.value)
+        assertEquals(1, cleared, "no clear for a close while live")
+    }
+
+    @Test
+    fun closingInsideTheGraceLeavesTheClearToTheGraceEnd() = runTest {
+        val gate = gate()
+        gate.onLive(true)
+        gate.onLive(false)
+        wait(minute)
+        gate.toggle()
+        assertTrue(gate.status.value.clearPostponed)
+        assertNull(gate.status.value.clearAtEpochMs, "the clear waits for the close")
+
+        gate.toggle()
+        runCurrent()
+        assertEquals(0, cleared)
+        assertFalse(gate.status.value.clearPostponed)
+        assertEquals(grace, gate.status.value.clearAtEpochMs)
+
+        wait(grace)
+        assertEquals(1, cleared, "exactly once, at the grace's end")
     }
 
     @Test
@@ -245,6 +294,7 @@ class RequestsGateTest {
         assertTrue(gate.open.value)
         gate.onLive(true)
         assertTrue(gate.open.value)
+        assertFalse(gate.status.value.clearPostponed, "the return cancels the clear the open postponed")
 
         gate.onLive(false)
         assertFalse(gate.open.value, "the stream's end still closes at once")
@@ -252,6 +302,82 @@ class RequestsGateTest {
         assertEquals(1, cleared, "and clears: the open was made during this stream")
         assertFalse(gate.status.value.manual)
     }
+
+    @Test
+    fun aFailedSaveStillClosesRequestsWhenTheStreamGoesOffline() = runTest {
+        val first = appScope()
+        val gate = gate(scope = first)
+        gate.onLive(true)
+        breakWrites()
+
+        gate.onLive(false)
+        assertFalse(gate.open.value, "closed although the save failed")
+        assertEquals(grace, gate.status.value.clearAtEpochMs)
+        assertTrue(saved().live, "the file still has the stream live")
+
+        gate.toggle()
+        assertFalse(gate.open.value, "a toggle that cannot be saved is not applied")
+        gate.onLive(false) // the REST check repeats it: the save is tried again, and fails again
+        assertTrue(saved().live)
+
+        healWrites()
+        gate.onLive(false)
+        assertEquals(StreamState(live = false, offlineSinceMs = 0), saved(), "the next change saves it")
+
+        wait(5 * minute)
+        first.cancel()
+        val after = gate()
+        runCurrent()
+        assertFalse(after.open.value)
+        wait(5 * minute)
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun theGraceRunsFromMemoryWhenItCannotBeSaved() = runTest {
+        val first = appScope()
+        val gate = gate(scope = first)
+        gate.onLive(true)
+        breakWrites()
+        gate.onLive(false)
+
+        wait(grace)
+        assertEquals(1, cleared)
+        assertNull(gate.status.value.clearAtEpochMs)
+        assertEquals(StreamState(live = true), saved(), "nothing saved since the stream went live")
+
+        healWrites()
+        gate.start()
+        assertEquals(StreamState(live = false), saved(), "start saves the stream's end")
+        first.cancel()
+        gate()
+        wait(grace)
+        assertEquals(1, cleared, "no second clear after a restart")
+    }
+
+    @Test
+    fun anUnreadableFileIsNeverWrittenOverAndCatchesUpOnceReadable() = runTest {
+        val file = dir.resolve("stream.json")
+        file.toFile().mkdirs() // reading it fails: not missing, not corrupt
+        val gate = gate()
+        gate.onLive(true)
+        assertTrue(gate.open.value, "events still apply")
+        gate.toggle()
+        assertTrue(gate.open.value, "a toggle is not applied while the file cannot be read")
+        assertTrue(file.toFile().isDirectory, "nothing written over it")
+
+        file.toFile().delete()
+        JsonFileStore(file, StreamState.serializer()) { StreamState() }.write(StreamState(openWithoutTwitch = false))
+        gate.onLive(false)
+        assertEquals(StreamState(live = false, offlineSinceMs = 0, openWithoutTwitch = false), saved())
+        assertFalse(gate.open.value)
+    }
+
+    private fun saved() = JsonFileStore(dir.resolve("stream.json"), StreamState.serializer()) { StreamState() }.read()
+
+    /** Makes writes fail (a directory sits where the temp file goes) until [healWrites]. */
+    private fun breakWrites() { dir.resolve("stream.json.tmp").toFile().mkdirs() }
+    private fun healWrites() { dir.resolve("stream.json.tmp").toFile().deleteRecursively() }
 
     @Test
     fun withoutTwitchItIsAPlainRememberedSwitchDefaultOpen() = runTest {
