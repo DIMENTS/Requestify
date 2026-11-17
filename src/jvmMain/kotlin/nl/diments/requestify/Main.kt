@@ -39,7 +39,7 @@ fun main() {
             title = stringResource(Res.string.app_name),
         ) {
             LaunchedEffect(window) { window.minimumSize = Dimension(720, 560) }
-            AppScaffold(graph)
+            AppScaffold(graph, window)
         }
     }
 }

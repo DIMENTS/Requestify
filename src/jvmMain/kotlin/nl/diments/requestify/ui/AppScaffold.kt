@@ -48,6 +48,7 @@ import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.toBitmap
+import java.awt.Frame
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -73,6 +74,8 @@ import nl.diments.requestify.ui.theme.albumSeedFrom
 import nl.diments.requestify.ui.theme.albumSeedOrPrevious
 import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
+import nl.diments.requestify.ui.window.TitleBar
+import nl.diments.requestify.ui.window.rememberWindowCaption
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -95,18 +98,22 @@ fun startDestination(settings: Settings, auth: SpotifyAuthStatus): Destination =
 private const val SEED_ART_SIZE_PX = 128
 
 /**
- * The window's content: the navigation rail and the current screen, all themed from the album art (or the
- * custom colour). Screens keep their state while another one is shown.
+ * The window's content: the title bar over the navigation rail and the current screen, all themed from the
+ * album art (or the custom colour). Screens keep their state while another one is shown. On the JetBrains
+ * Runtime the title bar replaces [window]'s own; otherwise (or without a window, as in tests) it is a header.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun AppScaffold(graph: AppGraph) {
+fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     val settings by graph.settings.settings.collectAsState()
     val settingsUnreadable by graph.settings.loadFailed.collectAsState()
     val track by remember(graph) { graph.home.state.map { it.nowPlaying?.track }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.nowPlaying?.track)
+    val health by remember(graph) { graph.home.state.map { it.health }.distinctUntilChanged() }
+        .collectAsState(graph.home.state.value.health)
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
+    val caption = rememberWindowCaption(window, dark)
 
     var destination by remember { mutableStateOf(startDestination(settings, graph.auth.status.value)) }
     val addFieldFocus = remember { FocusRequester() }
@@ -115,49 +122,52 @@ fun AppScaffold(graph: AppGraph) {
 
     RequestifyTheme(selectSeeds(settings.themeMode, albumSeed).app, dark) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            Row {
-                AppRail(
-                    selected = destination,
-                    onSelect = { destination = it },
-                    onAdd = {
-                        destination = Destination.Home
-                        focusAddField = true
-                    },
-                )
-                val motion = MaterialTheme.motionScheme
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    // The defaults are in use and nothing is saved over the file; a later change reads it again.
-                    AnimatedVisibility(
-                        visible = settingsUnreadable,
-                        enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                        exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
-                    ) {
-                        ProblemBanner(
-                            stringResource(Res.string.settings_load_failed),
-                            Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
-                        )
-                    }
-                    AnimatedContent(
-                        targetState = destination,
-                        transitionSpec = {
-                            (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
-                                .togetherWith(fadeOut(motion.fastEffectsSpec()))
+            Column {
+                TitleBar(health, captionInset = caption?.buttonsInset ?: 0.dp, onHitTest = caption?.hitTest)
+                Row(Modifier.weight(1f)) {
+                    AppRail(
+                        selected = destination,
+                        onSelect = { destination = it },
+                        onAdd = {
+                            destination = Destination.Home
+                            focusAddField = true
                         },
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    ) { shown ->
-                        screens.SaveableStateProvider(shown.name) {
-                            when (shown) {
-                                Destination.Home -> {
-                                    HomeScreen(graph.home, albumSeed, addFieldFocus)
-                                    LaunchedEffect(focusAddField) {
-                                        if (focusAddField) {
-                                            addFieldFocus.requestFocus()
-                                            focusAddField = false
+                    )
+                    val motion = MaterialTheme.motionScheme
+                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                        // The defaults are in use and nothing is saved over the file; a later change reads it again.
+                        AnimatedVisibility(
+                            visible = settingsUnreadable,
+                            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                        ) {
+                            ProblemBanner(
+                                stringResource(Res.string.settings_load_failed),
+                                Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp),
+                            )
+                        }
+                        AnimatedContent(
+                            targetState = destination,
+                            transitionSpec = {
+                                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
+                                    .togetherWith(fadeOut(motion.fastEffectsSpec()))
+                            },
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        ) { shown ->
+                            screens.SaveableStateProvider(shown.name) {
+                                when (shown) {
+                                    Destination.Home -> {
+                                        HomeScreen(graph.home, albumSeed, addFieldFocus)
+                                        LaunchedEffect(focusAddField) {
+                                            if (focusAddField) {
+                                                addFieldFocus.requestFocus()
+                                                focusAddField = false
+                                            }
                                         }
                                     }
+                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup)
+                                    Destination.Settings -> SettingsScreen(graph.settings)
                                 }
-                                Destination.Connections -> SpotifySetupScreen(graph.spotifySetup)
-                                Destination.Settings -> SettingsScreen(graph.settings)
                             }
                         }
                     }

@@ -106,6 +106,15 @@ class AppScaffoldTest {
     }
 
     @Test
+    fun theTitleBarShowsSpotifysStatusOnEveryScreen() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        setContent { AppScaffold(graph()) }
+        onNode(hasText("Settings") and hasClickAction()).performClick()
+        waitForIdle()
+        onNodeWithText("Requestify").assertIsDisplayed()
+        onNodeWithText("Spotify is not playing").assertIsDisplayed()
+    }
+
+    @Test
     fun addButtonOpensHomeAndFocusesTheAddField() = runDesktopComposeUiTest(width = 1180, height = 760) {
         setContent { AppScaffold(graph()) }
         onNodeWithContentDescription("Add a track").performClick()

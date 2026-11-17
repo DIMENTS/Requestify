@@ -71,6 +71,24 @@ class QueuePaneTest {
     }
 
     @Test
+    fun spotifysStatusIsLeftToTheTitleBar() = runComposeUiTest {
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                QueuePane(
+                    state = stateWith(listOf(r1)),
+                    onAddInput = {},
+                    onAddSubmit = { false },
+                    onAddTrack = {},
+                    onRemove = {},
+                    onMove = { _, _ -> },
+                )
+            }
+        }
+        onNodeWithText("Queue").assertIsDisplayed()
+        onNodeWithText("Spotify connected").assertDoesNotExist()
+    }
+
+    @Test
     fun aQueueThatCannotBeReadSaysSo() = runComposeUiTest {
         setContent {
             RequestifyTheme(BrandSeed, dark = true) {

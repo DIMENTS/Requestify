@@ -73,7 +73,6 @@ import nl.diments.requestify.resources.home_up_next_in_spotify
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
-import nl.diments.requestify.ui.common.SpotifyStatusChip
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
@@ -91,7 +90,7 @@ private enum class QueueTab { Queue, Played }
 
 /**
  * Left side of Home: the queue (drag to reorder, X to remove) with the request Spotify already has on top,
- * the played history, Spotify's status and the field to add a track.
+ * the played history and the field to add a track. Spotify's status is in the title bar.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -108,11 +107,7 @@ fun QueuePane(
     var tab by rememberSaveable { mutableStateOf(QueueTab.Queue) }
     val motion = MaterialTheme.motionScheme
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(Res.string.home_queue_title), style = MaterialTheme.typography.headlineMediumEmphasized)
-            Spacer(Modifier.weight(1f))
-            SpotifyStatusChip(state.health)
-        }
+        Text(stringResource(Res.string.home_queue_title), style = MaterialTheme.typography.headlineMediumEmphasized)
         Row(verticalAlignment = Alignment.CenterVertically) {
             QueueTabs(tab, queueSize = state.queue.size, onSelect = { tab = it })
             Spacer(Modifier.weight(1f))
