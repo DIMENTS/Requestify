@@ -45,8 +45,9 @@ enum class NowPlayingKind {
 
 /**
  * What Spotify plays right now, or with [kind] [NowPlayingKind.LastPlayed] the last song it played. [request] is
- * null for the streamer's own music. [progressMs] is the position at [sampledAtEpochMs] (wall time); [positionAt]
- * tells where it is later.
+ * null for the streamer's own music. With [requesterKnown] false (Spotify's own recently played song) it is not
+ * known whether the song was a request, so [request] is null and neither a requester nor own music is claimed.
+ * [progressMs] is the position at [sampledAtEpochMs] (wall time); [positionAt] tells where it is later.
  */
 data class NowPlaying(
     val track: Track,
@@ -55,6 +56,7 @@ data class NowPlaying(
     val request: Request?,
     val sampledAtEpochMs: Long,
     val kind: NowPlayingKind = NowPlayingKind.Live,
+    val requesterKnown: Boolean = true,
 ) {
     /**
      * The position at [nowEpochMs], within the track: it runs on from [progressMs] while playing and stays put
@@ -84,8 +86,8 @@ sealed interface SpotifyHealth {
 /**
  * [playIntentSettleMs]: how long a pause or resume is shown while Spotify still reports the state from before
  * it (its Web API takes a moment to catch up). [upcomingRefreshMs]: how often Spotify's queue is read again when
- * nothing else asked for it. [recentlyPlayedRefreshMs]: how often Spotify's recently played song is asked for
- * while nothing is active.
+ * nothing else asked for it, and how often the saved position of the song playing is brought up to date.
+ * [recentlyPlayedRefreshMs]: how often Spotify's recently played song is asked for while nothing is active.
  */
 data class PlaybackConfig(
     val handoverLeadMs: Long = 15_000,
@@ -112,7 +114,8 @@ data class PlaybackConfig(
  * edits wait in order and are applied on top of it once a later tick or edit reads it.
  *
  * Besides the polls, Spotify's queue ([upcoming]) and its recently played song are read only when something
- * changed or a while has passed, never on every poll. Neither ever changes [health].
+ * changed or a while has passed, never on every poll. Neither ever changes [health], but when Spotify asks to wait
+ * after either, the next poll waits as it does after any other call.
  */
 class PlaybackController(
     private val player: SpotifyPlayer,
@@ -138,7 +141,8 @@ class PlaybackController(
 
     /**
      * What Spotify plays now. While it has nothing active (and before its first answer), the newer of the saved
-     * last played song and Spotify's own recently played one, as [NowPlayingKind.LastPlayed].
+     * last played song and Spotify's own recently played one (the saved one when both are the same song), as
+     * [NowPlayingKind.LastPlayed].
      */
     val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
 
@@ -192,8 +196,8 @@ class PlaybackController(
      */
     private var commandFoundNoDevice = false
 
-    // Guarded by [stateMutex]. [lastPlayed] is saved; it changes only when the song, its play state or Spotify's
-    // activity changes, so a poll that only moves the position saves nothing.
+    // Guarded by [stateMutex]. [lastPlayed] is saved; it changes when the song, its play state or Spotify's activity
+    // changes, and while a song plays at most every [PlaybackConfig.upcomingRefreshMs], so most polls save nothing.
     private var lastPlayed: LastPlayed? = null
     private var lastLive: NowPlaying? = null // the live song the last poll showed
     private var spotifyRecent: RecentTrack? = null
@@ -483,19 +487,22 @@ class PlaybackController(
                 cp == null -> SpotifyHealth.NothingPlaying
                 else -> SpotifyHealth.Ok
             }
-            when {
-                handOverResult is SpotifyResult.RateLimited -> NextTick(retryAfterMs(handOverResult), wakeable = false)
-                playIntent != null -> NextTick(config.nearEndPollMs) // soon picks up Spotify's confirmation
-                remainingMs != null && remainingMs <= config.nearEndWindowMs -> NextTick(config.nearEndPollMs)
-                else -> NextTick(config.idlePollMs)
+            val pollMs = when {
+                playIntent != null -> config.nearEndPollMs // soon picks up Spotify's confirmation
+                remainingMs != null && remainingMs <= config.nearEndWindowMs -> config.nearEndPollMs
+                else -> config.idlePollMs
             }
+            // Spotify asked to wait, also when only an extra read was refused: no sooner than it said, nor than usual.
+            val limited = listOf(handOverResult, upcoming, recent)
+                .firstNotNullOfOrNull { it as? SpotifyResult.RateLimited }
+            if (limited != null) NextTick(maxOf(retryAfterMs(limited), pollMs), wakeable = false) else NextTick(pollMs)
         }
     }
 
     /**
      * Publishes what a poll found: the live song, or with nothing active the last played one. Keeps [lastPlayed]
-     * up to date for the next startup, changing it only when the song, its play state or Spotify's activity
-     * changes. Caller holds [stateMutex].
+     * (with who asked for the song) up to date for the next startup: when the song, its play state or Spotify's
+     * activity changes, and while it plays every [PlaybackConfig.upcomingRefreshMs]. Caller holds [stateMutex].
      */
     private fun show(cp: CurrentlyPlaying?) {
         val now = clock()
@@ -506,47 +513,57 @@ class PlaybackController(
             null
         }
         if (cp == null) {
-            lastLive?.let { lastPlayed = LastPlayed(it.track, it.positionAt(now), now) }
+            lastLive?.let { lastPlayed = lastPlayedOf(it, now) }
             lastLive = null
         }
         val shown = withPlayIntent(polled)
         if (shown != null && shown.kind == NowPlayingKind.Live) {
             val before = lastLive
-            if (before == null || before.track.id != shown.track.id || before.isPlaying != shown.isPlaying) {
-                lastPlayed = LastPlayed(shown.track, shown.positionAt(now), now)
-            }
+            val changed = before == null || before.track.id != shown.track.id || before.isPlaying != shown.isPlaying
+            // While it plays the position moves on: keep the saved one from going stale, with one save per while.
+            val savedLongAgo = lastPlayed.let { it == null || now - it.playedAtEpochMs >= config.upcomingRefreshMs }
+            if (changed || (shown.isPlaying && savedLongAgo)) lastPlayed = lastPlayedOf(shown, now)
             lastLive = shown
         }
         _nowPlaying.value = shown ?: if (cp == null) lastPlayedCard() else null
     }
 
+    private fun lastPlayedOf(shown: NowPlaying, now: Long) =
+        LastPlayed(shown.track, shown.positionAt(now), playedAtEpochMs = now, request = shown.request)
+
     /**
-     * The newer of [lastPlayed] and Spotify's recently played song (which starts at 0), shown paused; null when
-     * neither is known. The card already shown is kept when it shows the same, so idle polls publish nothing new.
-     * Caller holds [stateMutex].
+     * The newer of [lastPlayed] and Spotify's recently played song, shown paused; null when neither is known.
+     * Spotify's song starts at 0 and leaves the requester unknown; when it is the same song as [lastPlayed], the
+     * saved one wins, with its position and requester. The card already shown is kept when it shows the same, so
+     * idle polls publish nothing new. Caller holds [stateMutex].
      */
     private fun lastPlayedCard(): NowPlaying? {
         val local = lastPlayed
         val spotify = spotifyRecent
-        val (track, progressMs) = when {
-            spotify != null && (local == null || spotify.playedAtEpochMs > local.playedAtEpochMs) -> spotify.track to 0L
-            local != null -> local.track to local.progressMs
+        val spotifyWins = spotify != null &&
+            (local == null || (spotify.track.id != local.track.id && spotify.playedAtEpochMs > local.playedAtEpochMs))
+        val card = when {
+            spotifyWins -> NowPlaying(
+                spotify.track,
+                progressMs = 0,
+                isPlaying = false,
+                request = null,
+                sampledAtEpochMs = clock(),
+                kind = NowPlayingKind.LastPlayed,
+                requesterKnown = false,
+            )
+            local != null -> NowPlaying(
+                local.track,
+                local.progressMs,
+                isPlaying = false,
+                request = local.request,
+                sampledAtEpochMs = clock(),
+                kind = NowPlayingKind.LastPlayed,
+            )
             else -> return null
         }
         val shown = _nowPlaying.value
-        if (shown != null && shown.kind == NowPlayingKind.LastPlayed && !shown.isPlaying && shown.track == track &&
-            shown.progressMs == progressMs
-        ) {
-            return shown
-        }
-        return NowPlaying(
-            track,
-            progressMs,
-            isPlaying = false,
-            request = null,
-            sampledAtEpochMs = clock(),
-            kind = NowPlayingKind.LastPlayed,
-        )
+        return if (shown != null && shown.copy(sampledAtEpochMs = card.sampledAtEpochMs) == card) shown else card
     }
 
     /**
@@ -564,7 +581,8 @@ class PlaybackController(
 
     /**
      * Applies Spotify's recently played answer. Any other failure than a missing permission is ignored: it is
-     * asked again later. Health never changes. Caller holds [stateMutex].
+     * asked again later (after a rate limit the next poll waits too, see [tick]). Health never changes. Caller holds
+     * [stateMutex].
      */
     private fun answeredRecentlyPlayed(result: SpotifyResult<RecentTrack?>, askedUnder: Int) {
         if (askedUnder != loginGeneration) return // asked under an earlier login: the next idle tick asks again
@@ -591,6 +609,8 @@ class PlaybackController(
 
     /**
      * Spotify's queue without the handed-over request (it shows on its own) and repeats, at most [UPCOMING_LIMIT].
+     * Known gap: tracks the streamer queued in Spotify itself play before the handed-over request, yet show after
+     * the requests (Spotify's queue does not tell them apart from what its playlist or album plays next).
      * Caller holds [stateMutex].
      */
     private fun upcomingFrom(spotifyQueue: List<Track>): List<Track> {

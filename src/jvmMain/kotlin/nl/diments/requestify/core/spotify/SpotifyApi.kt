@@ -57,7 +57,7 @@ const val TOKEN_UNAVAILABLE = "token unavailable"
 /** [track] is null while an ad or a podcast episode plays. */
 data class CurrentlyPlaying(val track: Track?, val progressMs: Long, val isPlaying: Boolean)
 
-/** The last track that played and when it started, in epoch milliseconds. */
+/** The last track that played and when Spotify logged it, which is when its play ended, in epoch milliseconds. */
 data class RecentTrack(val track: Track, val playedAtEpochMs: Long)
 
 /** The port the playback controller uses. */

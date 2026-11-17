@@ -820,22 +820,35 @@ class PlaybackControllerTest {
 
     private val lastPlayedA = LastPlayed(trackA, progressMs = 42_000, playedAtEpochMs = 1_000)
 
-    /** Spotify has nothing active, and the saved state remembers track A at 42 s. */
-    private fun TestScope.startIdleWithLastPlayedA(player: FakeSpotifyPlayer): PlaybackController {
-        store().save(PersistedPlayback(lastPlayed = lastPlayedA))
+    /** Spotify has nothing active, and the saved state remembers [saved] (by default track A at 42 s). */
+    private fun TestScope.startIdleWithLastPlayedA(
+        player: FakeSpotifyPlayer,
+        saved: LastPlayed = lastPlayedA,
+    ): PlaybackController {
+        store().save(PersistedPlayback(lastPlayed = saved))
         val controller = controller(player)
         controller.start()
         runCurrent()
         return controller
     }
 
-    private fun PlaybackController.assertShowsLastPlayed(track: Track, progressMs: Long) {
+    /**
+     * The last played card shows [track] paused at [progressMs], asked for by [request] (null: the streamer's own
+     * music), or with [requesterKnown] false for Spotify's own recently played song, of which that is unknown.
+     */
+    private fun PlaybackController.assertShowsLastPlayed(
+        track: Track,
+        progressMs: Long,
+        request: Request? = null,
+        requesterKnown: Boolean = true,
+    ) {
         val shown = assertNotNull(nowPlaying.value)
         assertEquals(NowPlayingKind.LastPlayed, shown.kind)
         assertEquals(track, shown.track)
         assertEquals(progressMs, shown.progressMs)
         assertFalse(shown.isPlaying)
-        assertNull(shown.request)
+        assertEquals(request, shown.request)
+        assertEquals(requesterKnown, shown.requesterKnown)
     }
 
     @Test
@@ -977,7 +990,7 @@ class PlaybackControllerTest {
     }
 
     @Test
-    fun lastPlayedIsPersistedOnTrackChangeAndPauseOnly() = runTest {
+    fun lastPlayedIsPersistedOnChangesAndEvery30sWhilePlaying() = runTest {
         val serializer = CountingSerializer(PersistedPlayback.serializer())
         val counted = QueueStore(JsonFileStore(dir.resolve("queue.json"), serializer) { PersistedPlayback() })
         val player = fakePlayer()
@@ -988,31 +1001,56 @@ class PlaybackControllerTest {
         assertEquals(1, serializer.writes, "the first poll saves what plays")
         assertEquals(LastPlayed(trackA, 10_000, playedAtEpochMs = 0), store().load().lastPlayed)
 
-        for (poll in 1..10) {
+        for (poll in 1..9) {
             player.plays(trackA, progressMs = 10_000L + poll * 3_000)
             advance(3_000)
         }
-        assertEquals(1, serializer.writes, "no save while the same track plays on")
+        assertEquals(1, serializer.writes, "no save on every poll while the same track plays on")
+
+        player.plays(trackA, progressMs = 40_000)
+        advance(3_000) // 30 s since the last save: where it is now is saved, once
+        assertEquals(2, serializer.writes)
+        assertEquals(LastPlayed(trackA, 40_000, playedAtEpochMs = 30_000), store().load().lastPlayed)
 
         player.plays(trackA, progressMs = 41_000, isPlaying = false)
         advance(3_000) // 33 s: paused
-        assertEquals(2, serializer.writes)
+        assertEquals(3, serializer.writes)
         assertEquals(LastPlayed(trackA, 41_000, playedAtEpochMs = 33_000), store().load().lastPlayed)
-        advance(6_000) // still paused
-        assertEquals(2, serializer.writes)
+        advance(36_000) // paused for longer than 30 s: the position does not move, so nothing is saved
+        assertEquals(3, serializer.writes)
 
         player.plays(trackB, progressMs = 0)
-        advance(3_000) // 42 s: another track
-        assertEquals(3, serializer.writes)
-        assertEquals(LastPlayed(trackB, 0, playedAtEpochMs = 42_000), store().load().lastPlayed)
+        advance(3_000) // 72 s: another track
+        assertEquals(4, serializer.writes)
+        assertEquals(LastPlayed(trackB, 0, playedAtEpochMs = 72_000), store().load().lastPlayed)
 
         player.currentlyPlayingResult = SpotifyResult.Ok(null)
-        advance(3_000) // 45 s: nothing is active any more, after B ran on for 3 s
-        assertEquals(4, serializer.writes)
-        assertEquals(LastPlayed(trackB, 3_000, playedAtEpochMs = 45_000), store().load().lastPlayed)
-        advance(9_000)
-        assertEquals(4, serializer.writes)
+        advance(3_000) // 75 s: nothing is active any more, after B ran on for 3 s
+        assertEquals(5, serializer.writes)
+        assertEquals(LastPlayed(trackB, 3_000, playedAtEpochMs = 75_000), store().load().lastPlayed)
+        advance(39_000)
+        assertEquals(5, serializer.writes)
         controller.assertShowsLastPlayed(trackB, progressMs = 3_000)
+    }
+
+    @Test
+    fun aRequestPlayingWhenSpotifyGoesIdleIsShownAndSavedWithItsRequester() = runTest {
+        val player = fakePlayer()
+        val controller = startWithR1HandedOver(player)
+        player.plays(r1.track, progressMs = 1_000)
+        advance(1_000)
+        assertEquals(r1, controller.nowPlaying.value?.request)
+
+        player.currentlyPlayingResult = SpotifyResult.Ok(null)
+        advance(3_000) // 4 s: nothing is active any more, after R1 ran on for 3 s
+        controller.assertShowsLastPlayed(r1.track, progressMs = 4_000, request = r1)
+        assertEquals(LastPlayed(r1.track, 4_000, playedAtEpochMs = 4_000, request = r1), store().load().lastPlayed)
+
+        controller.stop()
+        val restarted = controller(player)
+        restarted.start()
+        runCurrent()
+        restarted.assertShowsLastPlayed(r1.track, progressMs = 4_000, request = r1)
     }
 
     @Test
@@ -1020,8 +1058,27 @@ class PlaybackControllerTest {
         val player = fakePlayer()
         player.recentResult = SpotifyResult.Ok(RecentTrack(trackB, playedAtEpochMs = 2_000))
         val controller = startIdleWithLastPlayedA(player)
-        controller.assertShowsLastPlayed(trackB, progressMs = 0)
+        controller.assertShowsLastPlayed(trackB, progressMs = 0, requesterKnown = false)
         assertEquals(SpotifyHealth.NothingPlaying, controller.health.value)
+    }
+
+    @Test
+    fun spotifysRecentSongNeitherTakesTheSavedRequesterNorClaimsOwnMusic() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.Ok(RecentTrack(trackB, playedAtEpochMs = 2_000))
+        val forA = request("forA", trackA)
+        val controller = startIdleWithLastPlayedA(player, saved = lastPlayedA.copy(request = forA))
+        controller.assertShowsLastPlayed(trackB, progressMs = 0, request = null, requesterKnown = false)
+    }
+
+    @Test
+    fun spotifysCopyOfTheSavedSongKeepsItsPositionAndRequester() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.Ok(RecentTrack(trackA, playedAtEpochMs = 2_000)) // the same play, logged later
+        val forA = request("forA", trackA)
+        val controller = startIdleWithLastPlayedA(player, saved = lastPlayedA.copy(request = forA))
+        assertEquals(listOf(0L), player.callsTo("recentlyPlayed").map { it.atMs })
+        controller.assertShowsLastPlayed(trackA, progressMs = 42_000, request = forA)
     }
 
     @Test
@@ -1063,7 +1120,7 @@ class PlaybackControllerTest {
         assertFalse(controller.needsExtraPermission.value)
         advance(3_000) // the next idle tick asks again
         assertEquals(listOf(0L, 303_000L), player.callsTo("recentlyPlayed").map { it.atMs })
-        controller.assertShowsLastPlayed(trackB, progressMs = 0)
+        controller.assertShowsLastPlayed(trackB, progressMs = 0, requesterKnown = false)
     }
 
     @Test
@@ -1195,6 +1252,46 @@ class PlaybackControllerTest {
         val shown = assertNotNull(controller.nowPlaying.value)
         assertEquals(NowPlayingKind.Live, shown.kind)
         assertTrue(shown.isPlaying)
+    }
+
+    @Test
+    fun aRateLimitedReadOfSpotifysQueueWaitsAsAsked() = runTest {
+        val player = fakePlayer()
+        player.queueTracks = SpotifyResult.RateLimited(10_000)
+        val controller = startAt60s(player)
+        assertEquals(listOf(0L), player.callsTo("userQueue").map { it.atMs })
+
+        controller.enqueue(r1) // a wake-up must not cut the wait short
+        advance(9_999)
+        assertEquals(listOf(0L), player.pollTimes())
+        advance(1)
+        assertEquals(listOf(0L, 10_000L), player.pollTimes())
+        assertEquals(SpotifyHealth.Ok, controller.health.value, "an extra read never changes health")
+    }
+
+    @Test
+    fun aRateLimitedReadOfTheRecentlyPlayedSongWaitsAsAsked() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.RateLimited(10_000)
+        val controller = startIdleWithLastPlayedA(player)
+        advance(9_999)
+        assertEquals(listOf(0L), player.pollTimes())
+        advance(1)
+        assertEquals(listOf(0L, 10_000L), player.pollTimes())
+        controller.assertShowsLastPlayed(trackA, progressMs = 42_000)
+        assertEquals(SpotifyHealth.NothingPlaying, controller.health.value, "an extra read never changes health")
+        assertFalse(controller.needsExtraPermission.value)
+    }
+
+    @Test
+    fun aRateLimitedExtraReadNeverPollsSoonerThanUsual() = runTest {
+        val player = fakePlayer()
+        player.queueTracks = SpotifyResult.RateLimited(0)
+        startAt60s(player)
+        advance(2_999)
+        assertEquals(listOf(0L), player.pollTimes())
+        advance(1)
+        assertEquals(listOf(0L, 3_000L), player.pollTimes())
     }
 }
 

@@ -79,6 +79,20 @@ class NowPlayingPaneTest {
         onNodeWithText("Your own music").assertIsDisplayed()
     }
 
+    /** Spotify's own recently played song: whether it was a request is not known. */
+    private val lastPlayedOnSpotify = NowPlaying(
+        midnightCity, 0, isPlaying = false, request = null, sampledAtEpochMs = 0L,
+        kind = NowPlayingKind.LastPlayed, requesterKnown = false,
+    )
+
+    @Test
+    fun spotifysRecentlyPlayedSongLeavesTheRequesterRowEmpty() = runComposeUiTest {
+        setContent { Pane(lastPlayedOnSpotify, clock = { 0L }) }
+        onNodeWithText("Midnight City").assertIsDisplayed()
+        onNodeWithText("LAST PLAYED").assertIsDisplayed()
+        onNodeWithText("Your own music").assertDoesNotExist()
+    }
+
     @Test
     fun bitsRequestShowsChipAndRequester() = runComposeUiTest {
         val request = Request("r1", midnightCity, Requester("streamfan"), RequestSource.BITS, Payment.Bits(500), createdAtEpochMs = 1L)
@@ -171,6 +185,7 @@ class NowPlayingPaneTest {
             "last played" to NowPlaying(
                 midnightCity, 60_000, isPlaying = false, request = null, sampledAtEpochMs = 0L, kind = NowPlayingKind.LastPlayed,
             ),
+            "last played on Spotify, requester unknown" to lastPlayedOnSpotify,
             "nothing playing" to null,
         )
     }
@@ -211,7 +226,8 @@ class NowPlayingPaneTest {
                 nowPlaying = state
                 waitForIdle()
                 val block = onNodeWithTag(NOW_PLAYING_DETAILS_TAG, useUnmergedTree = true).fetchSemanticsNode()
-                val contentTop = block.children.minOf { it.boundsInRoot.top }
+                // An empty node (an empty requester row) takes no room; its bounds collapse to the root's corner.
+                val contentTop = block.children.filter { it.size.height > 0 }.minOf { it.boundsInRoot.top }
                 if (contentTop < block.boundsInRoot.top) {
                     problems += "$density, $name: the details reach ${block.boundsInRoot.top - contentTop} px above their room"
                 }

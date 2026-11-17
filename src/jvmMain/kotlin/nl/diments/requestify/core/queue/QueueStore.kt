@@ -8,9 +8,17 @@ import nl.diments.requestify.core.storage.JsonFileStore
 @Serializable
 data class PlayedEntry(val request: Request, val playedAtEpochMs: Long)
 
-/** The last song seen playing, where it was at [playedAtEpochMs]: shown at startup before Spotify answers. */
+/**
+ * The last song seen playing, where it was at [playedAtEpochMs]: shown at startup before Spotify answers. [request]
+ * is who asked for it, null for the streamer's own music (and in files written before it was kept).
+ */
 @Serializable
-data class LastPlayed(val track: Track, val progressMs: Long, val playedAtEpochMs: Long)
+data class LastPlayed(
+    val track: Track,
+    val progressMs: Long,
+    val playedAtEpochMs: Long,
+    val request: Request? = null,
+)
 
 @Serializable
 data class PersistedPlayback(

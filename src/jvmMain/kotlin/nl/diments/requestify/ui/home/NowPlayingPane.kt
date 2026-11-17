@@ -251,7 +251,7 @@ private fun Details(nowPlaying: NowPlaying?, compact: Boolean) {
                 )
             } else {
                 TrackText(nowPlaying.track, compact)
-                RequestLine(nowPlaying.request)
+                RequestLine(nowPlaying.request, nowPlaying.requesterKnown)
             }
         }
     }
@@ -380,27 +380,23 @@ private fun titleStyle(compact: Boolean): TextStyle {
     return style.copy(lineHeight = style.fontSize * TITLE_LINE_HEIGHT)
 }
 
-/** Who asked for the song (its source chip and name), or that it is the streamer's own music. */
+/**
+ * Who asked for the song (its source chip and name), or that it is the streamer's own music; when that is not
+ * [known], the row stays empty (its room is kept).
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun RequestLine(request: Request?) {
+private fun RequestLine(request: Request?, known: Boolean) {
     val motion = MaterialTheme.motionScheme
     Box(Modifier.height(requesterRowHeight()), contentAlignment = Alignment.CenterStart) {
         AnimatedContent(
-            targetState = request,
-            contentKey = { it?.id },
+            targetState = request to known,
+            contentKey = { (shown, shownKnown) -> shown?.id ?: shownKnown },
             transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
             contentAlignment = Alignment.CenterStart,
             modifier = Modifier.fillMaxHeight(),
-        ) { shown ->
-            if (shown == null) {
-                Text(
-                    stringResource(Res.string.now_playing_own_music),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            } else {
+        ) { (shown, shownKnown) ->
+            if (shown != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
                     SourceChip(shown.source, sourceLabel(shown))
                     Text(
@@ -411,6 +407,13 @@ private fun RequestLine(request: Request?) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            } else if (shownKnown) {
+                Text(
+                    stringResource(Res.string.now_playing_own_music),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
             }
         }
     }

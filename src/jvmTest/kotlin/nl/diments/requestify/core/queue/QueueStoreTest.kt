@@ -76,6 +76,24 @@ class QueueStoreTest {
         assertNull(old.lastPlayed)
     }
 
+    @Test fun lastPlayedKeepsItsRequesterAndFilesWithoutOneStillLoad() {
+        val p = PersistedPlayback(
+            lastPlayed = LastPlayed(req("b").track, progressMs = 42_000, playedAtEpochMs = 1_000, request = req("b")),
+        )
+        store().save(p)
+        assertEquals(p, store().load())
+
+        // Written before lastPlayed had a request.
+        dir.resolve("queue.json").writeText(
+            """
+            {"queue":{"items":[]},"handedOver":null,"playing":null,"history":[],
+            "lastPlayed":{"track":{"id":"b","uri":"spotify:track:b","name":"Song b","artists":["Artist"],
+            "durationMs":180000,"explicit":false,"albumArtUrl":null},"progressMs":42000,"playedAtEpochMs":1000}}
+            """.trimIndent(),
+        )
+        assertEquals(LastPlayed(req("b").track, progressMs = 42_000, playedAtEpochMs = 1_000), store().load().lastPlayed)
+    }
+
     @Test fun emptyLoadGivesDefault() {
         assertEquals(PersistedPlayback(), store().load())
     }
