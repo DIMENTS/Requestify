@@ -13,6 +13,8 @@
     <string name="home_queue_empty">De wachtrij is leeg. Nieuwe verzoeken verschijnen hier.</string>
     <string name="home_played_empty">Er is nog niets gespeeld.</string>
     <string name="home_up_next_in_spotify">Volgende in Spotify</string>
+    <string name="queue_then_in_spotify">Daarna in Spotify</string>
+    <string name="queue_your_music">Je muziek</string>
     <string name="home_save_failing">Wachtrij opslaan mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_load_failing">Opgeslagen wachtrij lezen mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_remove_request">%1$s verwijderen</string>
@@ -95,6 +97,7 @@
     <string name="setup_browser_failed">Je browser ging niet open. Open dit adres zelf:</string>
     <string name="setup_logged_in">Ingelogd bij Spotify</string>
     <string name="setup_logout">Uitloggen</string>
+    <string name="setup_extra_permission">Log opnieuw in om je laatst gespeelde nummer te tonen.</string>
     <string name="setup_login_expired">Je Spotify-login is verlopen. Log opnieuw in.</string>
     <string name="setup_login_timed_out">Inloggen duurde te lang. Controleer de Client ID en de redirect-URI en probeer het opnieuw.</string>
     <string name="setup_login_port_in_use">Een andere app gebruikt poort %1$d. Sluit die app en probeer het opnieuw.</string>

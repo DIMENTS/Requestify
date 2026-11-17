@@ -12,8 +12,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -25,6 +27,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -46,7 +49,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -54,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.core.model.Request
+import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.resources.Res
@@ -69,6 +75,8 @@ import nl.diments.requestify.resources.home_queue_total
 import nl.diments.requestify.resources.home_remove_request
 import nl.diments.requestify.resources.home_save_failing
 import nl.diments.requestify.resources.home_up_next_in_spotify
+import nl.diments.requestify.resources.queue_then_in_spotify
+import nl.diments.requestify.resources.queue_your_music
 import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
@@ -86,15 +94,20 @@ private val RowGap = Spacing.xs
 private val OuterCorner = 20.dp
 private val InnerCorner = 6.dp
 
-/** A queue row's drag handle icon ([Spacing.s] around it), and the room its remove button takes (a touch target). */
+/**
+ * A queue row's drag handle icon, the room the handle takes ([Spacing.s] around the icon) and the room its remove
+ * button takes (a touch target).
+ */
 private val DragHandleSize = 20.dp
+private val DragHandleSlot = Spacing.s + DragHandleSize + Spacing.s
 private val RemoveButtonSize = 48.dp
 
 private enum class QueueTab { Queue, Played }
 
 /**
- * Left side of Home: the queue (drag to reorder, X to remove) with the request Spotify already has on top,
- * the played history and the field to add a track. Spotify's status is in the title bar.
+ * Left side of Home: the queue (drag to reorder, X to remove) with the request Spotify already has on top and
+ * what Spotify itself plays after the requests below, the played history and the field to add a track. Spotify's
+ * status is in the title bar.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -155,7 +168,14 @@ fun QueuePane(
             modifier = Modifier.weight(1f),
         ) { shown ->
             when (shown) {
-                QueueTab.Queue -> QueueList(state.queue, state.handedOver, onRemove, onMove, Modifier.fillMaxSize())
+                QueueTab.Queue -> QueueList(
+                    queue = state.queue,
+                    handedOver = state.handedOver,
+                    upcoming = state.upcoming,
+                    onRemove = onRemove,
+                    onMove = onMove,
+                    modifier = Modifier.fillMaxSize(),
+                )
                 QueueTab.Played -> PlayedList(state.history, Modifier.fillMaxSize())
             }
         }
@@ -187,14 +207,18 @@ private fun QueueTabs(selected: QueueTab, queueSize: Int, onSelect: (QueueTab) -
 }
 
 /**
- * The queue as a connected list. While a row is dragged the list shows a local order; the move is committed
- * when the row is dropped, and the local order is dropped again once the queue reflects it.
+ * Everything that plays next, in playing order: the [handedOver] request, the queue and then [upcoming], the
+ * tracks Spotify itself has lined up. The queue and Spotify's tracks form one connected list with a caption where
+ * the requests end. Only the requests can be dragged, and only among themselves. While a row is dragged the list
+ * shows a local order; the move is committed when the row is dropped, and the local order is dropped again once
+ * the queue reflects it.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun QueueList(
     queue: List<Request>,
     handedOver: Request?,
+    upcoming: List<Track>,
     onRemove: (String) -> Unit,
     onMove: (id: String, toIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -223,11 +247,13 @@ private fun QueueList(
         if (to == from) dragOrder = null else onMove(id, to)
     }
 
-    if (queue.isEmpty() && handedOver == null) {
+    if (queue.isEmpty() && handedOver == null && upcoming.isEmpty()) {
         EmptyState(stringResource(Res.string.home_queue_empty), modifier)
         return
     }
     val motion = MaterialTheme.motionScheme
+    val connectedRows = shown.size + upcoming.size
+    val upcomingKeys = remember(upcoming) { upcomingKeys(upcoming) }
     LazyColumn(
         state = listState,
         modifier = modifier,
@@ -256,7 +282,7 @@ private fun QueueList(
             ) { dragging ->
                 QueueRow(
                     request = request,
-                    shape = connectedShape(index, shown.size, dragging),
+                    shape = connectedShape(index, connectedRows, dragging),
                     dragging = dragging,
                     onRemove = onRemove,
                     dragHandle = Modifier.draggableHandle(
@@ -266,10 +292,48 @@ private fun QueueList(
                 )
             }
         }
+        if (upcoming.isNotEmpty()) {
+            // Plain items, not reorderable ones: no request can be dragged among them.
+            item(key = THEN_IN_SPOTIFY_KEY) {
+                ThenInSpotify(
+                    Modifier.animateItem(
+                        motion.defaultEffectsSpec(),
+                        motion.defaultSpatialSpec(),
+                        motion.fastEffectsSpec(),
+                    ),
+                )
+            }
+            itemsIndexed(upcoming, key = { index, _ -> upcomingKeys[index] }) { index, track ->
+                SpotifyRow(
+                    track = track,
+                    shape = connectedShape(shown.size + index, connectedRows, dragging = false),
+                    modifier = Modifier.animateItem(
+                        motion.defaultEffectsSpec(),
+                        motion.defaultSpatialSpec(),
+                        motion.fastEffectsSpec(),
+                    ),
+                )
+            }
+        }
     }
 }
 
 private const val HANDED_OVER_KEY = "handed-over"
+private const val THEN_IN_SPOTIFY_KEY = "then-in-spotify"
+
+/**
+ * Keys for Spotify's rows. They follow the track, so the rows slide along when Spotify moves on to the next song;
+ * a repeated track gets the next number. The prefix keeps them apart from the requests' ids, also for a track that
+ * is requested too.
+ */
+private fun upcomingKeys(tracks: List<Track>): List<String> {
+    val seen = HashMap<String, Int>()
+    return tracks.map { track ->
+        val repeat = (seen[track.id] ?: 0) + 1
+        seen[track.id] = repeat
+        "spotify:$repeat:${track.id}"
+    }
+}
 
 /** Where [id] goes in [queue] so it follows the same request as in [shown], even if the queue changed meanwhile. */
 private fun dropIndex(shown: List<Request>, queue: List<Request>, id: String): Int {
@@ -308,25 +372,87 @@ private fun QueueRow(
         motion.fastEffectsSpec(),
     )
     val elevation by animateDpAsState(if (dragging) 8.dp else 0.dp, motion.fastSpatialSpec())
-    Surface(shape = shape, color = color, shadowElevation = elevation) {
-        Row(
-            modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.s),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    QueueRowLayout(
+        shape = shape,
+        color = color,
+        shadowElevation = elevation,
+        handle = {
             Icon(
                 AppIcons.DragIndicator,
                 contentDescription = stringResource(Res.string.home_drag_to_reorder),
                 tint = scheme.outline,
                 modifier = dragHandle.padding(Spacing.s).size(DragHandleSize),
             )
-            RequestDetails(request, Modifier.weight(1f))
+        },
+        remove = {
             IconButton(onClick = { onRemove(request.id) }, shapes = IconButtonDefaults.shapes()) {
                 Icon(
                     AppIcons.Close,
                     contentDescription = stringResource(Res.string.home_remove_request, request.track.name),
                 )
             }
+        },
+    ) {
+        RequestDetails(request, Modifier.weight(1f))
+    }
+}
+
+/**
+ * A track Spotify itself plays after the requests: a request row with "Your music" as its source, and without the
+ * drag handle and the remove button (Spotify does not let its own queue be edited).
+ */
+@Composable
+private fun SpotifyRow(track: Track, shape: Shape, modifier: Modifier = Modifier) {
+    QueueRowLayout(shape = shape, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = modifier) {
+        TrackDetails(track, Modifier.weight(1f)) {
+            // The neutral colours of the streamer's own requests: this is their music too.
+            SourceChip(RequestSource.MANUAL, stringResource(Res.string.queue_your_music))
         }
+    }
+}
+
+/**
+ * The columns every queue row shares, so titles, chips and durations line up down the list: the drag handle, the
+ * details and the remove button. A row without a [handle] or a [remove] button keeps their room (and so the
+ * remove button's height too).
+ */
+@Composable
+private fun QueueRowLayout(
+    shape: Shape,
+    color: Color,
+    modifier: Modifier = Modifier,
+    shadowElevation: Dp = 0.dp,
+    handle: (@Composable () -> Unit)? = null,
+    remove: (@Composable () -> Unit)? = null,
+    details: @Composable RowScope.() -> Unit,
+) {
+    Surface(modifier, shape = shape, color = color, shadowElevation = shadowElevation) {
+        Row(
+            modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.s),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (handle != null) handle() else Spacer(Modifier.size(DragHandleSlot))
+            details()
+            if (remove != null) remove() else Spacer(Modifier.size(RemoveButtonSize))
+        }
+    }
+}
+
+/** Where the requests end and Spotify's own next tracks begin: a caption on a hairline, inside the list. */
+@Composable
+private fun ThenInSpotify(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.padding(start = Spacing.l, end = Spacing.l, top = Spacing.s, bottom = Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(Res.string.queue_then_in_spotify),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.semantics { heading() },
+        )
+        HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -355,10 +481,7 @@ private fun HandedOverRow(request: Request, modifier: Modifier = Modifier) {
             // Lined up with the queue rows' details: past the drag handle, short of the remove button.
             RequestDetails(
                 request,
-                Modifier.padding(
-                    start = Spacing.xs + Spacing.s + DragHandleSize + Spacing.s,
-                    end = Spacing.xs + RemoveButtonSize,
-                ),
+                Modifier.padding(start = Spacing.xs + DragHandleSlot, end = Spacing.xs + RemoveButtonSize),
                 secondaryColor = LocalContentColor.current,
             )
         }
@@ -387,32 +510,51 @@ private fun PlayedList(history: List<PlayedEntry>, modifier: Modifier = Modifier
     }
 }
 
-/** Art, title and artist, then the source chip over the requester, a bolt for paid requests and the duration. */
+/** A request's track details, with the source chip over the requester and a bolt when it is paid. */
 @Composable
 private fun RequestDetails(
     request: Request,
     modifier: Modifier = Modifier,
     secondaryColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    TrackDetails(request.track, modifier, secondaryColor, paid = request.isPaid) {
+        SourceChip(request.source, sourceLabel(request))
+        Text(requesterLabel(request), style = MaterialTheme.typography.labelMedium, color = secondaryColor, maxLines = 1)
+    }
+}
+
+/**
+ * Art, title and artist, then [source] (aligned to the end: a chip, maybe over the requester), a bolt when [paid]
+ * and the duration.
+ */
+@Composable
+private fun TrackDetails(
+    track: Track,
+    modifier: Modifier = Modifier,
+    secondaryColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    paid: Boolean = false,
+    source: @Composable ColumnScope.() -> Unit,
+) {
     val typography = MaterialTheme.typography
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.m), verticalAlignment = Alignment.CenterVertically) {
-        AlbumArt(request.track.albumArtUrl, Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)))
+        AlbumArt(track.albumArtUrl, Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)))
         Column(Modifier.weight(1f)) {
-            Text(request.track.name, style = typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(track.name, style = typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                request.track.artists.joinToString(", "),
+                track.artists.joinToString(", "),
                 style = typography.bodyMedium,
                 color = secondaryColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            SourceChip(request.source, sourceLabel(request))
-            Text(requesterLabel(request), style = typography.labelMedium, color = secondaryColor, maxLines = 1)
-        }
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            content = source,
+        )
         Box(Modifier.size(18.dp)) {
-            if (request.isPaid) {
+            if (paid) {
                 Icon(
                     AppIcons.Bolt,
                     contentDescription = stringResource(Res.string.home_paid_request),
@@ -421,7 +563,7 @@ private fun RequestDetails(
             }
         }
         Text(
-            formatDuration(request.track.durationMs),
+            formatDuration(track.durationMs),
             style = typography.labelLarge,
             color = secondaryColor,
             textAlign = TextAlign.End,

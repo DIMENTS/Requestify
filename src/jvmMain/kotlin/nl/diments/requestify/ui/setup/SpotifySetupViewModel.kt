@@ -44,6 +44,8 @@ enum class SaveFailure { ClientId, Logout }
 /**
  * Everything the Spotify setup shows. [premium] is null while it is being checked or when not logged in.
  * [pendingLoginUrl] is the login page while a login runs and the browser could not be opened for it.
+ * [needsExtraPermission]: the login is from before Requestify asked to read the recently played songs; logging in
+ * again (no need to log out first) grants it.
  */
 data class SpotifySetupState(
     val clientId: String,
@@ -55,6 +57,7 @@ data class SpotifySetupState(
     val health: SpotifyHealth,
     val pendingLoginUrl: String? = null,
     val saveFailure: SaveFailure? = null,
+    val needsExtraPermission: Boolean = false,
 )
 
 /** Runs on the caller's [scope] (an app-lifetime scope on the UI thread). */
@@ -62,7 +65,7 @@ class SpotifySetupViewModel(
     private val settings: SettingsStore,
     private val auth: SpotifyAuth,
     private val catalog: SpotifyCatalog,
-    controller: PlaybackController,
+    private val controller: PlaybackController,
     private val scope: CoroutineScope,
 ) {
     private data class Local(
@@ -77,8 +80,18 @@ class SpotifySetupViewModel(
     private val premiumCheck = MutableStateFlow<PremiumCheck?>(null)
     private var loginJob: Job? = null
 
-    val state: StateFlow<SpotifySetupState> = combine(local, auth.status, premiumCheck, controller.health, ::toState)
-        .stateIn(scope, SharingStarted.Eagerly, toState(local.value, auth.status.value, premiumCheck.value, controller.health.value))
+    val state: StateFlow<SpotifySetupState> =
+        combine(local, auth.status, premiumCheck, controller.health, controller.needsExtraPermission, ::toState).stateIn(
+            scope,
+            SharingStarted.Eagerly,
+            toState(
+                local.value,
+                auth.status.value,
+                premiumCheck.value,
+                controller.health.value,
+                controller.needsExtraPermission.value,
+            ),
+        )
 
     init {
         // Premium is checked whenever Spotify is logged in: right after a login, and at start with a saved one.
@@ -96,14 +109,19 @@ class SpotifySetupViewModel(
         saveClientId()
     }
 
-    /** Saves the typed Client ID first when an earlier save of it failed, then logs in. */
+    /**
+     * Saves the typed Client ID first when an earlier save of it failed, then logs in. Also while logged in: the new
+     * login replaces the old one. After every successful login playback checks its permissions again.
+     */
     fun onLogin() {
         if (local.value.loggingIn || !saveClientId()) return
         local.update { it.copy(loggingIn = true, loginError = null, pendingLoginUrl = null) }
         loginJob = scope.launch {
             var error: LoginError? = LoginError.Failed
             try {
-                error = errorOf(auth.login())
+                val result = auth.login()
+                if (result == LoginResult.Success) controller.onLoginChanged()
+                error = errorOf(result)
             } catch (e: CancellationException) {
                 error = null // cancelled by the streamer: not an error
                 throw e
@@ -174,16 +192,22 @@ class SpotifySetupViewModel(
         else -> PremiumCheck.Unknown
     }
 
-    private fun toState(local: Local, auth: SpotifyAuthStatus, premium: PremiumCheck?, health: SpotifyHealth) =
-        SpotifySetupState(
-            clientId = local.clientId,
-            clientIdValid = isValidSpotifyClientId(local.clientId),
-            auth = auth,
-            loggingIn = local.loggingIn,
-            loginError = local.loginError,
-            premium = premium,
-            health = health,
-            pendingLoginUrl = local.pendingLoginUrl,
-            saveFailure = local.saveFailure,
-        )
+    private fun toState(
+        local: Local,
+        auth: SpotifyAuthStatus,
+        premium: PremiumCheck?,
+        health: SpotifyHealth,
+        needsExtraPermission: Boolean,
+    ) = SpotifySetupState(
+        clientId = local.clientId,
+        clientIdValid = isValidSpotifyClientId(local.clientId),
+        auth = auth,
+        loggingIn = local.loggingIn,
+        loginError = local.loginError,
+        premium = premium,
+        health = health,
+        pendingLoginUrl = local.pendingLoginUrl,
+        saveFailure = local.saveFailure,
+        needsExtraPermission = needsExtraPermission,
+    )
 }

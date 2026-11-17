@@ -73,6 +73,7 @@ import nl.diments.requestify.resources.setup_copied
 import nl.diments.requestify.resources.setup_copy
 import nl.diments.requestify.resources.setup_device_hint
 import nl.diments.requestify.resources.setup_device_ok
+import nl.diments.requestify.resources.setup_extra_permission
 import nl.diments.requestify.resources.setup_intro
 import nl.diments.requestify.resources.setup_logged_in
 import nl.diments.requestify.resources.setup_logging_in
@@ -334,13 +335,20 @@ private enum class LoginPhase { LoggedOut, LoggingIn, LoggedIn }
 private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
     val motion = MaterialTheme.motionScheme
     val phase = when {
+        state.loggingIn -> LoginPhase.LoggingIn // also when logging in again while logged in
         state.auth == SpotifyAuthStatus.LoggedIn -> LoginPhase.LoggedIn
-        state.loggingIn -> LoginPhase.LoggingIn
         else -> LoginPhase.LoggedOut
     }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
         if (state.auth is SpotifyAuthStatus.LoginNeeded && phase == LoginPhase.LoggedOut) {
             ErrorText(stringResource(Res.string.setup_login_expired))
+        }
+        if (state.needsExtraPermission && phase == LoginPhase.LoggedIn) {
+            Text(
+                stringResource(Res.string.setup_extra_permission),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         AnimatedContent(
             targetState = phase,
@@ -374,6 +382,12 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                 ) {
                     Icon(AppIcons.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Text(stringResource(Res.string.setup_logged_in), style = MaterialTheme.typography.bodyLarge)
+                    // The same login again, without logging out: it grants the permission this login lacks.
+                    if (state.needsExtraPermission) {
+                        FilledTonalButton(onClick = vm::onLogin, shapes = ButtonDefaults.shapes()) {
+                            Text(stringResource(Res.string.setup_login))
+                        }
+                    }
                     TextButton(onClick = vm::onLogout, shapes = ButtonDefaults.shapes()) {
                         Text(stringResource(Res.string.setup_logout))
                     }

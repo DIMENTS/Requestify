@@ -34,6 +34,7 @@ import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.secrets.InMemorySecretStore
+import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.SpotifyCatalog
@@ -67,20 +68,29 @@ class SpotifySetupScreenTest {
         override suspend fun isPremium() = SpotifyResult.Ok(true)
     }
 
-    /** A valid Client ID is set; the browser opens, but nobody logs in, so a login runs until [loginTimeout]. */
-    private fun viewModel(loginTimeout: Duration): SpotifySetupViewModel {
+    /**
+     * A valid Client ID is set; the browser opens, but nobody logs in, so a login runs until [loginTimeout]. With
+     * [savedLogin] Spotify is already logged in. [controller] plays to [player].
+     */
+    private fun viewModel(
+        loginTimeout: Duration,
+        savedLogin: Boolean = false,
+        player: FakeSpotifyPlayer = FakeSpotifyPlayer { 0L },
+    ): SpotifySetupViewModel {
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val secrets = InMemorySecretStore()
+        if (savedLogin) secrets.put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1")
         val auth = SpotifyAuth(
             http = HttpClient(MockEngine { error("no token request without a login") }),
-            secrets = InMemorySecretStore(),
+            secrets = secrets,
             clientId = { settings.settings.value.spotifyClientId },
             clock = { 0L },
             openBrowser = {},
             receiverFactory = { LoopbackReceiver(0) },
             loginTimeout = loginTimeout,
         )
-        val controller = PlaybackController(
-            player = FakeSpotifyPlayer { 0L },
+        controller = PlaybackController(
+            player = player,
             store = QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }),
             requestsOpen = MutableStateFlow(true),
             paidPriority = { true },
@@ -91,6 +101,8 @@ class SpotifySetupScreenTest {
             onClientIdChange("0123456789abcdef0123456789abcdef")
         }
     }
+
+    private lateinit var controller: PlaybackController
 
     private fun ComposeUiTest.clickLogIn() =
         onNode(hasText("Log in with Spotify") and hasClickAction()).performClick()
@@ -118,5 +130,26 @@ class SpotifySetupScreenTest {
         waitForIdle()
         onNode(hasText("Log in with Spotify") and hasClickAction()).assertIsDisplayed()
         assertFalse(vm.state.value.loggingIn)
+    }
+
+    @Test
+    fun aLoginWithoutTheNewPermissionOffersToLogInAgain() = runDesktopComposeUiTest(width = 1180, height = 1400) {
+        val player = FakeSpotifyPlayer { 0L }.apply { recentResult = SpotifyResult.MissingPermission }
+        val vm = viewModel(loginTimeout = 5.minutes, savedLogin = true, player = player)
+        setContent { RequestifyTheme(BrandSeed, dark = false) { SpotifySetupScreen(vm) } }
+        val note = "Log in again to show your last played song."
+        onNodeWithText(note).assertDoesNotExist()
+
+        controller.start() // its first poll finds the permission missing
+        waitUntil(timeoutMillis = 10_000) { onAllNodesWithText(note).fetchSemanticsNodes().isNotEmpty() }
+        controller.stop()
+        onNodeWithText(note).assertIsDisplayed()
+        onNode(hasText("Log out") and hasClickAction()).assertIsDisplayed()
+
+        clickLogIn() // logs in again without logging out
+        waitForIdle()
+        onNodeWithText("Waiting for you to log in in your browser…").assertIsDisplayed()
+        onNode(hasText("Cancel") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { !vm.state.value.loggingIn }
     }
 }

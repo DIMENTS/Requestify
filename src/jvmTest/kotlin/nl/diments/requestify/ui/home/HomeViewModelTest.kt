@@ -26,6 +26,7 @@ import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
+import nl.diments.requestify.core.playback.PlaybackConfig
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
@@ -287,6 +288,21 @@ class HomeViewModelTest {
         home.vm.onPrevious()
         settle()
         assertEquals(1, home.player.callsTo("skipPrevious").size)
+    }
+
+    @Test
+    fun upcomingFlowsIntoState() = runTest {
+        val home = home()
+        home.player.plays(track("now"))
+        home.player.queueTracks = SpotifyResult.Ok(listOf(track("next-1"), track("next-2")))
+        home.controller.start()
+        settle()
+        assertEquals(listOf(track("next-1"), track("next-2")), home.vm.state.value.upcoming)
+
+        home.player.currentlyPlayingResult = SpotifyResult.Ok(null) // Spotify stopped
+        advanceTimeBy(PlaybackConfig().idlePollMs)
+        settle()
+        assertEquals(emptyList(), home.vm.state.value.upcoming)
     }
 
     @Test

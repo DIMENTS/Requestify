@@ -116,22 +116,30 @@ class SpotifySetupViewModelTest {
         }.start()
     }
 
-    private fun viewModel(
-        settings: SettingsStore,
-        auth: SpotifyAuth,
-        scope: CoroutineScope,
-        premium: SpotifyResult<Boolean?> = SpotifyResult.Ok(true),
-    ): SpotifySetupViewModel {
-        val controller = PlaybackController(
-            player = FakeSpotifyPlayer { 0L },
-            store = QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }),
+    private fun queueStore() =
+        QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() })
+
+    private fun controller(scope: CoroutineScope, player: FakeSpotifyPlayer = FakeSpotifyPlayer { 0L }) =
+        PlaybackController(
+            player = player,
+            store = queueStore(),
             requestsOpen = MutableStateFlow(true),
             paidPriority = { true },
             scope = scope,
             clock = { 0L },
         )
-        return SpotifySetupViewModel(settings, auth, FakeCatalog(premium), controller, scope)
-    }
+
+    private fun viewModel(
+        settings: SettingsStore,
+        auth: SpotifyAuth,
+        scope: CoroutineScope,
+        premium: SpotifyResult<Boolean?> = SpotifyResult.Ok(true),
+        controller: PlaybackController = controller(scope),
+    ): SpotifySetupViewModel = SpotifySetupViewModel(settings, auth, FakeCatalog(premium), controller, scope)
+
+    /** The first state that matches [predicate], waited for on real threads (a login cannot follow virtual time). */
+    private suspend fun SpotifySetupViewModel.awaitState(predicate: (SpotifySetupState) -> Boolean): SpotifySetupState =
+        withContext(Dispatchers.Default) { withTimeout(10.seconds) { state.first(predicate) } }
 
     /**
      * Logs in for real (the browser step is answered from another thread) and returns the state once Premium
@@ -144,9 +152,7 @@ class SpotifySetupViewModelTest {
             val vm = viewModel(settings, auth(settings, openBrowser = ::allowInBrowser), scope, premium)
             vm.onClientIdChange(VALID_ID)
             vm.onLogin()
-            return withContext(Dispatchers.Default) {
-                withTimeout(10.seconds) { vm.state.first { it.premium != null } }
-            }
+            return vm.awaitState { it.premium != null }
         } finally {
             scope.cancel()
         }
@@ -325,6 +331,33 @@ class SpotifySetupViewModelTest {
         assertEquals(SpotifyAuthStatus.LoggedIn, vm.state.value.auth)
         assertEquals(SaveFailure.Logout, vm.state.value.saveFailure)
         assertEquals("r1", stored.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
+    }
+
+    @Test
+    fun extraPermissionNoteAndReloginClearsIt() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            // A login from before the new permission: Spotify won't say which song played last.
+            val player = FakeSpotifyPlayer { 0L }.apply { recentResult = SpotifyResult.MissingPermission }
+            val controller = controller(scope, player)
+            val settings = settingsStore().apply { tryUpdate { it.copy(spotifyClientId = VALID_ID) } }
+            val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "old") }
+            val auth = auth(settings, openBrowser = ::allowInBrowser, secrets = secrets)
+            val vm = viewModel(settings, auth, scope, controller = controller)
+            controller.start()
+            val before = vm.awaitState { it.needsExtraPermission }
+            controller.stop() // no more polls: from here only a login can change it
+            assertEquals(SpotifyAuthStatus.LoggedIn, before.auth)
+
+            vm.onLogin() // again, without logging out first
+            val after = vm.awaitState { !it.loggingIn && !it.needsExtraPermission }
+            assertEquals(SpotifyAuthStatus.LoggedIn, after.auth)
+            assertNull(after.loginError)
+            assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN), "the new login replaced the old one")
+            assertFalse(controller.needsExtraPermission.value)
+        } finally {
+            scope.cancel()
+        }
     }
 
     private companion object {
