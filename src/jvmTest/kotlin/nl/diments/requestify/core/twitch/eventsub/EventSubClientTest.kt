@@ -65,16 +65,24 @@ class EventSubClientTest {
         /** This many next connects throw. */
         var failNext = 0
 
+        /** Runs on every socket this connector opens, before the client gets it. */
+        var onConnect: (FakeSocket) -> Unit = {}
+
         val last: FakeSocket get() = sockets.last()
 
         override suspend fun connect(url: String): EventSubSocket {
             attempts += clock()
             urls += url
+            // A reconnect loop fails the test's assertions instead of filling the heap with sockets.
+            if (attempts.size > MAX_ATTEMPTS) throw IOException("reconnect loop")
             if (failNext > 0) {
                 failNext--
                 throw IOException("Twitch cannot be reached")
             }
-            return FakeSocket().also { sockets += it }
+            return FakeSocket().also {
+                sockets += it
+                onConnect(it)
+            }
         }
     }
 
@@ -385,14 +393,42 @@ class EventSubClientTest {
         runCurrent()
         assertEquals(EventSubState.Connected, h.client.state.value)
 
-        // The welcome reset the backoff: after a drop the client reconnects at once, then waits 1 s, 2 s, ...
+        // The session lived one keepalive window (30 s), which resets the backoff: its drop reconnects at once, and
+        // the failed connects after it wait 1 s, 2 s, ...
+        advanceTimeBy(30_000)
         h.connector.failNext = 2
         h.connector.last.drop()
         runCurrent()
-        assertEquals(EventSubState.Disconnected(91_000), h.client.state.value)
+        assertEquals(EventSubState.Disconnected(121_000), h.client.state.value)
         advanceTimeBy(3_000)
         runCurrent()
-        assertEquals(listOf(91_000L, 92_000, 94_000), h.connector.attempts.drop(8))
+        assertEquals(listOf(121_000L, 122_000, 124_000), h.connector.attempts.drop(8))
+    }
+
+    @Test
+    fun sessionsThatDropRightAfterTheWelcomeBackOff() = runTest {
+        val h = Harness(this)
+        h.connector.onConnect = { socket ->
+            socket.push(welcome("S"))
+            socket.drop() // gone right after the welcome
+        }
+        h.client.start()
+        advanceTimeBy(91_000)
+        runCurrent()
+        assertEquals(
+            listOf(0L, 1_000, 3_000, 7_000, 15_000, 31_000, 61_000, 91_000),
+            h.connector.attempts,
+            "a session shorter than a keepalive window counts as a failed connect",
+        )
+        assertEquals(EventSubState.Disconnected(0), h.client.state.value, "never connected all along")
+        assertEquals(0, h.fresh, "no re-sync per drop")
+
+        advanceTimeBy(29_999)
+        runCurrent()
+        assertEquals(8, h.connector.attempts.size, "the wait stays at 30 s")
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(121_000L, h.connector.attempts.last())
     }
 
     @Test
@@ -508,6 +544,7 @@ class EventSubClientTest {
 
     private companion object {
         const val BROADCASTER = "141981764"
+        const val MAX_ATTEMPTS = 100
         const val DEFAULT_URL = "wss://eventsub.wss.twitch.tv/ws?keepalive_timeout_seconds=30"
         const val RECONNECT_URL = "wss://eventsub.wss.twitch.tv/ws?reconnect=AQoQ&challenge=7f3a9c"
         const val SUBSCRIBED = """{"data":[{"id":"sub","status":"enabled"}],"total":1,"total_cost":0,"max_total_cost":10}"""

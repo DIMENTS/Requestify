@@ -109,8 +109,9 @@ sealed interface EventSubState {
  * - **`session_reconnect`**: connects to the given URL and keeps reading the old socket until the new one's welcome,
  *   then closes the old one. The subscriptions carry over: no resubscribe, no fresh session.
  * - **Keepalive**: no message for the welcome's `keepalive_timeout_seconds` + 5 s means a dead connection: a fresh one.
- * - **Backoff**: a dropped session reconnects at once; a connect that fails (no welcome within 15 s included) waits
- *   1 s, doubling to 30 s. A welcome resets it.
+ * - **Backoff**: a connect that fails (no welcome within 15 s included) waits 1 s, doubling to 30 s. A session that
+ *   lived at least one keepalive window resets it and, when it drops, reconnects at once; a shorter-lived session's
+ *   drop counts as a failed connect, so a connection that keeps dropping right after its welcome never loops.
  * - **Dead login**: a subscribe answered with [TwitchResult.LoginNeeded] ends in [EventSubState.LoginNeeded], and the
  *   client stops until [start]. A revocation with `authorization_revoked` calls [onAuthorizationRevoked], once per
  *   session.
@@ -193,6 +194,12 @@ class EventSubClient(
     private suspend fun keepConnected(gen: Long, rewardChanges: ReceiveChannel<Unit>) {
         var backoffMs = FIRST_BACKOFF_MS
         var downSince: Long? = null
+
+        suspend fun backOff() {
+            delay(backoffMs)
+            backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+        }
+
         while (true) {
             if (account() == null) {
                 setState(gen, EventSubState.Stopped)
@@ -203,16 +210,22 @@ class EventSubClient(
                 val since = downSince ?: clock()
                 downSince = since
                 setState(gen, EventSubState.Disconnected(since))
-                delay(backoffMs)
-                backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+                backOff()
                 continue
             }
-            backoffMs = FIRST_BACKOFF_MS
             when (val end = Session(gen, opened, rewardChanges).run()) {
                 is SessionEnd.Dropped -> {
                     val since = if (end.wasConnected) clock() else downSince ?: clock()
                     downSince = since
                     setState(gen, EventSubState.Disconnected(since))
+                    // Only a session that lasted resets the backoff and reconnects at once. One that drops right
+                    // after its welcome (a Twitch incident, a middlebox, flapping Wi-Fi) counts as a failed connect:
+                    // reconnecting at once would loop at network speed, subscribing and re-syncing every time.
+                    if (clock() - opened.welcomedAtMs >= opened.keepaliveMs) {
+                        backoffMs = FIRST_BACKOFF_MS
+                    } else {
+                        backOff()
+                    }
                 }
                 SessionEnd.LoginNeeded -> {
                     setState(gen, EventSubState.LoginNeeded)
@@ -254,7 +267,7 @@ class EventSubClient(
             val welcome = EventSubParser.parse(text) as? EventSubMessage.Welcome ?: continue
             val keepaliveS = (welcome.keepaliveTimeoutSeconds ?: DEFAULT_KEEPALIVE_S)
                 .coerceIn(MIN_KEEPALIVE_S, MAX_KEEPALIVE_S)
-            return Opened(socket, welcome.sessionId, keepaliveS * 1_000L + KEEPALIVE_MARGIN_MS)
+            return Opened(socket, welcome.sessionId, keepaliveMs = keepaliveS * 1_000L, welcomedAtMs = clock())
         }
     }
 
@@ -442,7 +455,15 @@ class EventSubClient(
             Subscription(it, mapOf(BROADCASTER_USER_ID to broadcaster, REWARD_ID to reward))
         }
 
-    private class Opened(val socket: EventSubSocket, val sessionId: String, val watchMs: Long)
+    /** A socket after its welcome, at [welcomedAtMs]. Silence for [watchMs] means the connection is dead. */
+    private class Opened(
+        val socket: EventSubSocket,
+        val sessionId: String,
+        val keepaliveMs: Long,
+        val welcomedAtMs: Long,
+    ) {
+        val watchMs: Long get() = keepaliveMs + KEEPALIVE_MARGIN_MS
+    }
 
     /** A move to a reconnect URL: [result] is the new socket after its welcome, or null when that failed. */
     private class Move(private val job: Job, val result: CompletableDeferred<Opened?>) {
