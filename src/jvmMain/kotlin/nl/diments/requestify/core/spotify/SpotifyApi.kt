@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import nl.diments.requestify.core.auth.TokenResult
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.storage.AppJson
 
@@ -38,20 +39,6 @@ sealed interface SpotifyResult<out T> {
 
     /** Spotify does not know it: HTTP 400 (not a valid id) or 404 (and not for lack of an active device). */
     data object NotFound : SpotifyResult<Nothing>
-}
-
-/** What the token provider answers for an API call. */
-sealed interface TokenResult {
-    data class Ok(val token: String) : TokenResult
-
-    /** Not logged in (never, or logged out). */
-    data object LoggedOut : TokenResult
-
-    /** The saved login is dead (Spotify refused it): only a new login helps. */
-    data object LoginNeeded : TokenResult
-
-    /** No token right now (offline, Spotify down or busy); the login is kept and a later call tries again. */
-    data object Unavailable : TokenResult
 }
 
 /** The [SpotifyResult.Failed.message] when the login is fine but no access token could be had right now. */

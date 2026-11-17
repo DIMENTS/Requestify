@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "message_id": "84c1e79a-2a4b-4c13-ba0b-4312293e9309",
+    "message_type": "session_reconnect",
+    "message_timestamp": "2026-11-17T20:02:10.123456789Z"
+  },
+  "payload": {
+    "session": {
+      "id": "AQoQILE98gtqShGmLD7AM6yJThAB",
+      "status": "reconnecting",
+      "keepalive_timeout_seconds": null,
+      "reconnect_url": "wss://eventsub.wss.twitch.tv/ws?reconnect=AQoQILE98gtqShGmLD7AM6yJThAB&challenge=7f3a9c",
+      "connected_at": "2026-11-17T19:47:10.109214317Z"
+    }
+  }
+}

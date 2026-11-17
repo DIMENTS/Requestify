@@ -5,6 +5,7 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import java.awt.Desktop
 import java.net.URI
@@ -36,6 +37,10 @@ import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
+import nl.diments.requestify.core.twitch.TwitchApi
+import nl.diments.requestify.core.twitch.auth.TwitchAuth
+import nl.diments.requestify.core.twitch.eventsub.EventSubClient
+import nl.diments.requestify.core.twitch.eventsub.KtorEventSubConnector
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 
@@ -55,6 +60,8 @@ class AppGraph(
             requestTimeoutMillis = 15_000
             connectTimeoutMillis = 10_000
         }
+        // EventSub. The request timeout does not apply to WebSocket sessions; Ktor answers Twitch's pings itself.
+        install(WebSockets)
     }
 
     val settings = SettingsStore(JsonFileStore(paths.settingsFile, Settings.serializer()) { Settings() })
@@ -113,6 +120,25 @@ class AppGraph(
     val home = HomeViewModel(controller, spotify, settings, scope, clock = System::currentTimeMillis)
 
     val spotifySetup = SpotifySetupViewModel(settings, auth, spotify, controller, scope)
+
+    private val twitchAuth = TwitchAuth(http, secrets, clock = System::currentTimeMillis)
+
+    private val twitchApi = TwitchApi(
+        http = http,
+        token = { force -> twitchAuth.token(force) },
+        broadcasterId = { settings.settings.value.twitch.account?.userId },
+    )
+
+    /** Built, not started: the Twitch session starts it while logged in. */
+    internal val eventSub = EventSubClient(
+        connector = KtorEventSubConnector(http),
+        api = twitchApi,
+        broadcasterId = { settings.settings.value.twitch.account?.userId },
+        rewardId = { settings.settings.value.twitch.channelPoints.rewardId },
+        onAuthorizationRevoked = { twitchAuth.markLoginNeeded("EventSub authorization revoked") },
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
 
     /**
      * Resumes the offline grace (or ends a stream whose grace ran out while the app was off), starts polling Spotify

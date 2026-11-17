@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "message_id": "a7d3c1e2-6f4b-4b8e-9d1a-2c3b4a5f6e7d",
+    "message_type": "notification",
+    "message_timestamp": "2026-11-17T19:55:12.123456789Z",
+    "subscription_type": "channel.cheer",
+    "subscription_version": "1"
+  },
+  "payload": {
+    "subscription": {
+      "id": "f1c2a387-161a-49f9-a165-0f21d7a4e1c5",
+      "status": "enabled",
+      "type": "channel.cheer",
+      "version": "1",
+      "condition": {
+        "broadcaster_user_id": "141981764"
+      },
+      "transport": {
+        "method": "websocket",
+        "session_id": "AQoQILE98gtqShGmLD7AM6yJThAB"
+      },
+      "created_at": "2026-11-17T19:47:10.623456789Z",
+      "cost": 0
+    },
+    "event": {
+      "is_anonymous": true,
+      "user_id": null,
+      "user_login": null,
+      "user_name": null,
+      "broadcaster_user_id": "141981764",
+      "broadcaster_user_login": "diments",
+      "broadcaster_user_name": "DIMENTS",
+      "message": "Cheer500 Darude - Sandstorm",
+      "bits": 500
+    }
+  }
+}

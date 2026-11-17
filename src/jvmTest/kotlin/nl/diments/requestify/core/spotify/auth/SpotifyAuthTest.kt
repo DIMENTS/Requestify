@@ -33,7 +33,7 @@ import kotlinx.coroutines.withContext
 import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
-import nl.diments.requestify.core.spotify.TokenResult
+import nl.diments.requestify.core.auth.TokenResult
 
 class SpotifyAuthTest {
     private val json = headersOf(HttpHeaders.ContentType, "application/json")

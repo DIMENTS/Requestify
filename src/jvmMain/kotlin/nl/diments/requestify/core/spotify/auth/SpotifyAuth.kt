@@ -25,7 +25,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
-import nl.diments.requestify.core.spotify.TokenResult
+import nl.diments.requestify.core.auth.TokenResult
 
 data class AccessToken(val value: String, val expiresAtEpochMs: Long)
 

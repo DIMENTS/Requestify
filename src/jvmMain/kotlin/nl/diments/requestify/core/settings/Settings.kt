@@ -18,6 +18,7 @@ data class Settings(
     val language: AppLanguage = AppLanguage.System,
     val paidPriority: Boolean = true,
     val rules: Rules = Rules(),
+    val twitch: TwitchSettings = TwitchSettings(),
 )
 
 /** Saved in settings.json under the stable names below: never change them, or saved settings are lost. */

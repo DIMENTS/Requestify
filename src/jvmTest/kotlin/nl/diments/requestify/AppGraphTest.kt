@@ -41,6 +41,7 @@ import nl.diments.requestify.core.secrets.SecretStore
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.twitch.eventsub.EventSubState
 import nl.diments.requestify.ui.Destination
 import nl.diments.requestify.ui.startDestination
 
@@ -64,6 +65,7 @@ class AppGraphTest {
 
         assertEquals(emptyList(), graph.home.state.value.queue)
         assertTrue(requests.isEmpty(), "building the graph must not poll Spotify: $requests")
+        assertEquals(EventSubState.Stopped, graph.eventSub.state.value, "building the graph must not connect to Twitch")
     }
 
     @Test
