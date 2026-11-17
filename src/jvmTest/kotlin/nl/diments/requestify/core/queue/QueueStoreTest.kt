@@ -5,11 +5,13 @@ import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.deleteRecursively
+import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.Request
@@ -50,6 +52,28 @@ class QueueStoreTest {
         val store = store()
         store.save(p)
         assertEquals(p, store.load())
+    }
+
+    @Test fun lastPlayedRoundTripsAndOldFilesStillLoad() {
+        val p = PersistedPlayback(
+            queue = RequestQueue(listOf(req("a"))),
+            lastPlayed = LastPlayed(req("b").track, progressMs = 42_000, playedAtEpochMs = 1_000),
+        )
+        store().save(p)
+        assertEquals(p, store().load())
+
+        // Written before lastPlayed existed.
+        dir.resolve("queue.json").writeText(
+            """
+            {"queue":{"items":[{"id":"a","track":{"id":"a","uri":"spotify:track:a","name":"Song a",
+            "artists":["Artist"],"durationMs":180000,"explicit":false,"albumArtUrl":null},
+            "requester":{"displayName":"Viewer","login":"viewer"},"source":"CHAT","payment":null,
+            "createdAtEpochMs":1,"sourceRef":null}]},"handedOver":null,"playing":null,"history":[]}
+            """.trimIndent(),
+        )
+        val old = store().load()
+        assertEquals(listOf(req("a")), old.queue.items)
+        assertNull(old.lastPlayed)
     }
 
     @Test fun emptyLoadGivesDefault() {

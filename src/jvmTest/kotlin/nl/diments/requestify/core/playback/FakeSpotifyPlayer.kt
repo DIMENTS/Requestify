@@ -22,6 +22,9 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     var previousResult: SpotifyResult<Unit> = SpotifyResult.Ok(Unit)
     var recentResult: SpotifyResult<RecentTrack?> = SpotifyResult.Ok(null)
 
+    /** When set, [recentlyPlayed] waits for it before answering, like a slow Spotify. */
+    var recentGate: CompletableDeferred<Unit>? = null
+
     /** Answers for the next [addToQueue] calls, in order; `Ok` once used up. */
     val addToQueueResults = ArrayDeque<SpotifyResult<Unit>>()
 
@@ -75,6 +78,7 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
 
     override suspend fun recentlyPlayed(): SpotifyResult<RecentTrack?> {
         record("recentlyPlayed")
+        recentGate?.await()
         return recentResult
     }
 

@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -27,16 +28,20 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.encoding.Encoder
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
+import nl.diments.requestify.core.queue.LastPlayed
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.spotify.CurrentlyPlaying
+import nl.diments.requestify.core.spotify.RecentTrack
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
 
@@ -106,6 +111,9 @@ class PlaybackControllerTest {
     private fun FakeSpotifyPlayer.pollTimes() = callsTo("currentlyPlaying").map { it.atMs }
 
     private fun FakeSpotifyPlayer.playCommands() = calls.map { it.name }.filter { it == "pause" || it == "resume" }
+
+    /** What was sent to Spotify, without the polls and the refreshes of its upcoming tracks. */
+    private fun FakeSpotifyPlayer.commands() = calls.filter { it.name != "currentlyPlaying" && it.name != "userQueue" }
 
     /** Spotify plays (or has paused) track A at 60 s, and the first poll has shown it. */
     private fun TestScope.startAt60s(player: FakeSpotifyPlayer, isPlaying: Boolean = true): PlaybackController {
@@ -276,7 +284,7 @@ class PlaybackControllerTest {
         controller.skip()
         assertEquals(
             listOf("addToQueue" to r1.track.uri, "skipNext" to null),
-            player.calls.filter { it.name != "currentlyPlaying" }.map { it.name to it.arg },
+            player.commands().map { it.name to it.arg },
         )
         assertTrue(controller.queue.value.items.isEmpty())
         assertEquals(r1, store().load().handedOver)
@@ -432,7 +440,7 @@ class PlaybackControllerTest {
         runCurrent()
 
         controller.skip()
-        assertEquals(listOf("skipNext"), player.calls.map { it.name }.filter { it != "currentlyPlaying" })
+        assertEquals(listOf("skipNext"), player.commands().map { it.name })
         assertEquals(listOf(again), controller.queue.value.items)
     }
 
@@ -807,5 +815,335 @@ class PlaybackControllerTest {
         assertEquals(50, history.size)
         assertEquals(r1, history.first().request)
         assertEquals(history, store().load().history)
+    }
+
+    private val lastPlayedA = LastPlayed(trackA, progressMs = 42_000, playedAtEpochMs = 1_000)
+
+    /** Spotify has nothing active, and the saved state remembers track A at 42 s. */
+    private fun TestScope.startIdleWithLastPlayedA(player: FakeSpotifyPlayer): PlaybackController {
+        store().save(PersistedPlayback(lastPlayed = lastPlayedA))
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+        return controller
+    }
+
+    private fun PlaybackController.assertShowsLastPlayed(track: Track, progressMs: Long) {
+        val shown = assertNotNull(nowPlaying.value)
+        assertEquals(NowPlayingKind.LastPlayed, shown.kind)
+        assertEquals(track, shown.track)
+        assertEquals(progressMs, shown.progressMs)
+        assertFalse(shown.isPlaying)
+        assertNull(shown.request)
+    }
+
+    @Test
+    fun previousCallsSpotifyAndRefreshesUpcoming() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        assertEquals(listOf(0L), player.callsTo("userQueue").map { it.atMs })
+
+        advance(1_000)
+        controller.previous()
+        runCurrent()
+        assertEquals(listOf(1_000L), player.callsTo("skipPrevious").map { it.atMs })
+        assertEquals(listOf(0L, 1_000L), player.callsTo("userQueue").map { it.atMs })
+        val names = player.calls.map { it.name }
+        assertTrue(names.lastIndexOf("userQueue") > names.indexOf("skipPrevious"), "refreshed after the previous")
+    }
+
+    @Test
+    fun skipRefreshesUpcoming() = runTest {
+        val player = fakePlayer()
+        val controller = startAt60s(player)
+        advance(1_000)
+        controller.skip()
+        runCurrent() // Spotify still reports the same track, yet its queue has moved on
+        assertEquals(listOf(0L, 1_000L), player.callsTo("userQueue").map { it.atMs })
+    }
+
+    @Test
+    fun previousWhileARequestPlaysMovesItToHistory() = runTest {
+        val player = fakePlayer()
+        val r2 = request("r2")
+        val r3 = request("r3")
+        val controller = startWithR1HandedOver(player)
+        controller.enqueue(r2)
+        controller.enqueue(r3)
+        player.plays(r1.track, progressMs = 190_000) // R1 plays, near its end: R2 goes over
+        advance(1_000)
+        assertEquals(r1, controller.nowPlaying.value?.request)
+        assertEquals(r2, controller.handedOver.value)
+
+        player.plays(trackB, progressMs = 0) // Spotify went back to the song before R1
+        player.userQueueResult = SpotifyResult.Ok(listOf(r2.track.id)) // and still has R2 next
+        controller.previous()
+        runCurrent()
+        assertEquals(trackB, controller.nowPlaying.value?.track)
+        assertNull(controller.nowPlaying.value?.request)
+        assertEquals(r1, controller.history.value.first().request)
+        assertEquals(listOf(r3), controller.queue.value.items)
+        assertEquals(r2, controller.handedOver.value)
+        assertEquals(
+            listOf(r1.track.uri, r2.track.uri),
+            player.callsTo("addToQueue").map { it.arg },
+            "nothing is queued again",
+        )
+        val saved = store().load()
+        assertEquals(r1, saved.history.first().request)
+        assertEquals(listOf(r3), saved.queue.items)
+        assertEquals(r2, saved.handedOver)
+    }
+
+    @Test
+    fun upcomingIsDistinctCappedAndSkipsHandedOver() = runTest {
+        val player = fakePlayer()
+        val r2 = request("r2")
+        val tracks = (1..20).map { track("T$it") }
+        player.queueTracks = SpotifyResult.Ok(listOf(r2.track, tracks[0], tracks[1], tracks[0]) + tracks.drop(2))
+        player.plays(trackA, progressMs = 185_000)
+        val controller = controller(player)
+        controller.enqueue(r2)
+        controller.start()
+        runCurrent()
+        assertEquals(r2, controller.handedOver.value)
+        assertEquals((1..15).map { "T$it" }, controller.upcoming.value.map { it.id })
+    }
+
+    @Test
+    fun upcomingRefreshesOnTrackChangeAndEvery30s() = runTest {
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 10_000)
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+        advance(8_000) // polls at 3 and 6 s: the same track
+        player.plays(trackB, progressMs = 0)
+        advance(1_000) // the poll at 9 s sees another track
+        advance(29_999) // ordinary polls, every 3 s
+        assertEquals(listOf(0L, 9_000L), player.callsTo("userQueue").map { it.atMs })
+        advance(1)
+        assertEquals(listOf(0L, 9_000L, 39_000L), player.callsTo("userQueue").map { it.atMs })
+        assertEquals((0L..39_000L step 3_000).toList(), player.pollTimes())
+        assertEquals(trackB, controller.nowPlaying.value?.track)
+    }
+
+    @Test
+    fun failedUpcomingRefreshKeepsTheLastList() = runTest {
+        val player = fakePlayer()
+        player.queueTracks = SpotifyResult.Ok(listOf(trackB, trackC))
+        val controller = startAt60s(player)
+        assertEquals(listOf(trackB, trackC), controller.upcoming.value)
+
+        player.queueTracks = SpotifyResult.Failed("HTTP 500")
+        advance(PlaybackConfig().upcomingRefreshMs)
+        assertEquals(2, player.callsTo("userQueue").size)
+        assertEquals(listOf(trackB, trackC), controller.upcoming.value)
+        assertEquals(SpotifyHealth.Ok, controller.health.value)
+    }
+
+    @Test
+    fun nothingActiveClearsUpcoming() = runTest {
+        val player = fakePlayer()
+        player.queueTracks = SpotifyResult.Ok(listOf(trackB))
+        val controller = startAt60s(player)
+        assertEquals(listOf(trackB), controller.upcoming.value)
+
+        player.currentlyPlayingResult = SpotifyResult.Ok(null)
+        advance(3_000)
+        assertEquals(emptyList(), controller.upcoming.value)
+        assertEquals(1, player.callsTo("userQueue").size, "Spotify's queue is not asked while nothing is active")
+    }
+
+    @Test
+    fun startupShowsLocalLastPlayedBeforeAnyPoll() = runTest {
+        store().save(PersistedPlayback(lastPlayed = lastPlayedA))
+        val player = fakePlayer()
+        player.plays(trackB, progressMs = 5_000)
+        val gate = CompletableDeferred<Unit>()
+        player.currentlyPlayingGate = gate
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+        assertEquals(listOf(0L), player.pollTimes()) // Spotify has not answered the first poll yet
+        controller.assertShowsLastPlayed(trackA, progressMs = 42_000)
+
+        gate.complete(Unit) // a live poll replaces it
+        runCurrent()
+        val shown = assertNotNull(controller.nowPlaying.value)
+        assertEquals(NowPlayingKind.Live, shown.kind)
+        assertEquals(trackB, shown.track)
+    }
+
+    @Test
+    fun lastPlayedIsPersistedOnTrackChangeAndPauseOnly() = runTest {
+        val serializer = CountingSerializer(PersistedPlayback.serializer())
+        val counted = QueueStore(JsonFileStore(dir.resolve("queue.json"), serializer) { PersistedPlayback() })
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 10_000)
+        val controller = controller(player, store = counted)
+        controller.start()
+        runCurrent()
+        assertEquals(1, serializer.writes, "the first poll saves what plays")
+        assertEquals(LastPlayed(trackA, 10_000, playedAtEpochMs = 0), store().load().lastPlayed)
+
+        for (poll in 1..10) {
+            player.plays(trackA, progressMs = 10_000L + poll * 3_000)
+            advance(3_000)
+        }
+        assertEquals(1, serializer.writes, "no save while the same track plays on")
+
+        player.plays(trackA, progressMs = 41_000, isPlaying = false)
+        advance(3_000) // 33 s: paused
+        assertEquals(2, serializer.writes)
+        assertEquals(LastPlayed(trackA, 41_000, playedAtEpochMs = 33_000), store().load().lastPlayed)
+        advance(6_000) // still paused
+        assertEquals(2, serializer.writes)
+
+        player.plays(trackB, progressMs = 0)
+        advance(3_000) // 42 s: another track
+        assertEquals(3, serializer.writes)
+        assertEquals(LastPlayed(trackB, 0, playedAtEpochMs = 42_000), store().load().lastPlayed)
+
+        player.currentlyPlayingResult = SpotifyResult.Ok(null)
+        advance(3_000) // 45 s: nothing is active any more, after B ran on for 3 s
+        assertEquals(4, serializer.writes)
+        assertEquals(LastPlayed(trackB, 3_000, playedAtEpochMs = 45_000), store().load().lastPlayed)
+        advance(9_000)
+        assertEquals(4, serializer.writes)
+        controller.assertShowsLastPlayed(trackB, progressMs = 3_000)
+    }
+
+    @Test
+    fun newerSpotifyRecentWinsOverLocal() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.Ok(RecentTrack(trackB, playedAtEpochMs = 2_000))
+        val controller = startIdleWithLastPlayedA(player)
+        controller.assertShowsLastPlayed(trackB, progressMs = 0)
+        assertEquals(SpotifyHealth.NothingPlaying, controller.health.value)
+    }
+
+    @Test
+    fun olderSpotifyRecentLosesToLocal() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.Ok(RecentTrack(trackB, playedAtEpochMs = 500))
+        val controller = startIdleWithLastPlayedA(player)
+        assertEquals(listOf(0L), player.callsTo("recentlyPlayed").map { it.atMs })
+        controller.assertShowsLastPlayed(trackA, progressMs = 42_000)
+    }
+
+    @Test
+    fun recentlyPlayedIsAskedAtMostOnceAMinuteAndOnlyWhileNothingIsActive() = runTest {
+        val player = fakePlayer()
+        startIdleWithLastPlayedA(player)
+        advance(150_000)
+        assertEquals(listOf(0L, 60_000L, 120_000L), player.callsTo("recentlyPlayed").map { it.atMs })
+
+        player.plays(trackB)
+        advance(120_000)
+        assertEquals(3, player.callsTo("recentlyPlayed").size)
+    }
+
+    @Test
+    fun missingPermissionFallsBackToLocalAndStopsAsking() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.MissingPermission
+        val controller = startIdleWithLastPlayedA(player)
+        assertTrue(controller.needsExtraPermission.value)
+        controller.assertShowsLastPlayed(trackA, progressMs = 42_000)
+        assertEquals(SpotifyHealth.NothingPlaying, controller.health.value)
+
+        advance(5 * 60_000)
+        assertEquals(listOf(0L), player.callsTo("recentlyPlayed").map { it.atMs })
+
+        player.recentResult = SpotifyResult.Ok(RecentTrack(trackB, playedAtEpochMs = 2_000))
+        controller.onLoginChanged()
+        runCurrent()
+        assertFalse(controller.needsExtraPermission.value)
+        advance(3_000) // the next idle tick asks again
+        assertEquals(listOf(0L, 303_000L), player.callsTo("recentlyPlayed").map { it.atMs })
+        controller.assertShowsLastPlayed(trackB, progressMs = 0)
+    }
+
+    @Test
+    fun aMissingPermissionAnsweredForTheEarlierLoginIsIgnored() = runTest {
+        val player = fakePlayer()
+        player.recentResult = SpotifyResult.MissingPermission
+        val gate = CompletableDeferred<Unit>()
+        player.recentGate = gate
+        val controller = startIdleWithLastPlayedA(player) // asked under the old login, still in flight
+
+        controller.onLoginChanged()
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(controller.needsExtraPermission.value)
+
+        player.recentResult = SpotifyResult.Ok(null)
+        advance(3_000) // asked again under the new login
+        assertEquals(listOf(0L, 3_000L), player.callsTo("recentlyPlayed").map { it.atMs })
+        assertFalse(controller.needsExtraPermission.value)
+    }
+
+    @Test
+    fun aFailedHandOverDoesNotReadSpotifysQueueOnEveryTry() = runTest {
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 186_000)
+        repeat(3) { player.addToQueueResults.add(SpotifyResult.NoActiveDevice) }
+        val controller = controller(player)
+        controller.enqueue(r1)
+        controller.start()
+        runCurrent()
+        advance(2_000) // two more tries, a second apart
+        assertEquals(3, player.callsTo("addToQueue").size)
+        assertEquals(listOf(0L), player.callsTo("userQueue").map { it.atMs })
+
+        advance(1_000) // the hand-over works: Spotify's queue has changed
+        assertEquals(r1, controller.handedOver.value)
+        assertEquals(listOf(0L, 3_000L), player.callsTo("userQueue").map { it.atMs })
+    }
+
+    @Test
+    fun playOnTheLastPlayedSongResumesAndARefusalShowsWhy() = runTest {
+        val player = fakePlayer()
+        val controller = startIdleWithLastPlayedA(player)
+        player.playCommandResults.add(SpotifyResult.NoActiveDevice)
+        val gate = CompletableDeferred<Unit>()
+        player.playCommandGate = gate
+        click(controller)
+        assertEquals(listOf("resume"), player.playCommands())
+        assertEquals(true, controller.shownPlaying())
+
+        player.currentlyPlayingGate = CompletableDeferred() // holds the poll that follows, so only the resume answers
+        gate.complete(Unit)
+        runCurrent()
+        controller.assertShowsLastPlayed(trackA, progressMs = 42_000)
+        assertEquals(SpotifyHealth.NoActiveDevice, controller.health.value)
+    }
+
+    @Test
+    fun resumedLastPlayedSongShowsPlayingUntilSpotifyReportsIt() = runTest {
+        val player = fakePlayer()
+        val controller = startIdleWithLastPlayedA(player)
+        click(controller) // Spotify takes the resume, yet reports nothing active for a moment
+        assertEquals(listOf("resume"), player.playCommands())
+        assertEquals(listOf(0L, 0L), player.pollTimes(), "polled again after the resume")
+        assertEquals(true, controller.shownPlaying())
+
+        player.plays(trackA, progressMs = 42_500)
+        advance(1_000)
+        val shown = assertNotNull(controller.nowPlaying.value)
+        assertEquals(NowPlayingKind.Live, shown.kind)
+        assertTrue(shown.isPlaying)
+    }
+}
+
+/** Counts the values written through it: one per store write. */
+private class CountingSerializer<T>(private val inner: KSerializer<T>) : KSerializer<T> by inner {
+    var writes = 0
+        private set
+
+    override fun serialize(encoder: Encoder, value: T) {
+        writes++
+        inner.serialize(encoder, value)
     }
 }
