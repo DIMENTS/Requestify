@@ -11,6 +11,14 @@ import java.net.URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.blacklist.Blacklist
+import nl.diments.requestify.core.blacklist.BlacklistStore
+import nl.diments.requestify.core.intake.IncomingRequest
+import nl.diments.requestify.core.intake.PendingResolveStore
+import nl.diments.requestify.core.intake.RejectedEntry
+import nl.diments.requestify.core.intake.RejectedStore
+import nl.diments.requestify.core.intake.RequestIntake
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
@@ -57,22 +65,46 @@ class AppGraph(
 
     private val spotify = SpotifyApi(http, token = { force -> auth.token(force) })
 
+    /** Whether requests are open: open until the requests gate takes over. */
+    private val requestsOpen = MutableStateFlow(true)
+
     private val controller = PlaybackController(
         player = spotify,
         store = QueueStore(JsonFileStore(paths.queueFile, PersistedPlayback.serializer()) { PersistedPlayback() }),
-        requestsOpen = MutableStateFlow(true),
+        requestsOpen = requestsOpen,
         paidPriority = { settings.settings.value.paidPriority },
         scope = scope,
         clock = System::currentTimeMillis,
         ioDispatcher = Dispatchers.IO,
     )
 
+    val blacklist = BlacklistStore(JsonFileStore(paths.blacklistFile, Blacklist.serializer()) { Blacklist() })
+    val rejected = RejectedStore(JsonFileStore(paths.rejectedFile, ListSerializer(RejectedEntry.serializer())) { emptyList() })
+    private val pending = PendingResolveStore(
+        JsonFileStore(paths.pendingFile, ListSerializer(IncomingRequest.serializer())) { emptyList() },
+    )
+
+    val intake = RequestIntake(
+        controller = controller,
+        catalog = spotify,
+        settings = settings,
+        blacklist = blacklist,
+        rejected = rejected,
+        pending = pending,
+        requestsOpen = requestsOpen,
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
     val home = HomeViewModel(controller, spotify, settings, scope, clock = System::currentTimeMillis)
 
     val spotifySetup = SpotifySetupViewModel(settings, auth, spotify, controller, scope)
 
-    /** Starts polling Spotify. */
-    fun start() = controller.start()
+    /** Starts polling Spotify and resumes the paid requests that waited for it. */
+    fun start() {
+        controller.start()
+        intake.start()
+    }
 
     /**
      * Stops polling Spotify. A queue save still in flight when the app exits right after can be cut off; the
