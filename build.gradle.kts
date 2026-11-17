@@ -7,8 +7,17 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
 }
 
+/**
+ * JetBrains Runtime 21 compiles, tests, runs and is bundled with the app: its API draws the custom title bar.
+ * The foojay resolver (settings.gradle.kts) downloads it when it isn't installed.
+ */
+fun JavaToolchainSpec.jetBrainsRuntime() {
+    languageVersion = JavaLanguageVersion.of(21)
+    vendor = JvmVendorSpec.JETBRAINS
+}
+
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain { jetBrainsRuntime() }
     jvm()
 
     sourceSets {
@@ -33,6 +42,7 @@ kotlin {
             implementation(libs.coroutines.swing)
             implementation(libs.ktor.client.cio)
             implementation(libs.jna.platform)
+            implementation(libs.jbr.api)
             runtimeOnly(libs.slf4j.nop)
         }
         jvmTest.dependencies {
@@ -52,13 +62,15 @@ compose.resources {
 compose.desktop {
     application {
         mainClass = "nl.diments.requestify.MainKt"
+        // `run` and the packaged app use the same JetBrains Runtime as the toolchain.
+        javaHome = javaToolchains.launcherFor { jetBrainsRuntime() }.get().metadata.installationPath.asFile.absolutePath
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "Requestify"
             packageVersion = "0.1.0"
             // From `./gradlew suggestRuntimeModules`. jdk.httpserver is the Spotify login's loopback receiver;
-            // without it the installed app cannot log in.
-            modules("java.instrument", "java.management", "jdk.httpserver", "jdk.unsupported")
+            // without it the installed app cannot log in. jdk.localedata formats Dutch amounts ("€2,50").
+            modules("java.instrument", "java.management", "jdk.httpserver", "jdk.localedata", "jdk.unsupported")
         }
     }
 }

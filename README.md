@@ -7,7 +7,7 @@ Built with Kotlin and Compose Multiplatform, styled with Material 3 Expressive.
 
 ## Development
 
-- JDK 17, Windows 10/11 x64
+- JBR 21 via Gradle toolchain (auto-downloaded); Gradle itself runs on JDK 17 or newer. Windows 10/11 x64
 - Run: `./gradlew run`
 - Test: `./gradlew jvmTest`
 

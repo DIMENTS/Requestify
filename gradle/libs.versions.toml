@@ -13,6 +13,8 @@ reorderable = "3.1.0"
 jna = "5.19.1"
 # The no-op SLF4J provider, matching the slf4j-api that Ktor brings: silences "No SLF4J providers were found".
 slf4j = "2.0.19"
+# The JetBrains Runtime's API (custom title bar); its calls only work when running on JBR.
+jbr-api = "1.12.0"
 
 [libraries]
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material3" }
@@ -31,6 +33,7 @@ coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.r
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+jbr-api = { module = "org.jetbrains.runtime:jbr-api", version.ref = "jbr-api" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
