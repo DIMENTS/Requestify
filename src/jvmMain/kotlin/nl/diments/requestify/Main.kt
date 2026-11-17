@@ -1,12 +1,13 @@
 package nl.diments.requestify
 
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import java.awt.Dimension
+import java.beans.PropertyChangeListener
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.app_name
 import nl.diments.requestify.ui.AppScaffold
+import nl.diments.requestify.ui.window.awtMinimumSize
 import org.jetbrains.compose.resources.stringResource
 
 fun main() {
@@ -38,8 +40,18 @@ fun main() {
             state = windowState,
             title = stringResource(Res.string.app_name),
         ) {
-            LaunchedEffect(window) {
-                window.minimumSize = with(MinimumWindowSize) { Dimension(width.value.toInt(), height.value.toInt()) }
+            // dp -> device px (Compose's density) -> AWT units (the window's transform); redone when the window
+            // moves to a screen with another scale.
+            val density = LocalDensity.current.density
+            DisposableEffect(window, density) {
+                fun apply() {
+                    val awtScale = window.graphicsConfiguration?.defaultTransform?.scaleX ?: 1.0
+                    window.minimumSize = awtMinimumSize(MinimumWindowSize, density, awtScale)
+                }
+                val listener = PropertyChangeListener { apply() }
+                apply()
+                window.addPropertyChangeListener("graphicsConfiguration", listener)
+                onDispose { window.removePropertyChangeListener("graphicsConfiguration", listener) }
             }
             AppScaffold(graph, window)
         }
