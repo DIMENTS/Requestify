@@ -22,10 +22,13 @@ import nl.diments.requestify.core.playback.SubmitOutcome
 import nl.diments.requestify.core.rules.RuleContext
 import nl.diments.requestify.core.rules.RuleEngine
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.spotify.ShortLinkResolver
+import nl.diments.requestify.core.spotify.ShortLinkTarget
 import nl.diments.requestify.core.spotify.SpotifyCatalog
 import nl.diments.requestify.core.spotify.SpotifyInput
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.spotify.classifySpotifyInput
+import nl.diments.requestify.core.spotify.follow
 
 /** What [RequestIntake.submit] did with a request. */
 sealed interface IntakeOutcome {
@@ -56,6 +59,8 @@ class RequestIntake(
     private val requestsOpen: StateFlow<Boolean>,
     private val scope: CoroutineScope,
     private val clock: () -> Long,
+    /** Follows `spotify.link/…` short links to the Spotify link behind them. */
+    private val shortLinks: ShortLinkResolver,
     private val retryDelaysMs: List<Long> = listOf(5_000, 15_000, 30_000, 60_000), // then every 60 s
 ) {
     private val _pendingResolved =
@@ -197,18 +202,32 @@ class RequestIntake(
         data object Unavailable : Resolved
     }
 
-    private suspend fun resolve(incoming: IncomingRequest): Resolved =
-        when (val input = classifySpotifyInput(incoming.input)) {
-            is SpotifyInput.TrackId -> when (val r = catalog.track(input.id)) {
-                is SpotifyResult.Ok -> if (r.value.isPlayable) Resolved.Found(r.value) else Resolved.Fail(RejectReason.Unplayable)
-                SpotifyResult.NotFound -> Resolved.Fail(RejectReason.NoMatch)
-                else -> Resolved.Unavailable
-            }
-            is SpotifyInput.ArtistId -> Resolved.Fail(RejectReason.NotATrack("artist"))
-            is SpotifyInput.NotATrack -> Resolved.Fail(RejectReason.NotATrack(input.kind))
-            is SpotifyInput.SearchText -> if (incoming.linkOnly) Resolved.Ignore else search(input.query)
-            SpotifyInput.Empty -> if (incoming.linkOnly) Resolved.Ignore else Resolved.Fail(RejectReason.NoMatch)
+    private suspend fun resolve(incoming: IncomingRequest): Resolved = resolve(classifySpotifyInput(incoming.input), incoming)
+
+    /**
+     * A short link is a Spotify link (so a link-only cheer with one is a request): it is followed and what it leads to
+     * is resolved. One that leads to no Spotify link is rejected; one that cannot be followed now counts as Spotify
+     * being unreachable (a paid request waits and is tried again).
+     */
+    private suspend fun resolve(input: SpotifyInput, incoming: IncomingRequest): Resolved = when (input) {
+        is SpotifyInput.TrackId -> when (val r = catalog.track(input.id)) {
+            is SpotifyResult.Ok -> if (r.value.isPlayable) Resolved.Found(r.value) else Resolved.Fail(RejectReason.Unplayable)
+            SpotifyResult.NotFound -> Resolved.Fail(RejectReason.NoMatch)
+            else -> Resolved.Unavailable
         }
+        is SpotifyInput.ArtistId -> Resolved.Fail(RejectReason.NotATrack("artist"))
+        is SpotifyInput.NotATrack -> Resolved.Fail(RejectReason.NotATrack(input.kind))
+        is SpotifyInput.ShortLink -> when (val target = followShortLink(input)) {
+            is ShortLinkTarget.Link -> resolve(target.input, incoming)
+            ShortLinkTarget.Unresolvable -> Resolved.Fail(RejectReason.ShortLinkUnresolved)
+            ShortLinkTarget.Unreachable -> Resolved.Unavailable
+        }
+        is SpotifyInput.SearchText -> if (incoming.linkOnly) Resolved.Ignore else search(input.query)
+        SpotifyInput.Empty -> if (incoming.linkOnly) Resolved.Ignore else Resolved.Fail(RejectReason.NoMatch)
+    }
+
+    /** Where [link] leads; for the streamer's own add fields too. */
+    suspend fun followShortLink(link: SpotifyInput.ShortLink): ShortLinkTarget = shortLinks.follow(link)
 
     private suspend fun search(query: String): Resolved = when (val r = catalog.searchTracks(query, 5)) {
         is SpotifyResult.Ok -> {

@@ -202,6 +202,31 @@ class ChannelPointsSourceTest {
     }
 
     @Test
+    fun redemptionWithShortLinkIsFollowedToItsTrack() = runTest {
+        val h = harness()
+        h.rig.shortLinks.leadsTo("https://spotify.link/abc", "${link(idB)}?si=x")
+        h.redeem("red1", "spotify.link/abc")
+
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        assertEquals("Bravo", h.rig.queued.single().track.name)
+        assertTrue(h.rig.catalog.calls.none { it.startsWith("search:") }, h.rig.catalog.calls.toString())
+        assertTrue(h.outboxed.isEmpty())
+    }
+
+    @Test
+    fun redemptionWithUnresolvableShortLinkIsRefundedAndListed() = runTest {
+        val h = harness()
+        h.redeem("red1", "https://spotify.link/nowhere")
+
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        assertTrue(h.rig.queued.isEmpty())
+        assertTrue(h.rig.catalog.calls.isEmpty())
+        assertEquals(listOf(OutboxEntry(REWARD, "red1", CANCELED)), h.outboxed)
+        assertEquals(RejectReason.ShortLinkUnresolved, h.rig.rejectedEntries.single().reason)
+        assertEquals("@Name u1 Use the open.spotify.com link. Your points were refunded.", h.sends.single().message)
+    }
+
+    @Test
     fun blockedViewerIsRefundedWithoutReply() = runTest {
         val h = harness()
         h.rig.blacklist.addViewer("u1", "login_u1", null, 0)

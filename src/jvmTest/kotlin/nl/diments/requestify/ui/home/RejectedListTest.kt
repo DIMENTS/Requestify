@@ -107,6 +107,7 @@ class RejectedListTest {
             RejectReason.Cooldown(95_000) to "On cooldown, 1:35 left",
             RejectReason.Duplicate to "Already queued or played recently",
             RejectReason.BelowMinimum(100) to "Below the minimum (100 Bits)",
+            RejectReason.ShortLinkUnresolved to "Use the open.spotify.com link",
         )
         val shown = mutableListOf<String>()
         setContent {

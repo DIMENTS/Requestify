@@ -40,6 +40,7 @@ import nl.diments.requestify.resources.reject_explicit
 import nl.diments.requestify.resources.reject_no_match
 import nl.diments.requestify.resources.reject_not_a_track
 import nl.diments.requestify.resources.reject_queue_full
+import nl.diments.requestify.resources.reject_short_link
 import nl.diments.requestify.resources.reject_spotify_unavailable
 import nl.diments.requestify.resources.reject_too_long
 import nl.diments.requestify.resources.reject_too_short
@@ -78,6 +79,7 @@ internal fun RejectReason.text(): String = when (this) {
     is RejectReason.Cooldown -> stringResource(Res.string.reject_cooldown, formatDuration(remainingMs))
     RejectReason.Duplicate -> stringResource(Res.string.reject_duplicate)
     is RejectReason.BelowMinimum -> stringResource(Res.string.reject_below_minimum, minBits)
+    RejectReason.ShortLinkUnresolved -> stringResource(Res.string.reject_short_link)
 }
 
 private fun RejectReason.icon(): ImageVector = when (this) {

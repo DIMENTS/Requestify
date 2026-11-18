@@ -15,6 +15,7 @@ import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.intake.RequestIntake
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.spotify.ArtistRef
+import nl.diments.requestify.core.spotify.ShortLinkTarget
 import nl.diments.requestify.core.spotify.SpotifyCatalog
 import nl.diments.requestify.core.spotify.SpotifyInput
 import nl.diments.requestify.core.spotify.SpotifyResult
@@ -156,6 +157,12 @@ class BlacklistViewModel(
             is SpotifyInput.TrackId -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 catalog.track(input.id).valueOrNull()?.let { listOf(BlockCandidate.Song(it)) }
             }
+            is SpotifyInput.ShortLink -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
+                followed(input) { target ->
+                    if (target !is SpotifyInput.TrackId) return@followed emptyList()
+                    catalog.track(target.id).valueOrNull()?.let { listOf(BlockCandidate.Song(it)) }
+                }
+            }
             is SpotifyInput.SearchText -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 delay(SEARCH_DEBOUNCE_MS)
                 catalog.searchTracks(input.query, SEARCH_LIMIT).valueOrNull()?.map(BlockCandidate::Song)
@@ -170,6 +177,12 @@ class BlacklistViewModel(
             is SpotifyInput.TrackId -> wrongLink(text, "track")
             is SpotifyInput.ArtistId -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 catalog.artist(input.id).valueOrNull()?.let { listOf(BlockCandidate.Artist(it)) }
+            }
+            is SpotifyInput.ShortLink -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
+                followed(input) { target ->
+                    if (target !is SpotifyInput.ArtistId) return@followed emptyList()
+                    catalog.artist(target.id).valueOrNull()?.let { listOf(BlockCandidate.Artist(it)) }
+                }
             }
             is SpotifyInput.SearchText -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 delay(SEARCH_DEBOUNCE_MS)
@@ -199,6 +212,19 @@ class BlacklistViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Follows a short link, then [find]s what it leads to. Null (Spotify unavailable) when it cannot be followed now;
+     * nothing when it leads to no Spotify link.
+     */
+    private suspend fun followed(
+        link: SpotifyInput.ShortLink,
+        find: suspend (SpotifyInput) -> List<BlockCandidate>?,
+    ): List<BlockCandidate>? = when (val target = intake.followShortLink(link)) {
+        is ShortLinkTarget.Link -> find(target.input)
+        ShortLinkTarget.Unresolvable -> emptyList()
+        ShortLinkTarget.Unreachable -> null
     }
 
     private fun wrongLink(text: String, kind: String) {

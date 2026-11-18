@@ -25,6 +25,7 @@ import nl.diments.requestify.core.queue.PlayedEntry
 import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.spotify.ShortLinkTarget
 import nl.diments.requestify.core.spotify.SpotifyCatalog
 import nl.diments.requestify.core.spotify.SpotifyInput
 import nl.diments.requestify.core.spotify.SpotifyResult
@@ -129,6 +130,16 @@ class HomeViewModel(
             is SpotifyInput.NotATrack -> add.value = AddState(text, message = AddMessage.NotATrack(input.kind))
             is SpotifyInput.ArtistId -> add.value = AddState(text, message = AddMessage.NotATrack("artist"))
             is SpotifyInput.TrackId -> lookUp(text) { catalog.track(input.id).valueOrNull()?.let(::listOf) }
+            // A short link is followed first; one that leads to no track finds nothing.
+            is SpotifyInput.ShortLink -> lookUp(text) {
+                when (val target = intake.followShortLink(input)) {
+                    is ShortLinkTarget.Link -> (target.input as? SpotifyInput.TrackId)
+                        ?.let { catalog.track(it.id).valueOrNull()?.let(::listOf) }
+                        ?: emptyList()
+                    ShortLinkTarget.Unresolvable -> emptyList()
+                    ShortLinkTarget.Unreachable -> null
+                }
+            }
             is SpotifyInput.SearchText -> lookUp(text) {
                 delay(SEARCH_DEBOUNCE_MS)
                 catalog.searchTracks(input.query, SEARCH_LIMIT).valueOrNull()

@@ -39,6 +39,7 @@ import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.secrets.SecretStore
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.spotify.KtorShortLinkResolver
 import nl.diments.requestify.core.spotify.SpotifyApi
 import nl.diments.requestify.core.spotify.auth.LoopbackReceiver
 import nl.diments.requestify.core.spotify.auth.SpotifyAuth
@@ -152,9 +153,10 @@ class AppGraph(
         requestsOpen = gate.open,
         scope = scope,
         clock = System::currentTimeMillis,
+        shortLinks = KtorShortLinkResolver(http),
     )
 
-    val home = HomeViewModel(controller, spotify, settings, intake, rejected, scope, clock = System::currentTimeMillis)
+    val home =HomeViewModel(controller, spotify, settings, intake, rejected, scope, clock = System::currentTimeMillis)
 
     val spotifySetup = SpotifySetupViewModel(settings, auth, spotify, controller, scope)
 

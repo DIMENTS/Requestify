@@ -34,6 +34,7 @@ import nl.diments.requestify.resources.chat_rejected_no_match
 import nl.diments.requestify.resources.chat_rejected_not_a_track
 import nl.diments.requestify.resources.chat_rejected_not_a_track_generic
 import nl.diments.requestify.resources.chat_rejected_queue_full
+import nl.diments.requestify.resources.chat_rejected_short_link
 import nl.diments.requestify.resources.chat_rejected_spotify_unavailable
 import nl.diments.requestify.resources.chat_rejected_too_long
 import nl.diments.requestify.resources.chat_rejected_too_short
@@ -193,6 +194,7 @@ class ChatReplies {
         is RejectReason.Cooldown -> getString(Res.string.chat_rejected_cooldown, minSec(reason.remainingMs))
         RejectReason.Duplicate -> getString(Res.string.chat_rejected_duplicate)
         is RejectReason.BelowMinimum -> getString(Res.string.chat_rejected_below_minimum, reason.minBits)
+        RejectReason.ShortLinkUnresolved -> getString(Res.string.chat_rejected_short_link)
     }
 
     private suspend fun kindName(kind: String): String? = when (kind) {

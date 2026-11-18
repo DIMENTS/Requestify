@@ -82,4 +82,9 @@ sealed interface RejectReason {
     @Serializable
     @SerialName("below_minimum")
     data class BelowMinimum(val minBits: Int) : RejectReason
+
+    /** A Spotify short link (`spotify.link/…`) that does not lead to a Spotify link: use the open.spotify.com link. */
+    @Serializable
+    @SerialName("short_link")
+    data object ShortLinkUnresolved : RejectReason
 }

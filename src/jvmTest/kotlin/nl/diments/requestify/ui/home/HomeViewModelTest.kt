@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.intake.FakeShortLinks
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
@@ -79,7 +80,7 @@ class HomeViewModelTest {
         val parts: IntakeParts,
     )
 
-    private fun TestScope.home(catalog: FakeCatalog = FakeCatalog()): Home {
+    private fun TestScope.home(catalog: FakeCatalog = FakeCatalog(), shortLinks: FakeShortLinks = FakeShortLinks()): Home {
         val player = FakeSpotifyPlayer { testScheduler.currentTime }
         val controller = PlaybackController(
             player = player,
@@ -95,7 +96,7 @@ class HomeViewModelTest {
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
-        val parts = intakeParts(dir, controller, catalog, settings, backgroundScope) { testScheduler.currentTime }
+        val parts = intakeParts(dir, controller, catalog, settings, backgroundScope, shortLinks) { testScheduler.currentTime }
         var ids = 0
         val vm = HomeViewModel(
             controller = controller,
@@ -125,6 +126,23 @@ class HomeViewModelTest {
         assertTrue(home.catalog.searches.isEmpty())
         assertEquals(listOf("4cOdK2wGLETKBW3PvgPWqT"), home.vm.state.value.results.map { it.id })
         assertNull(home.vm.state.value.addMessage)
+    }
+
+    @Test
+    fun shortLinkIsFollowedToItsTrack() = runTest {
+        val shortLinks = FakeShortLinks()
+        shortLinks.leadsTo("https://spotify.link/abc", "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT?si=x")
+        val home = home(shortLinks = shortLinks)
+        home.vm.onAddInput("https://spotify.link/abc")
+        settle()
+        assertEquals(listOf("4cOdK2wGLETKBW3PvgPWqT"), home.vm.state.value.results.map { it.id })
+        assertTrue(home.catalog.searches.isEmpty())
+
+        home.vm.onAddInput("https://spotify.link/nowhere")
+        settle()
+        assertTrue(home.vm.state.value.results.isEmpty())
+        assertEquals(AddMessage.NoResults, home.vm.state.value.addMessage)
+        assertTrue(home.catalog.searches.isEmpty())
     }
 
     @Test

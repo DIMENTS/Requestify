@@ -165,6 +165,7 @@ class SavedFormatCompatTest {
             RejectReason.Cooldown(180_000) to """{"type":"cooldown","remainingMs":180000}""",
             RejectReason.Duplicate to """{"type":"duplicate"}""",
             RejectReason.BelowMinimum(100) to """{"type":"below_minimum","minBits":100}""",
+            RejectReason.ShortLinkUnresolved to """{"type":"short_link"}""",
         )
         val subclasses = RejectReason.serializer().descriptor.getElementDescriptor(1) // the sealed subclasses
         val checkedNames = saved.map { (_, json) ->

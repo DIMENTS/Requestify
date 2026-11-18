@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.serialization.builtins.ListSerializer
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
+import nl.diments.requestify.core.intake.FakeShortLinks
 import nl.diments.requestify.core.intake.FakeSpotifyCatalog
 import nl.diments.requestify.core.intake.IncomingRequest
 import nl.diments.requestify.core.intake.PendingResolveStore
@@ -53,6 +54,7 @@ class TwitchTestRig(scope: TestScope, dir: Path) {
     val rejected = RejectedStore(
         JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() },
     )
+    val shortLinks = FakeShortLinks()
     val intake = RequestIntake(
         controller, catalog, settings, blacklist, rejected,
         PendingResolveStore(
@@ -61,6 +63,7 @@ class TwitchTestRig(scope: TestScope, dir: Path) {
         open,
         CoroutineScope(scope.backgroundScope.coroutineContext + Job(scope.backgroundScope.coroutineContext[Job])),
         clock = { scope.testScheduler.currentTime },
+        shortLinks = shortLinks,
     )
     val replies = ChatReplies()
     val sender = ChatReplySender(twitch.api, scope.backgroundScope)

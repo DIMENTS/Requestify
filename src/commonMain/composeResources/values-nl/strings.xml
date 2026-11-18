@@ -171,6 +171,7 @@
     <string name="reject_cooldown">Cooldown, nog %1$s</string>
     <string name="reject_duplicate">Staat al in de wachtrij of is net gespeeld</string>
     <string name="reject_below_minimum">Onder minimum (%1$d Bits)</string>
+    <string name="reject_short_link">Gebruik de open.spotify.com-link</string>
     <string name="home_row_actions">Acties voor %1$s</string>
     <string name="home_row_remove">Verwijderen</string>
     <string name="block_song">Nummer blokkeren</string>
@@ -335,6 +336,7 @@
     <string name="chat_rejected_cooldown">Wacht %1$s voor je volgende verzoekje.</string>
     <string name="chat_rejected_duplicate">Dat nummer staat al in de wachtrij of is net gespeeld.</string>
     <string name="chat_rejected_below_minimum">Verzoekjes kosten minimaal %1$d Bits.</string>
+    <string name="chat_rejected_short_link">Gebruik de open.spotify.com-link.</string>
     <string name="chat_usage">Typ %1$s gevolgd door een nummer of een Spotify-link.</string>
     <string name="chat_denied_followers">Verzoekjes zijn alleen voor volgers.</string>
     <string name="chat_denied_subscribers">Verzoekjes zijn alleen voor abonnees.</string>

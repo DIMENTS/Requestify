@@ -39,6 +39,7 @@ import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.rules.Rules
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.spotify.ShortLinkAnswer
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
 
@@ -50,6 +51,7 @@ class RequestIntakeTest {
     @AfterTest fun tearDown() { dir.deleteRecursively() }
 
     private val catalog = FakeSpotifyCatalog()
+    private val shortLinks = FakeShortLinks()
     private val settings by lazy {
         SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
     }
@@ -99,7 +101,7 @@ class RequestIntakeTest {
         val intake = RequestIntake(
             controller, catalog, settings, blacklist, rejected, pending, open,
             CoroutineScope(backgroundScope.coroutineContext + job),
-            clock = { testScheduler.currentTime }, retryDelaysMs = listOf(5_000, 15_000),
+            clock = { testScheduler.currentTime }, shortLinks = shortLinks, retryDelaysMs = listOf(5_000, 15_000),
         )
         return Parts(controller, blacklist, rejected, pending, intake, job)
     }
@@ -152,6 +154,49 @@ class RequestIntakeTest {
         assertTrue(p.rejected.entries.value.isEmpty())
         assertTrue(p.pending.pending.value.isEmpty())
         assertTrue(catalog.calls.isEmpty())
+    }
+
+    @Test
+    fun shortLinkIsFollowedToItsTrack() = runTest {
+        catalog.tracks[idA] = track(idA)
+        shortLinks.leadsTo("https://spotify.link/abc123", "https://spotify.app.link/abc123?_p=x")
+        shortLinks.leadsTo("https://spotify.app.link/abc123?_p=x", "${link(idA)}?si=zz")
+        val p = parts()
+        val out = p.intake.submit(incoming("r1", input = "this one spotify.link/abc123 pls"))
+
+        assertEquals(idA, assertIs<IntakeOutcome.Accepted>(out).request.track.id)
+        assertEquals(listOf("track:$idA"), catalog.calls) // the link text is never searched
+    }
+
+    @Test
+    fun shortLinkThatLeadsNowhereIsRejectedAndListed() = runTest {
+        val p = parts()
+        val free = p.intake.submit(incoming("r1", input = "https://spotify.link/nothing"))
+        val paid = p.intake.submit(
+            incoming("r2", input = "Cheer100 https://spotify.link/nothing", linkOnly = true, payment = Payment.Bits(100), source = RequestSource.BITS),
+        )
+
+        assertEquals(IntakeOutcome.Rejected(RejectReason.ShortLinkUnresolved, null, listed = true), free)
+        assertEquals(IntakeOutcome.Rejected(RejectReason.ShortLinkUnresolved, null, listed = true), paid)
+        assertEquals(listOf("r1", "r2"), p.rejected.entries.value.map { it.id }.sorted())
+        assertTrue(catalog.calls.isEmpty())
+    }
+
+    @Test
+    fun paidShortLinkWaitsWhileItCannotBeFollowed() = runTest {
+        catalog.tracks[idA] = track(idA)
+        shortLinks.answers["https://spotify.link/abc123"] = ShortLinkAnswer.Unreachable
+        val p = parts()
+        val paid = incoming("p1", input = "spotify.link/abc123", linkOnly = true, payment = Payment.Bits(100), source = RequestSource.BITS)
+
+        assertEquals(IntakeOutcome.Pending, p.intake.submit(paid))
+        shortLinks.leadsTo("https://spotify.link/abc123", link(idA))
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(listOf("p1"), p.controller.queue.value.items.map { it.id })
+        assertTrue(p.pending.pending.value.isEmpty())
+        assertTrue(p.rejected.entries.value.isEmpty())
     }
 
     @Test

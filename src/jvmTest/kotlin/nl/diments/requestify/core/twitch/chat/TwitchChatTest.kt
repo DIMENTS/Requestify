@@ -24,12 +24,14 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
+import nl.diments.requestify.core.intake.FakeShortLinks
 import nl.diments.requestify.core.intake.FakeSpotifyCatalog
 import nl.diments.requestify.core.intake.IncomingRequest
 import nl.diments.requestify.core.intake.PendingResolveStore
 import nl.diments.requestify.core.intake.RejectedEntry
 import nl.diments.requestify.core.intake.RejectedStore
 import nl.diments.requestify.core.intake.RequestIntake
+import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
@@ -80,6 +82,7 @@ class TwitchChatTest {
         val rejected: RejectedStore,
         val sender: ChatReplySender,
         val chat: TwitchChat,
+        val shortLinks: FakeShortLinks,
     ) {
         fun message(
             id: String,
@@ -122,10 +125,12 @@ class TwitchChatTest {
         val pending = PendingResolveStore(
             JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer())) { emptyList() },
         )
+        val shortLinks = FakeShortLinks()
         val intake = RequestIntake(
             controller, catalog, settings, blacklist, rejected, pending, open,
             CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job])),
             clock = { testScheduler.currentTime },
+            shortLinks = shortLinks,
         )
         val sender = ChatReplySender(twitch.api, backgroundScope)
         val chat = TwitchChat(
@@ -143,7 +148,7 @@ class TwitchChatTest {
         sender.start()
         chat.start()
         runCurrent()
-        return Harness(events, twitch, catalog, settings, open, controller, player, intake, rejected, sender, chat)
+        return Harness(events, twitch, catalog, settings, open, controller, player, intake, rejected, sender, chat, shortLinks)
     }
 
     private fun Harness.setPermission(permission: ChatPermission) =
@@ -193,6 +198,31 @@ class TwitchChatTest {
         assertTrue("closed" in h.twitch.sends.single().message.lowercase(), h.twitch.sends.single().message)
         assertTrue(h.queued.isEmpty())
         assertEquals(1, h.rejectedEntries.size)
+    }
+
+    @Test
+    fun srWithShortLinkIsFollowedToItsTrack() = runTest {
+        val h = harness()
+        h.shortLinks.leadsTo("https://spotify.link/abc", "${link(idB)}?si=x")
+        h.message("msg1", "!sr https://spotify.link/abc")
+
+        awaitUntil("reply") { h.twitch.sends.isNotEmpty() }
+        assertEquals("Bravo", h.queued.single().track.name)
+        assertTrue(h.catalog.calls.none { it.startsWith("search:") }, h.catalog.calls.toString())
+        assertTrue("Bravo" in h.twitch.sends.single().message, h.twitch.sends.single().message)
+    }
+
+    @Test
+    fun srWithUnresolvableShortLinkSaysToUseTheFullLink() = runTest {
+        val h = harness()
+        h.message("msg1", "!sr https://spotify.link/nowhere")
+
+        awaitUntil("reply") { h.twitch.sends.isNotEmpty() }
+        assertTrue(h.queued.isEmpty())
+        assertTrue(h.catalog.calls.isEmpty())
+        assertEquals(RejectReason.ShortLinkUnresolved, h.rejectedEntries.single().reason)
+        assertEquals("Use the open.spotify.com link.", h.twitch.sends.single().message)
+        assertEquals("msg1", h.twitch.sends.single().replyTo)
     }
 
     @Test

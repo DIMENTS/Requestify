@@ -119,6 +119,32 @@ class BitsSourceTest {
     }
 
     @Test
+    fun cheerWithShortLinkIsFollowedAndQueued() = runTest {
+        val h = harness()
+        h.rig.shortLinks.leadsTo("https://spotify.link/abc", "${link(idA)}?si=x")
+        h.cheer("c1", "Cheer100 spotify.link/abc", bits = 100)
+
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        assertEquals("Alpha", h.rig.queued.single().track.name)
+        assertEquals(Payment.Bits(100), h.rig.queued.single().payment)
+        assertTrue("Alpha" in h.sends.single().message, h.sends.single().message)
+    }
+
+    @Test
+    fun cheerWithUnresolvableShortLinkIsListedAndAnswered() = runTest {
+        val h = harness()
+        h.cheer("c1", "Cheer100 https://spotify.link/nowhere", bits = 100)
+
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        val entry = h.rig.rejectedEntries.single()
+        assertEquals("c1", entry.id)
+        assertEquals(RejectReason.ShortLinkUnresolved, entry.reason)
+        assertEquals(Payment.Bits(100), entry.payment)
+        assertTrue(h.rig.queued.isEmpty())
+        assertEquals("@Name u1 Use the open.spotify.com link.", h.sends.single().message)
+    }
+
+    @Test
     fun belowMinimumIsRejectedPaidAndListed() = runTest {
         val h = harness()
         h.cheer("c1", "Cheer50 ${link(idA)}", bits = 50)
