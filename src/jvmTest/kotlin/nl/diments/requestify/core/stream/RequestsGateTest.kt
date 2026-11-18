@@ -676,6 +676,13 @@ class RequestsGateTest {
     }
 
     @Test
+    fun theUpdaterLearnsWhetherTheFileWasReadable() = runTest {
+        assertEquals(false, gate().loadedUnreadable, "a missing file is no problem: no stream seen yet")
+        dir.resolve("stream.json").toFile().mkdirs() // reading it fails
+        assertEquals(true, gate().loadedUnreadable)
+    }
+
+    @Test
     fun loadedLastSeenLiveIsKept() = runTest {
         val first = gate()
         assertNull(first.loadedLastSeenLiveMs, "nothing saved yet")

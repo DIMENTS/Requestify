@@ -7,7 +7,10 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import nl.diments.requestify.core.storage.AppJson
 
-/** A downloaded, verified update waiting to be installed. [attempts]: installs tried so far. Names are stable. */
+/**
+ * A downloaded, verified update waiting to be installed. [attempts]: installs tried so far; [from]: the version that
+ * started the last attempt (so the next start can say "updated from … to …"). Names are stable.
+ */
 @Serializable
 data class PendingUpdate(
     val version: String,
@@ -16,6 +19,7 @@ data class PendingUpdate(
     val notes: String,
     val pageUrl: String,
     val attempts: Int = 0,
+    val from: String? = null,
 )
 
 /** Requestify was just updated: the "Bijgewerkt" card shows this until the streamer closes it. Names are stable. */
@@ -49,8 +53,12 @@ class UpdateStore(val dir: Path) {
         }
     }
 
-    /** Counts one more install attempt of the pending update and returns it; null when nothing is pending. */
-    fun markAttempt(): PendingUpdate? = pending()?.let { it.copy(attempts = it.attempts + 1) }?.also(::savePending)
+    /**
+     * Counts one more install attempt of the pending update, started by version [from], and returns it; null when
+     * nothing is pending.
+     */
+    fun markAttempt(from: String? = null): PendingUpdate? =
+        pending()?.let { it.copy(attempts = it.attempts + 1, from = from ?: it.from) }?.also(::savePending)
 
     fun lastExitCode(): Int? = try {
         if (Files.exists(exitCodeFile)) Files.readString(exitCodeFile).trim().toIntOrNull() else null
