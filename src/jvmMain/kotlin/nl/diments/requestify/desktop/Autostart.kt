@@ -28,6 +28,12 @@ interface Autostart {
 
     /** Points an existing entry at the launcher as it is installed now (after a reinstall elsewhere). */
     fun repairPath()
+
+    /**
+     * Puts back an entry the uninstaller removed, exactly as it was: on, or switched off in Task Manager. False when
+     * it cannot (not installed, or Windows refused); it never throws.
+     */
+    fun restore(disabledInTaskManager: Boolean): Boolean = false
 }
 
 /** The current user's registry (HKEY_CURRENT_USER), the little [RunKeyAutostart] needs of it. */
@@ -76,24 +82,25 @@ object JnaRegistry : RegistryPort {
 class RunKeyAutostart(
     private val registry: RegistryPort,
     private val installation: Installation,
-    private val valueName: String = "Requestify",
+    private val valueName: String = AUTOSTART_VALUE_NAME,
 ) : Autostart {
     override fun state(): AutostartState {
         if (!installation.isInstalled) return AutostartState.Unavailable
         registry.getString(RUN_KEY, valueName) ?: return AutostartState.Off
-        val approved = registry.getBinary(APPROVED_KEY, valueName)
-        return if (approved != null && approved.isNotEmpty() && approved[0].toInt() and 1 == 1) {
+        return if (isDisabledInTaskManager(registry.getBinary(APPROVED_KEY, valueName))) {
             AutostartState.DisabledInTaskManager
         } else {
             AutostartState.On
         }
     }
 
-    override fun enable(): Boolean {
+    override fun enable(): Boolean = restore(disabledInTaskManager = false)
+
+    override fun restore(disabledInTaskManager: Boolean): Boolean {
         val command = command() ?: return false
         return tryWrite {
             registry.setString(RUN_KEY, valueName, command)
-            registry.setBinary(APPROVED_KEY, valueName, ENABLED)
+            registry.setBinary(APPROVED_KEY, valueName, if (disabledInTaskManager) TASK_MANAGER_DISABLED else TASK_MANAGER_ENABLED)
         }
     }
 
@@ -121,15 +128,22 @@ class RunKeyAutostart(
 
     /** The launcher in quotes (its path has spaces: Program Files) and the autostart argument. */
     private fun command(): String? = installation.launcherExe?.let { "\"$it\" $AUTOSTART_ARG" }
-
-    private companion object {
-        const val RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-        const val APPROVED_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run"
-
-        /** What Task Manager writes for "Enabled". */
-        val ENABLED = byteArrayOf(2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-    }
 }
+
+/** The Run value's name (and Task Manager's StartupApproved value next to it). */
+internal const val AUTOSTART_VALUE_NAME = "Requestify"
+internal const val RUN_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+internal const val APPROVED_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run"
+
+/** What Task Manager writes for "Enabled". */
+private val TASK_MANAGER_ENABLED = byteArrayOf(2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+/** What Task Manager writes for "Disabled" (an odd first byte; the rest is when, which nothing reads back). */
+private val TASK_MANAGER_DISABLED = byteArrayOf(3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+
+/** Task Manager's StartupApproved value says "Disabled": its first byte is odd. */
+internal fun isDisabledInTaskManager(approved: ByteArray?): Boolean =
+    approved != null && approved.isNotEmpty() && approved[0].toInt() and 1 == 1
 
 /**
  * At start: an installed app whose streamer never chose turns it on once (the parent design's default) and remembers

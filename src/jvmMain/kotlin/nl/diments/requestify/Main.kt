@@ -42,8 +42,11 @@ import nl.diments.requestify.desktop.RunKeyAutostart
 import nl.diments.requestify.desktop.SingleInstance
 import nl.diments.requestify.desktop.TrayLabels
 import nl.diments.requestify.desktop.applyAutostartAtStart
+import nl.diments.requestify.desktop.UNINSTALL_CLEANUP_ARG
+import nl.diments.requestify.desktop.cleanUpForUninstall
 import nl.diments.requestify.desktop.closeWindow
 import nl.diments.requestify.desktop.detachedProcess
+import nl.diments.requestify.desktop.restoreAutostartAfterReinstall
 import nl.diments.requestify.desktop.launchMode
 import nl.diments.requestify.desktop.noticeText
 import nl.diments.requestify.desktop.trayLook
@@ -68,6 +71,11 @@ private const val TEST_CRASH_ENV = "REQUESTIFY_TEST_CRASH_AFTER_S"
 private const val ALIVE_EVERY_MS = 5 * 60_000L
 
 fun main(args: Array<String>) {
+    // The uninstaller's errand: nothing else of the app starts (no single instance, no crash guard, no window).
+    if (UNINSTALL_CLEANUP_ARG in args) {
+        cleanUpForUninstall(JnaRegistry, AppPaths.default().dataDir)
+        return
+    }
     val mode = launchMode(args)
     val installation = Installation.current()
     val paths = AppPaths.default()
@@ -113,6 +121,8 @@ fun main(args: Array<String>) {
     )
     // The language is read once, before anything is composed; a change applies at the next start.
     localeFor(graph.settings.settings.value.language)?.let(Locale::setDefault)
+    // A reinstall first gets back the entry its uninstall removed; then the streamer's choice applies as before.
+    restoreAutostartAfterReinstall(paths.dataDir, graph.autostart)
     applyAutostartAtStart(graph.settings, graph.autostart)
     graph.start()
 

@@ -10,6 +10,9 @@ const val AUTOSTART_ARG = "--autostart"
 /** Started again by the crash guard after an error. */
 const val AFTER_CRASH_ARG = "--after-crash"
 
+/** Run by the uninstaller only: removes the autostart entry ([cleanUpForUninstall]) and exits at once. */
+const val UNINSTALL_CLEANUP_ARG = "--uninstall-cleanup"
+
 /** How this run was started: by the streamer, by Windows at sign-in, or by the crash guard. */
 enum class LaunchMode { Normal, Autostart, AfterCrash }
 

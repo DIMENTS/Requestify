@@ -112,3 +112,60 @@ compose.desktop {
         }
     }
 }
+
+/*
+ * The installers. Compose's own packageMsi/packageExe cannot take jpackage's resource dir, and Requestify's installer
+ * needs its own WiX additions (packaging/wix/main.wxs: clean up autostart on uninstall, start after install). So
+ * jpackage runs here on the app image Compose builds (createDistributable), with the same settings as above.
+ * Output: build/installer/msi/Requestify-<version>.msi and build/installer/exe/Requestify-<version>.exe.
+ */
+val jpackageExecutable: String = javaToolchains.launcherFor { jetBrainsRuntime() }.get()
+    .metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath
+
+fun registerInstallerTask(taskName: String, type: String) = tasks.register<Exec>(taskName) {
+    group = "distribution"
+    description = "Builds the Requestify $type installer with Requestify's WiX additions."
+    dependsOn("createDistributable", "unzipWix")
+    val appImage = layout.buildDirectory.dir("compose/binaries/main/app/Requestify")
+    val out = layout.buildDirectory.dir("installer/$type")
+    val wix = layout.buildDirectory.dir("wix311")
+    val resources = layout.projectDirectory.dir("packaging/wix")
+    val icon = layout.projectDirectory.file("packaging/requestify.ico")
+    inputs.dir(appImage)
+    inputs.dir(resources)
+    inputs.file(icon)
+    inputs.property("version", requestifyVersion)
+    outputs.dir(out)
+    executable(jpackageExecutable)
+    args(
+        "--type", type,
+        "--app-image", appImage.get().asFile.absolutePath,
+        "--name", "Requestify",
+        "--app-version", requestifyVersion,
+        "--vendor", REQUESTIFY_VENDOR,
+        "--description", "Requestify",
+        "--about-url", "https://github.com/DIMENTS/Requestify",
+        "--win-per-user-install",
+        "--win-upgrade-uuid", REQUESTIFY_UPGRADE_UUID,
+        "--win-menu",
+        "--win-menu-group", "Requestify",
+        "--win-shortcut",
+        "--icon", icon.asFile.absolutePath,
+        "--resource-dir", resources.asFile.absolutePath,
+        "--dest", out.get().asFile.absolutePath,
+    )
+    // jpackage finds WiX on the PATH; Compose unpacks it into build/wix311.
+    environment("PATH", wix.get().asFile.absolutePath + File.pathSeparator + providers.environmentVariable("PATH").get())
+    doFirst { out.get().asFile.deleteRecursively() }
+}
+
+registerInstallerTask("packageRequestifyMsi", "msi")
+registerInstallerTask("packageRequestifyExe", "exe")
+
+// Compose's own installers would lack the WiX additions: point at the ones above instead.
+listOf("packageMsi" to "packageRequestifyMsi", "packageExe" to "packageRequestifyExe").forEach { (compose, ours) ->
+    // Compose registers its tasks after this script ran: match them by name when they appear.
+    tasks.matching { it.name == compose }.configureEach {
+        doFirst { throw GradleException("Use .\\gradlew.bat $ours: Requestify's installer needs its own WiX additions.") }
+    }
+}

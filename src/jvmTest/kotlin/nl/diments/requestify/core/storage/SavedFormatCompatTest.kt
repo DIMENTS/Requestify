@@ -278,6 +278,20 @@ class SavedFormatCompatTest {
         )
     }
 
+    /** The uninstaller's note of the autostart it removed (autostart-removed.json): a later version restores from it. */
+    @Test
+    fun autostartRemovedMarkerIsPinned() {
+        val serializer = nl.diments.requestify.desktop.AutostartRemovedMarker.serializer()
+        assertEquals(
+            """{"state":"on"}""",
+            AppJson.instance.encodeToString(serializer, nl.diments.requestify.desktop.AutostartRemovedMarker(nl.diments.requestify.desktop.RemovedAutostart.On)),
+        )
+        assertEquals(
+            nl.diments.requestify.desktop.AutostartRemovedMarker(nl.diments.requestify.desktop.RemovedAutostart.DisabledInTaskManager),
+            AppJson.instance.decodeFromString(serializer, """{"state":"disabled_in_task_manager"}"""),
+        )
+    }
+
     /** A file that could not be saved is logged under this service name. */
     @Test
     fun filesServiceNameIsPinned() {

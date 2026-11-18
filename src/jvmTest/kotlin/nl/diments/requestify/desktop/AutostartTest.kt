@@ -20,18 +20,6 @@ class AutostartTest {
     @BeforeTest fun setUp() { dir = createTempDirectory("requestify-autostart") }
     @AfterTest fun tearDown() { dir.deleteTestDir() }
 
-    /** HKCU in memory: key → name → value. */
-    private class FakeRegistry : RegistryPort {
-        val strings = HashMap<String, MutableMap<String, String>>()
-        val binaries = HashMap<String, MutableMap<String, ByteArray>>()
-        var writes = 0
-        override fun getString(key: String, name: String) = strings[key]?.get(name)
-        override fun setString(key: String, name: String, value: String) { writes++; strings.getOrPut(key) { HashMap() }[name] = value }
-        override fun delete(key: String, name: String) { writes++; strings[key]?.remove(name); binaries[key]?.remove(name) }
-        override fun getBinary(key: String, name: String) = binaries[key]?.get(name)
-        override fun setBinary(key: String, name: String, value: ByteArray) { writes++; binaries.getOrPut(key) { HashMap() }[name] = value }
-    }
-
     private val registry = FakeRegistry()
     private val exe = Path.of("C:\\Program Files\\Requestify\\Requestify.exe")
     private val run = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
