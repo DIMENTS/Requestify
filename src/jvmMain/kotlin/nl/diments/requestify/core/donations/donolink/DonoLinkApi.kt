@@ -38,6 +38,14 @@ data class DonoLinkMe(val ownerName: String, val keyExpiresAtEpochMs: Long?)
 /** One page of the activity feed; [items] are the raw activity objects, oldest first. */
 data class DonoLinkPage(val items: List<JsonObject>, val hasMore: Boolean, val nextCursor: String?)
 
+/** What [DonoLinkSource] needs from DonoLink. */
+interface DonoLinkFeed {
+    suspend fun me(): DonoLinkResult<DonoLinkMe>
+
+    /** DonoLink's own donations recorded since [since] (inclusive, `recorded_at`), oldest first; [cursor] for the next page. */
+    suspend fun activity(since: String, cursor: String?): DonoLinkResult<DonoLinkPage>
+}
+
 /**
  * DonoLink's REST API with the streamer's own API key (scope `activity:read`). It has no push: the source polls
  * [activity]. Every failure is an answer, never an exception.
@@ -46,16 +54,15 @@ class DonoLinkApi(
     private val http: HttpClient,
     private val key: () -> String?,
     private val baseUrl: String = "https://donolink.nl/api/v1",
-) {
-    suspend fun me(): DonoLinkResult<DonoLinkMe> = call("me", {}) { body ->
+) : DonoLinkFeed {
+    override suspend fun me(): DonoLinkResult<DonoLinkMe> = call("me", {}) { body ->
         val data = body["data"] as? JsonObject ?: return@call null
         val name = data.text("display_name")?.takeIf { it.isNotBlank() } ?: data.text("username") ?: return@call null
         val expires = (data["key"] as? JsonObject)?.text("expires_at")?.let(::parseInstant)
         DonoLinkMe(name, expires)
     }
 
-    /** DonoLink's own donations recorded since [since] (inclusive, `recorded_at`), oldest first; [cursor] for the next page. */
-    suspend fun activity(since: String, cursor: String?): DonoLinkResult<DonoLinkPage> = call(
+    override suspend fun activity(since: String, cursor: String?): DonoLinkResult<DonoLinkPage> = call(
         "activity",
         {
             parameter("platform", "donolink")
