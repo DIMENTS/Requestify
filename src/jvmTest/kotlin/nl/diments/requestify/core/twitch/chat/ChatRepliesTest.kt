@@ -31,7 +31,7 @@ class ChatRepliesTest {
         RejectReason.SpotifyUnavailable, RejectReason.TrackBlocked, RejectReason.ArtistBlocked, RejectReason.Explicit,
         RejectReason.TooShort(30_000), RejectReason.TooLong(420_000), RejectReason.Closed, RejectReason.QueueFull(25),
         RejectReason.ViewerLimit(2), RejectReason.Cooldown(95_000), RejectReason.Duplicate, RejectReason.BelowMinimum(100),
-        RejectReason.ShortLinkUnresolved,
+        RejectReason.ShortLinkUnresolved, RejectReason.BelowMinimumAmount(100, "EUR"), RejectReason.OtherCurrency("USD"),
     )
 
     private suspend fun everyReply(): List<String> {

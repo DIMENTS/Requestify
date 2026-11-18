@@ -25,6 +25,8 @@ import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.queue.RequestQueue
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.settings.DarkMode
+import nl.diments.requestify.core.settings.DonationSettings
+import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.settings.ThemeMode
@@ -145,6 +147,30 @@ class SavedFormatCompatTest {
         assertNothingMovedAside()
     }
 
+    /** Settings saved before donations existed read with the donation defaults. */
+    @Test
+    fun oldSettingsWithoutDonationsRead() {
+        val file = installed("settings-v1.json", "settings.json")
+        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value
+        assertEquals(DonationSettings(), loaded.donations)
+        assertNothingMovedAside()
+    }
+
+    /** The chosen donation source is saved in settings.json under these names. */
+    @Test
+    fun donationNamesArePinned() {
+        val names = mapOf(
+            DonationSourceKind.None to "\"none\"",
+            DonationSourceKind.DonoLink to "\"donolink\"",
+            DonationSourceKind.StreamElements to "\"streamelements\"",
+        )
+        assertEquals(DonationSourceKind.entries.toSet(), names.keys)
+        for ((kind, json) in names) {
+            assertEquals(json, AppJson.instance.encodeToString(DonationSourceKind.serializer(), kind))
+            assertEquals(kind, AppJson.instance.decodeFromString(DonationSourceKind.serializer(), json))
+        }
+    }
+
     /** Rejections are saved in rejected.json: each reason keeps its name and fields. */
     @Test
     fun everyRejectReasonKeepsItsSavedName() {
@@ -165,6 +191,8 @@ class SavedFormatCompatTest {
             RejectReason.Cooldown(180_000) to """{"type":"cooldown","remainingMs":180000}""",
             RejectReason.Duplicate to """{"type":"duplicate"}""",
             RejectReason.BelowMinimum(100) to """{"type":"below_minimum","minBits":100}""",
+            RejectReason.BelowMinimumAmount(100, "EUR") to """{"type":"below_minimum_amount","minCents":100,"currency":"EUR"}""",
+            RejectReason.OtherCurrency("USD") to """{"type":"other_currency","currency":"USD"}""",
             RejectReason.ShortLinkUnresolved to """{"type":"short_link"}""",
         )
         val subclasses = RejectReason.serializer().descriptor.getElementDescriptor(1) // the sealed subclasses

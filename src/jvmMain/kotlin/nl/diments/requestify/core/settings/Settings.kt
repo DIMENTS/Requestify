@@ -19,6 +19,7 @@ data class Settings(
     val paidPriority: Boolean = true,
     val rules: Rules = Rules(),
     val twitch: TwitchSettings = TwitchSettings(),
+    val donations: DonationSettings = DonationSettings(),
 )
 
 /** Saved in settings.json under the stable names below: never change them, or saved settings are lost. */

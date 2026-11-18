@@ -36,6 +36,10 @@ import nl.diments.requestify.resources.chat_rejected_not_a_track
 import nl.diments.requestify.resources.chat_rejected_not_a_track_generic
 import nl.diments.requestify.resources.chat_rejected_queue_full
 import nl.diments.requestify.resources.chat_rejected_short_link
+import nl.diments.requestify.resources.chat_rejected_below_minimum_amount
+import nl.diments.requestify.resources.chat_rejected_other_currency
+import nl.diments.requestify.ui.common.formatMoney
+import java.util.Locale
 import nl.diments.requestify.resources.chat_rejected_spotify_unavailable
 import nl.diments.requestify.resources.chat_rejected_too_long
 import nl.diments.requestify.resources.chat_rejected_too_short
@@ -199,6 +203,11 @@ class ChatReplies {
         RejectReason.Duplicate -> getString(Res.string.chat_rejected_duplicate)
         is RejectReason.BelowMinimum -> getString(Res.string.chat_rejected_below_minimum, reason.minBits)
         RejectReason.ShortLinkUnresolved -> getString(Res.string.chat_rejected_short_link)
+        is RejectReason.BelowMinimumAmount -> getString(
+            Res.string.chat_rejected_below_minimum_amount,
+            formatMoney(reason.minCents, reason.currency, Locale.getDefault()),
+        )
+        is RejectReason.OtherCurrency -> getString(Res.string.chat_rejected_other_currency, reason.currency)
     }
 
     private suspend fun kindName(kind: String): String? = when (kind) {

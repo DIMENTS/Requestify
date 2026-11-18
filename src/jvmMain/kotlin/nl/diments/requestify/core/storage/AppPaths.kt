@@ -12,6 +12,10 @@ class AppPaths(val dataDir: Path) {
     val pendingFile: Path get() = dataDir.resolve("pending.json")
     val streamFile: Path get() = dataDir.resolve("stream.json")
     val redemptionsFile: Path get() = dataDir.resolve("redemptions.json")
+    val donationsFile: Path get() = dataDir.resolve("donations.json")
+
+    /** The Log's day files (`yyyy-MM-dd.jsonl`). */
+    val logDir: Path get() = dataDir.resolve("log")
 
     companion object {
         /** `%APPDATA%\Requestify`, created if missing. */

@@ -64,6 +64,24 @@ class RejectedListTest {
     }
 
     @Test
+    fun donationReasonsHaveText() = runComposeUiTest {
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                RejectedList(
+                    listOf(
+                        entry(id = "d1", reason = RejectReason.BelowMinimumAmount(100, "EUR")),
+                        entry(id = "d2", reason = RejectReason.OtherCurrency("USD")),
+                    ),
+                    onAddAnyway = {},
+                    onDismiss = {},
+                )
+            }
+        }
+        onNodeWithText("Below the minimum (€1)").assertIsDisplayed()
+        onNodeWithText("Other currency (USD)").assertIsDisplayed()
+    }
+
+    @Test
     fun rowWithoutTrackOffersOnlyDismiss() = runComposeUiTest {
         var dismissed: String? = null
         setContent {

@@ -18,6 +18,8 @@ interface SecretStore {
 object SecretKeys {
     const val SPOTIFY_REFRESH_TOKEN = "spotify.refresh_token"
     const val TWITCH_REFRESH_TOKEN = "twitch.refresh_token"
+    const val DONOLINK_KEY = "donolink.key"
+    const val STREAMELEMENTS_JWT = "streamelements.jwt"
 }
 
 /**

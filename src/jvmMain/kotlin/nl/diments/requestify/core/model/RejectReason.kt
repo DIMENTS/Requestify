@@ -87,4 +87,14 @@ sealed interface RejectReason {
     @Serializable
     @SerialName("short_link")
     data object ShortLinkUnresolved : RejectReason
+
+    /** A donation below the minimum of [minCents] in [currency]. */
+    @Serializable
+    @SerialName("below_minimum_amount")
+    data class BelowMinimumAmount(val minCents: Long, val currency: String) : RejectReason
+
+    /** A donation in [currency], which the minimum (in another currency) cannot be compared with: the streamer decides. */
+    @Serializable
+    @SerialName("other_currency")
+    data class OtherCurrency(val currency: String) : RejectReason
 }
