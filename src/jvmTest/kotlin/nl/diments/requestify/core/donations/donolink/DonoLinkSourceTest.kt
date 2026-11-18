@@ -273,4 +273,12 @@ class DonoLinkSourceTest {
         assertEquals(listOf("dl-don_a"), sink.calls)
         assertEquals(DonationStatus.Connected, src.health.value.status)
     }
+
+    @Test
+    fun withoutAKeyItSaysSoAndWaits() = runTest {
+        val feed = FakeFeed()
+        feed.me = DonoLinkResult.KeyRefused(0) // no key saved yet
+        val src = source(feed, Sink())
+        assertEquals(DonationStatus.NoKey, src.health.value.status, "no key yet is not a refused key")
+    }
 }

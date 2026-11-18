@@ -57,6 +57,8 @@ class DonationsSetupViewModel(
     private val scope: CoroutineScope,
     private val clock: () -> Long,
     private val openBrowser: (String) -> Boolean,
+    /** Starts the running source again, with a key that was just saved. */
+    private val restartSource: () -> Unit = {},
 ) {
     private val test = MutableStateFlow<DonationTest>(DonationTest.Idle)
 
@@ -101,6 +103,7 @@ class DonationsSetupViewModel(
             return
         }
         keysChanged.value++
+        restartSource()
         runTest(kind)
     }
 

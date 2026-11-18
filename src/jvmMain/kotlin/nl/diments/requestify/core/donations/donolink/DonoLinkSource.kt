@@ -60,7 +60,7 @@ class DonoLinkSource(
 
     private sealed interface Polled {
         data object Done : Polled
-        data object Refused : Polled
+        data class Refused(val status: Int) : Polled
         data class Wait(val ms: Long) : Polled
         data object Failed : Polled
     }
@@ -77,7 +77,7 @@ class DonoLinkSource(
                         _health.value = health.value.copy(keyExpiresAtEpochMs = me.value.keyExpiresAtEpochMs)
                         nextMeAt = clock() + DAY_MS
                     }
-                    is DonoLinkResult.KeyRefused -> return refused()
+                    is DonoLinkResult.KeyRefused -> return refused(me.status)
                     else -> nextMeAt = clock() + HOUR_MS
                 }
             }
@@ -96,7 +96,7 @@ class DonoLinkSource(
                     _health.value = health.value.copy(status = DonationStatus.Connected, retryingSinceMs = null)
                     delay(pollMs)
                 }
-                Polled.Refused -> return refused()
+                is Polled.Refused -> return refused(polled.status)
                 is Polled.Wait -> delay(polled.ms)
                 Polled.Failed -> {
                     if (health.value.status != DonationStatus.Retrying) {
@@ -109,8 +109,10 @@ class DonoLinkSource(
         }
     }
 
-    private fun refused() {
-        _health.value = health.value.copy(status = DonationStatus.KeyRefused, retryingSinceMs = null)
+    /** Stops: status 0 means no key is saved yet, anything else that DonoLink refused the key. A pasted key restarts it. */
+    private fun refused(status: Int) {
+        val now = if (status == 0) DonationStatus.NoKey else DonationStatus.KeyRefused
+        _health.value = health.value.copy(status = now, retryingSinceMs = null)
     }
 
     private suspend fun <T> guarded(call: suspend () -> DonoLinkResult<T>): DonoLinkResult<T> = try {
@@ -133,7 +135,7 @@ class DonoLinkSource(
         while (true) {
             val page = when (val answer = feed.activity(start.since, pageCursor)) {
                 is DonoLinkResult.Ok -> answer.value
-                is DonoLinkResult.KeyRefused -> return Polled.Refused to cursor
+                is DonoLinkResult.KeyRefused -> return Polled.Refused(answer.status) to cursor
                 is DonoLinkResult.RateLimited -> return Polled.Wait(answer.retryAfterMs) to cursor
                 is DonoLinkResult.Failed -> return Polled.Failed to cursor
             }

@@ -124,4 +124,18 @@ class ConnectionChipTest {
         }
         onNodeWithText("DonoLink: new key needed").assertIsDisplayed()
     }
+
+    @Test
+    fun aMissingKeySaysAKeyIsNeeded() = runComposeUiTest {
+        assertEquals(
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.NoKey)),
+            connectionProblems(SpotifyHealth.Ok, TwitchHealth(), DonationHealth(DonationSourceKind.DonoLink, DonationStatus.NoKey), 0),
+        )
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                ConnectionChip(listOf(ConnectionProblem.Donation(DonationSourceKind.StreamElements, DonationProblem.NoKey)), onClick = {})
+            }
+        }
+        onNodeWithText("StreamElements: token needed").assertIsDisplayed()
+    }
 }

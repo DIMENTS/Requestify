@@ -50,6 +50,18 @@ class DonationSources(
         }
     }
 
+    /**
+     * A new key or token was saved: the running source starts again with it (a refused or missing key stopped it). Its
+     * cursor is kept: the source was on, so what came in meanwhile is caught up.
+     */
+    fun restartCurrent() {
+        synchronized(lock) {
+            val source = current ?: return
+            source.stop()
+            source.start()
+        }
+    }
+
     private fun switchTo(kind: DonationSourceKind) {
         synchronized(lock) {
             healthJob?.cancel()

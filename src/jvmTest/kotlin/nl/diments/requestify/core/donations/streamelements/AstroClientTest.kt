@@ -166,4 +166,15 @@ class AstroClientTest {
         say(connector.sockets.last(), welcome, subscribed)
         assertEquals(AstroState.Connected, client.state.value)
     }
+
+    @Test
+    fun withoutATokenItDoesNotConnect() = runTest {
+        val connector = FakeConnector { testScheduler.currentTime }
+        val client = AstroClient(connector, jwt = { null }, room = { "room1" }, scope = backgroundScope, clock = { testScheduler.currentTime })
+        client.start()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(AstroState.NoToken, client.state.value)
+        assertTrue(connector.connects.isEmpty())
+    }
 }

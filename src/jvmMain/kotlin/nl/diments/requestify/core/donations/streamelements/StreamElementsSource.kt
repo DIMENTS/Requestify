@@ -119,6 +119,10 @@ class StreamElementsSource(
                         set(DonationStatus.KeyRefused, null)
                     }
                     AstroState.Connecting -> set(DonationStatus.Connecting, null)
+                    AstroState.NoToken -> {
+                        heartbeat?.cancel()
+                        set(DonationStatus.NoKey, null)
+                    }
                     AstroState.Stopped -> heartbeat?.cancel()
                 }
             }

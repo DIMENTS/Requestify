@@ -423,6 +423,8 @@
     <!-- Donations (plan 3) -->
     <string name="connection_donolink_key_refused">DonoLink: new key needed</string>
     <string name="connection_streamelements_refused">StreamElements: new token needed</string>
+    <string name="connection_donolink_no_key">DonoLink: key needed</string>
+    <string name="connection_streamelements_no_token">StreamElements: token needed</string>
     <string name="connection_donolink_disconnected">DonoLink not connected</string>
     <string name="connection_streamelements_disconnected">StreamElements not connected</string>
     <string name="connection_donolink_key_expiring">DonoLink key expires soon</string>

@@ -423,6 +423,8 @@
     <!-- Donaties (plan 3) -->
     <string name="connection_donolink_key_refused">DonoLink: nieuwe sleutel nodig</string>
     <string name="connection_streamelements_refused">StreamElements: nieuwe token nodig</string>
+    <string name="connection_donolink_no_key">DonoLink: sleutel nodig</string>
+    <string name="connection_streamelements_no_token">StreamElements: token nodig</string>
     <string name="connection_donolink_disconnected">DonoLink niet verbonden</string>
     <string name="connection_streamelements_disconnected">StreamElements niet verbonden</string>
     <string name="connection_donolink_key_expiring">DonoLink-sleutel verloopt binnenkort</string>

@@ -3,7 +3,8 @@ package nl.diments.requestify.core.donations
 import kotlinx.coroutines.flow.StateFlow
 import nl.diments.requestify.core.settings.DonationSourceKind
 
-enum class DonationStatus { Off, Connecting, Connected, Retrying, KeyRefused }
+/** [NoKey]: no key or token is saved yet; [KeyRefused]: the platform refused the saved one. */
+enum class DonationStatus { Off, Connecting, Connected, Retrying, KeyRefused, NoKey }
 
 /**
  * How the donation source is doing, for the connection chip, the Donations card and the Log. [retryingSinceMs]: when

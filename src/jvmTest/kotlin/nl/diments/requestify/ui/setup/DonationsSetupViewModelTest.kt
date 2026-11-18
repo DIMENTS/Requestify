@@ -49,6 +49,7 @@ class DonationsSetupViewModelTest {
     private val expiry = Instant.parse("2026-12-06T12:00:00Z").toEpochMilli()
 
     private val secrets = InMemorySecretStore()
+    private var restarts = 0
     private val donoLink = object : DonoLinkFeed {
         var answer: DonoLinkResult<DonoLinkMe> = DonoLinkResult.Ok(DonoLinkMe("DIMENTS", expiry))
         var calls = 0
@@ -74,6 +75,7 @@ class DonationsSetupViewModelTest {
         scope = backgroundScope,
         clock = { now },
         openBrowser = { true },
+        restartSource = { restarts++ },
     )
 
     @Test
@@ -144,5 +146,14 @@ class DonationsSetupViewModelTest {
         assertTrue(vm.setMinimum(500))
         assertEquals(500, settings.settings.value.donations.streamElementsMinimumCents)
         assertEquals(250, settings.settings.value.donations.donoLinkMinimumCents, "each source keeps its own")
+    }
+
+    @Test
+    fun pastingAKeyRestartsTheSource() = runTest {
+        val vm = vm()
+        vm.choose(DonationSourceKind.DonoLink)
+        val before = restarts
+        vm.pasteKey("dl_live_new")
+        assertEquals(before + 1, restarts, "a new key takes effect at once, not at the next app start")
     }
 }

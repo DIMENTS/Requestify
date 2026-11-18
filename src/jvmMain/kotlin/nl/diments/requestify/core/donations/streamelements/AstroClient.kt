@@ -96,6 +96,9 @@ sealed interface AstroState {
 
     /** The token was refused: nothing more until the next start. */
     data object Refused : AstroState
+
+    /** No token is saved yet: nothing is tried until the next start. */
+    data object NoToken : AstroState
 }
 
 /**
@@ -149,6 +152,10 @@ class AstroClient(
     }
 
     private suspend fun run() {
+        if (jwt().isNullOrBlank()) {
+            _state.value = AstroState.NoToken
+            return
+        }
         var resumeToken: String? = null
         var failures = 0
         while (true) {

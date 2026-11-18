@@ -11,6 +11,8 @@ import nl.diments.requestify.resources.connection_all_connected
 import nl.diments.requestify.resources.connection_donolink_disconnected
 import nl.diments.requestify.resources.connection_donolink_key_expiring
 import nl.diments.requestify.resources.connection_donolink_key_refused
+import nl.diments.requestify.resources.connection_donolink_no_key
+import nl.diments.requestify.resources.connection_streamelements_no_token
 import nl.diments.requestify.resources.connection_reward_removed
 import nl.diments.requestify.resources.connection_streamelements_disconnected
 import nl.diments.requestify.resources.connection_streamelements_refused
@@ -18,7 +20,7 @@ import nl.diments.requestify.resources.connection_twitch_disconnected
 import nl.diments.requestify.resources.connection_twitch_login_needed
 
 /** What is wrong with the donation source. */
-enum class DonationProblem { KeyRefused, Disconnected, KeyExpiring }
+enum class DonationProblem { KeyRefused, NoKey, Disconnected, KeyExpiring }
 
 /** Something that needs the streamer's attention on Connections. */
 sealed interface ConnectionProblem {
@@ -61,6 +63,9 @@ fun connectionProblems(
     if (kind != DonationSourceKind.None && donations.status == DonationStatus.KeyRefused) {
         add(ConnectionProblem.Donation(kind, DonationProblem.KeyRefused))
     }
+    if (kind != DonationSourceKind.None && donations.status == DonationStatus.NoKey) {
+        add(ConnectionProblem.Donation(kind, DonationProblem.NoKey))
+    }
     if (spotify == SpotifyHealth.NoActiveDevice) add(ConnectionProblem.Spotify(spotify))
     if (spotify is SpotifyHealth.Unreachable || spotify is SpotifyHealth.RateLimited) add(ConnectionProblem.Spotify(spotify))
     if (twitch.disconnected) add(ConnectionProblem.TwitchDisconnected)
@@ -87,6 +92,11 @@ private fun ConnectionProblem.look(): StatusLook = when (this) {
             DonationProblem.KeyRefused -> StatusLook(
                 if (streamElements) Res.string.connection_streamelements_refused else Res.string.connection_donolink_key_refused,
                 AppIcons.Warning,
+                Tone.Problem,
+            )
+            DonationProblem.NoKey -> StatusLook(
+                if (streamElements) Res.string.connection_streamelements_no_token else Res.string.connection_donolink_no_key,
+                AppIcons.Link,
                 Tone.Problem,
             )
             DonationProblem.Disconnected -> StatusLook(

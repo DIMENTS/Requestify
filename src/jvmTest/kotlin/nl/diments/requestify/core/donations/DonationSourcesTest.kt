@@ -79,4 +79,18 @@ class DonationSourcesTest {
         assertEquals(DonationHealth(), sources.health.value)
     }
 
+
+    @Test
+    fun restartCurrentRestartsTheRunningSource() = runTest {
+        val log = mutableListOf<String>()
+        val settings = settings()
+        settings.choose(DonationSourceKind.DonoLink)
+        val sources = DonationSources(settings, { Fake(DonationSourceKind.DonoLink, log) }, { Fake(DonationSourceKind.StreamElements, log) }, backgroundScope)
+        sources.start()
+        runCurrent()
+
+        sources.restartCurrent()
+        assertEquals(listOf("start DonoLink", "stop DonoLink", "start DonoLink"), log)
+        assertEquals(DonationStatus.Connected, sources.health.value.status)
+    }
 }

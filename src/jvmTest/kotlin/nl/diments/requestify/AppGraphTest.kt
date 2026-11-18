@@ -51,6 +51,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import nl.diments.requestify.core.donations.DonationCursor
 import nl.diments.requestify.core.donations.DonationCursors
+import nl.diments.requestify.core.donations.DonationStatus
 import nl.diments.requestify.core.settings.DonationSettings
 import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.core.model.Payment
@@ -354,6 +355,20 @@ class AppGraphTest {
             delay(QUIET_MS)
             assertEquals(1, graph.home.state.value.queue.size, "polled again, queued once")
             assertTrue(services.sends.isEmpty(), "no chat reply without Twitch")
+        }
+    }
+
+    @Test
+    fun aKeyPastedAfterChoosingDonoLinkStartsPolling() = runBlocking {
+        val services = Services()
+        services.donoLinkActivity = donoLinkDonation("don_aaaaaaaaaaaaaaa")
+        val secrets = donoLinkWithoutTwitch().apply { remove(SecretKeys.DONOLINK_KEY) } // chosen, but no key yet
+        withGraph(services, secrets) { graph ->
+            await("the source says a key is needed") { graph.donationSources.health.value.status == DonationStatus.NoKey }
+            graph.donationsSetup.pasteKey("dl_live_key")
+
+            await("the donation in the queue") { graph.home.state.value.queue.isNotEmpty() }
+            assertEquals("dl-don_aaaaaaaaaaaaaaa", graph.home.state.value.queue.single().id)
         }
     }
 

@@ -367,6 +367,7 @@ class AppGraph(
         scope = scope,
         clock = System::currentTimeMillis,
         openBrowser = { url -> browse(url) },
+        restartSource = { donationSources.restartCurrent() },
     )
 
     /** The Log: it listens to what the app already reports. */
