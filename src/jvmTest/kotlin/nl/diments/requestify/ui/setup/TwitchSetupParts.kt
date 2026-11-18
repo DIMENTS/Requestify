@@ -45,6 +45,6 @@ internal class TwitchSetupParts(
     /** Whether requests are open, and the events Twitch sends about the reward. */
     val requestsOpen = MutableStateFlow(true)
     val rewardEvents = MutableSharedFlow<EventSubEvent>(extraBufferCapacity = 16)
-    val rewards = RewardManager(helix.api, settings, rewardEvents, {}, requestsOpen, { AppLanguage.English }, scope)
+    val rewards = RewardManager(helix.api, settings, rewardEvents, {}, requestsOpen, { AppLanguage.English }, scope, retryFirstMs = 20, retryMaxMs = 80)
     val vm = TwitchSetupViewModel(auth, api, rewards, settings, scope, openBrowser = { opened += it }, copyToClipboard = { copied += it })
 }

@@ -263,7 +263,8 @@
     <string name="twitch_points_field_prompt">Text viewers see</string>
     <string name="twitch_points_readonly_hint">Change this in the Twitch dashboard</string>
     <string name="twitch_points_duplicate">Another reward on your channel already has this name.</string>
-    <string name="twitch_points_failed">Couldn’t reach Twitch. Try again in a moment.</string>
+    <string name="twitch_points_failed">That didn’t work. Check the name and text, or try again in a moment.</string>
+    <string name="twitch_points_out_of_sync">Twitch still has the old setting. Requestify keeps trying.</string>
     <string name="twitch_points_forbidden">Twitch only allows Channel Points rewards for Affiliates and Partners.</string>
     <string name="twitch_points_sheet_title">Choose reward</string>
     <string name="twitch_points_sheet_create">Create new reward</string>

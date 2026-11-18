@@ -148,6 +148,9 @@ class TwitchSetupViewModel(
     /** Whether requests are open; Requestify's own reward is paused while they are not. */
     val requestsOpen: StateFlow<Boolean> get() = rewards.requestsOpen
 
+    /** Twitch still has the reward switched or paused differently from what the app wants; it keeps retrying. */
+    val rewardOutOfSync: StateFlow<Boolean> get() = rewards.outOfSync
+
     /** The "Choose reward" sheet; null while it is closed. */
     val rewardSheet: StateFlow<RewardSheet?> = _sheet.asStateFlow()
     val copyDraft: StateFlow<CopyDraft?> = _copyDraft.asStateFlow()

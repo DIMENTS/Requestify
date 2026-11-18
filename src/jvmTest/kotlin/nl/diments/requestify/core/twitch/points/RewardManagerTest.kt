@@ -51,7 +51,7 @@ class RewardManagerTest {
         val events = MutableSharedFlow<EventSubEvent>(extraBufferCapacity = 16)
         val open = MutableStateFlow(true)
         var rewardChanges = 0
-        val manager = RewardManager(helix.api, settings, events, { rewardChanges++ }, open, { language }, scope)
+        val manager = RewardManager(helix.api, settings, events, { rewardChanges++ }, open, { language }, scope, retryFirstMs = 20, retryMaxMs = 80)
         val points get() = settings.settings.value.twitch.channelPoints
     }
 
@@ -287,6 +287,64 @@ class RewardManagerTest {
             assertEquals("Song request", title)
             assertEquals("Type a song", prompt)
         }
+    }
+
+    @Test
+    fun aFailedPauseIsRetriedAndThenSent() = runBlocking {
+        val h = harness(points = managedPoints).withOwnReward()
+        h.helix.updateStatus = 500
+        h.manager.start()
+        h.open.value = false
+        eventually("the refusal shows") { h.manager.outOfSync.value }
+        eventually("a retry") { h.helix.patches.size >= 3 }
+        assertFalse(h.helix.rewards.single().isPaused)
+
+        h.helix.updateStatus = 200
+        eventually("the pause lands") { h.helix.rewards.single().isPaused && !h.manager.outOfSync.value }
+        h.manager.stop()
+    }
+
+    @Test
+    fun aNewerWantedStateWinsOverAPendingRetry() = runBlocking {
+        val h = harness(points = managedPoints).withOwnReward()
+        h.helix.updateStatus = 500
+        h.manager.start()
+        h.open.value = false
+        eventually("the refusal shows") { h.manager.outOfSync.value }
+        h.open.value = true // requests are open again before the pause could be sent
+        val before = h.helix.patches.size
+        h.helix.updateStatus = 200
+        eventually("in sync") { !h.manager.outOfSync.value }
+        assertFalse(h.helix.rewards.single().isPaused)
+        assertEquals(emptyList(), h.helix.patches.drop(before).filter { it.body!!["is_paused"]?.jsonPrimitive?.boolean == true })
+        h.manager.stop()
+    }
+
+    @Test
+    fun aDeadLoginStopsTheRetries() = runBlocking {
+        val h = harness(points = managedPoints).withOwnReward()
+        h.helix.updateStatus = 401
+        h.manager.start()
+        eventually("the refusal shows") { h.manager.outOfSync.value }
+        Thread.sleep(100)
+        val sent = h.helix.patches.size
+        Thread.sleep(300)
+        assertEquals(sent, h.helix.patches.size, "no retries without a login")
+        h.manager.stop()
+        assertFalse(h.manager.outOfSync.value)
+    }
+
+    @Test
+    fun onlyAUniqueNameRefusalIsADuplicate() = runBlocking {
+        val h = harness(points = managedPoints).withOwnReward()
+        h.helix.createStatus = 400
+        h.helix.badRequestMessage = "The message was held by AutoMod"
+        assertEquals(RewardActionResult.Failed, h.manager.createNew())
+        h.helix.updateStatus = 400
+        assertEquals(RewardActionResult.Failed, h.manager.edit("Nope", null, null))
+        h.helix.badRequestMessage = "The title must be unique (case-insensitive)"
+        assertEquals(RewardActionResult.DuplicateTitle, h.manager.createNew())
+        assertEquals(RewardActionResult.DuplicateTitle, h.manager.edit("Nope", null, null))
     }
 
     @Test

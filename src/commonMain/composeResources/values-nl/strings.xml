@@ -263,7 +263,8 @@
     <string name="twitch_points_field_prompt">Tekst voor kijkers</string>
     <string name="twitch_points_readonly_hint">Wijzig dit in het Twitch-dashboard</string>
     <string name="twitch_points_duplicate">Een andere beloning in je kanaal heet al zo.</string>
-    <string name="twitch_points_failed">Twitch is niet bereikbaar. Probeer het zo nog eens.</string>
+    <string name="twitch_points_failed">Dat lukte niet. Controleer de naam en tekst, of probeer het zo nog eens.</string>
+    <string name="twitch_points_out_of_sync">Twitch heeft nog de oude instelling. Requestify blijft het proberen.</string>
     <string name="twitch_points_forbidden">Twitch staat kanaalpunten-beloningen alleen toe voor Affiliates en Partners.</string>
     <string name="twitch_points_sheet_title">Beloning kiezen</string>
     <string name="twitch_points_sheet_create">Nieuwe beloning maken</string>

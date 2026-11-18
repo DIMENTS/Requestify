@@ -73,6 +73,7 @@ import nl.diments.requestify.resources.twitch_points_link_confirm
 import nl.diments.requestify.resources.twitch_points_link_direct
 import nl.diments.requestify.resources.twitch_points_link_title
 import nl.diments.requestify.resources.twitch_points_not_affiliate
+import nl.diments.requestify.resources.twitch_points_out_of_sync
 import nl.diments.requestify.resources.twitch_points_paused
 import nl.diments.requestify.resources.twitch_points_readonly_hint
 import nl.diments.requestify.resources.twitch_points_recommended
@@ -106,6 +107,7 @@ internal fun ChannelPointsSection(vm: TwitchSetupViewModel, eligible: Boolean) {
     val settings by vm.settings.collectAsState()
     val open by vm.requestsOpen.collectAsState()
     val problem by vm.rewardProblem.collectAsState()
+    val outOfSync by vm.rewardOutOfSync.collectAsState()
     val points = settings.twitch.channelPoints
     val hasReward = points.rewardId != null
     val active = points.enabled && eligible
@@ -149,6 +151,9 @@ internal fun ChannelPointsSection(vm: TwitchSetupViewModel, eligible: Boolean) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    if (outOfSync && hasReward && points.managed) {
+        ErrorText(stringResource(Res.string.twitch_points_out_of_sync), Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.xs))
     }
     if (active && hasReward) {
         Column(

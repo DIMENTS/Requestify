@@ -44,6 +44,9 @@ class FakeRewardsHelix {
 
     @Volatile var listStatus = 200
 
+    /** The message of a 400 (create or update). */
+    @Volatile var badRequestMessage = "The title must be unique (case-insensitive) amongst all of the broadcaster's custom rewards."
+
     private var created = 0
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
 
@@ -73,7 +76,7 @@ class FakeRewardsHelix {
                     }
                     HttpMethod.Post -> when (createStatus) {
                         400 -> respond(
-                            """{"error":"Bad Request","status":400,"message":"CREATE_CUSTOM_REWARD_DUPLICATE_REWARD"}""",
+                            """{"error":"Bad Request","status":400,"message":"$badRequestMessage"}""",
                             HttpStatusCode.BadRequest,
                             json,
                         )
@@ -102,7 +105,7 @@ class FakeRewardsHelix {
                     }
                     HttpMethod.Patch -> {
                         if (updateStatus != 200) {
-                            return@MockEngine respond("""{"status":$updateStatus,"message":"x"}""", HttpStatusCode.fromValue(updateStatus), json)
+                            return@MockEngine respond("""{"status":$updateStatus,"message":"$badRequestMessage"}""", HttpStatusCode.fromValue(updateStatus), json)
                         }
                         val id = query.getValue("id")
                         val old = rewards.first { it.id == id }

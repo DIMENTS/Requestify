@@ -5,7 +5,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -70,6 +73,8 @@ class RewardManager(
     val requestsOpen: StateFlow<Boolean>,
     private val language: () -> AppLanguage,
     private val scope: CoroutineScope,
+    private val retryFirstMs: Long = 5_000,
+    private val retryMaxMs: Long = 300_000,
 ) {
     constructor(
         api: TwitchApi,
@@ -86,6 +91,16 @@ class RewardManager(
     private val lock = Mutex()
     private var known: Known? = null
     private var jobs: List<Job> = emptyList()
+
+    /** Bumped by every sync outcome: a retry that was scheduled before the latest one is stale and does nothing. */
+    private var retryGeneration = 0L
+    private var retryDelayMs = retryFirstMs
+    private val _outOfSync = MutableStateFlow(false)
+
+    /** True while Twitch's enabled or paused flag is not what the app wants (a change was refused or not reached). */
+    val outOfSync: StateFlow<Boolean> = _outOfSync.asStateFlow()
+
+    private enum class Synced { Yes, Retry, LoginNeeded }
 
     private fun points() = settings.settings.value.twitch.channelPoints
 
@@ -193,6 +208,8 @@ class RewardManager(
         jobs.forEach(Job::cancel)
         jobs = emptyList()
         known = null
+        retryGeneration++
+        _outOfSync.value = false
     }
 
     /** What decides whether Twitch has to be told something. */
@@ -202,11 +219,14 @@ class RewardManager(
 
     private suspend fun sync() = lock.withLock { syncLocked() }
 
+
     /** Makes Twitch's enabled and paused flags what the app wants; only for Requestify's own reward. */
-    private suspend fun syncLocked() {
+    private suspend fun syncLocked() = afterSync(trySync())
+
+    private suspend fun trySync(): Synced {
         val p = points()
         val id = p.rewardId
-        if (id == null || !p.managed || p.rewardRemoved) return
+        if (id == null || !p.managed || p.rewardRemoved) return Synced.Yes
         val current = known?.takeIf { it.id == id }
         val wantPaused = !requestsOpen.value
         val patch = RewardPatch(
@@ -214,11 +234,37 @@ class RewardManager(
             // A reward that is switched off is hidden: its pause does not matter.
             isPaused = wantPaused.takeIf { p.enabled && current?.paused != it },
         )
-        if (patch.isEnabled == null && patch.isPaused == null) return
-        when (val result = api.updateReward(id, patch)) {
-            is TwitchResult.Ok -> known = Known(id, result.value.isEnabled, result.value.isPaused)
-            is TwitchResult.NotFound -> markRemoved(id)
-            else -> Unit // The next change, or the next connection, tries again.
+        if (patch.isEnabled == null && patch.isPaused == null) return Synced.Yes
+        return when (val result = api.updateReward(id, patch)) {
+            is TwitchResult.Ok -> {
+                known = Known(id, result.value.isEnabled, result.value.isPaused)
+                Synced.Yes
+            }
+            is TwitchResult.NotFound -> {
+                markRemoved(id)
+                Synced.Yes
+            }
+            // Without a login nothing can be sent: the session starting again syncs.
+            is TwitchResult.LoginNeeded, is TwitchResult.LoggedOut -> Synced.LoginNeeded
+            else -> Synced.Retry
+        }
+    }
+
+    /** [known] stays as it was on a failure, so the next sync sends the same change again. */
+    private fun afterSync(result: Synced) {
+        val generation = ++retryGeneration
+        _outOfSync.value = result != Synced.Yes
+        when (result) {
+            Synced.Yes -> retryDelayMs = retryFirstMs
+            Synced.LoginNeeded -> Unit
+            Synced.Retry -> {
+                val wait = retryDelayMs
+                retryDelayMs = (retryDelayMs * 2).coerceAtMost(retryMaxMs)
+                scope.launch {
+                    delay(wait)
+                    if (generation == retryGeneration) sync()
+                }
+            }
         }
     }
 
@@ -277,7 +323,13 @@ class RewardManager(
     }
 
     private fun failure(result: TwitchResult<*>): RewardActionResult = when (result) {
-        is TwitchResult.BadRequest -> RewardActionResult.DuplicateTitle
+        // Twitch says the name is taken in a plain 400; its other 400s (AutoMod, a bad value) are no duplicate.
+        is TwitchResult.BadRequest ->
+            if (result.message.contains("unique", ignoreCase = true) || result.message.contains("duplicate", ignoreCase = true)) {
+                RewardActionResult.DuplicateTitle
+            } else {
+                RewardActionResult.Failed
+            }
         is TwitchResult.Forbidden -> RewardActionResult.NotAffiliate
         else -> RewardActionResult.Failed
     }

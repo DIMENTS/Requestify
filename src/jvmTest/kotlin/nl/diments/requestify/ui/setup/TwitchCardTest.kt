@@ -313,6 +313,23 @@ class TwitchCardTest {
     }
 
     @Test
+    fun theCardSaysWhileTwitchDoesNotMatch() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(own)
+        p.helix.rewards += p.helix.reward("rw-1")
+        p.helix.manageable += "rw-1"
+        p.helix.updateStatus = 500
+        show(p)
+        p.rewards.start()
+        p.requestsOpen.value = false
+        awaitText("Twitch still has the old setting. Requestify keeps trying.")
+        p.helix.updateStatus = 200
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithText("Twitch still has the old setting. Requestify keeps trying.").fetchSemanticsNodes().isEmpty()
+        }
+        p.rewards.stop()
+    }
+
+    @Test
     fun aRemovedRewardOffersCreateAgain() = runDesktopComposeUiTest(width = 900, height = 1200) {
         val p = pointsParts(own.copy(rewardRemoved = true))
         show(p)
