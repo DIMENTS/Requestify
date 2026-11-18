@@ -39,6 +39,16 @@ class StreamElementsApiTest {
     }
 
     @Test
+    fun theChannelGivesItsCurrency() = runBlocking<Unit> {
+        var path: String? = null
+        val api = StreamElementsApi(HttpClient(MockEngine { req -> path = req.url.encodedPath; respond("""{"currency":"eur","enabled":true}""", HttpStatusCode.OK, json) }), jwt = { "tok" })
+        assertEquals(SeResult.Ok("EUR"), api.channelCurrency("ch1"))
+        assertEquals("/kappa/v2/tipping/ch1", path)
+        val without = StreamElementsApi(HttpClient(MockEngine { respond("""{"enabled":true}""", HttpStatusCode.OK, json) }), jwt = { "tok" })
+        assertEquals(SeResult.Ok(null), without.channelCurrency("ch1"), "no such field: unknown")
+    }
+
+    @Test
     fun aRefusedTokenSaysRefused() = runBlocking<Unit> {
         for (status in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden)) {
             val api = StreamElementsApi(HttpClient(MockEngine { respond("""{"message":"Not allowed"}""", status, json) }), jwt = { "tok" })

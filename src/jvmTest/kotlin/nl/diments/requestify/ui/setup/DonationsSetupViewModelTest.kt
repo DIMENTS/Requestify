@@ -66,12 +66,12 @@ class DonationsSetupViewModelTest {
     private fun settings() = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
     private fun cursors() = DonationCursorStore(JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer()) { DonationCursors() }, inCallerSaveContext())
 
-    private fun TestScope.vm(settings: SettingsStore = settings(), cursors: DonationCursorStore = cursors()) = DonationsSetupViewModel(
+    private fun TestScope.vm(settings: SettingsStore = settings(), cursors: DonationCursorStore = cursors(), se: StreamElementsApi = streamElements) = DonationsSetupViewModel(
         settings = settings,
         secrets = secrets,
         cursors = cursors,
         donoLink = donoLink,
-        streamElements = streamElements,
+        streamElements = se,
         health = MutableStateFlow(DonationHealth()),
         scope = backgroundScope,
         clock = { now },
@@ -108,6 +108,33 @@ class DonationsSetupViewModelTest {
         donoLink.answer = DonoLinkResult.KeyRefused(401)
         vm.pasteKey("dl_live_wrong")
         awaitUntil("the refusal") { vm.state.value.test == DonationTest.Refused }
+    }
+
+    @Test
+    fun theChannelCurrencyIsSavedAfterTheTest() = runTest {
+        val withCurrency = StreamElementsApi(
+            HttpClient(MockEngine { req ->
+                val body = if (req.url.encodedPath.endsWith("/tipping/ch1")) """{"currency":"EUR"}""" else """{"_id":"ch1","username":"diments","displayName":"DIMENTS"}"""
+                respond(body, HttpStatusCode.OK, json)
+            }),
+            jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) },
+        )
+        val settings = settings()
+        val vm = vm(settings, se = withCurrency)
+        vm.choose(DonationSourceKind.StreamElements)
+        vm.pasteKey("eyJ.jwt.sig")
+        awaitUntil("the currency") { settings.settings.value.donations.streamElementsCurrency != null }
+        assertEquals("EUR", settings.settings.value.donations.streamElementsCurrency)
+        assertEquals(true, vm.state.value.currencyKnown)
+    }
+
+    @Test
+    fun anUnknownCurrencyIsSaid() = runTest {
+        val vm = vm() // the default fake answers no currency
+        vm.choose(DonationSourceKind.StreamElements)
+        vm.pasteKey("eyJ.jwt.sig")
+        awaitUntil("the test") { vm.state.value.test is DonationTest.Ok }
+        assertEquals(false, vm.state.value.currencyKnown, "the card says the minimum is compared in each tip's currency")
     }
 
     @Test

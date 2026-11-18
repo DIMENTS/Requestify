@@ -65,6 +65,37 @@ class StreamElementsApi(
             SeResult.Failed(e.message ?: "network")
         }
     }
+
+    /**
+     * The currency the channel takes tips in, from its tipping settings (`GET /kappa/v2/tipping/<channel>`, field
+     * `currency`); Ok(null) when StreamElements does not say. Unverified against SE's docs (see the API notes): the
+     * minimum then stays compared in each tip's own currency.
+     */
+    suspend fun channelCurrency(channelId: String): SeResult<String?> {
+        val token = jwt()?.takeIf { it.isNotBlank() } ?: return SeResult.Refused
+        val response = try {
+            http.get("$baseUrl/tipping/$channelId") { header(HttpHeaders.Authorization, "Bearer $token") }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return SeResult.Failed(e.message ?: e::class.simpleName ?: "network")
+        }
+        val status = response.status.value
+        if (status == 401 || status == 403) return SeResult.Refused
+        if (!response.status.isSuccess()) return SeResult.Failed("HTTP $status")
+        return try {
+            val body = AppJson.instance.parseToJsonElement(response.bodyAsText()).jsonObject
+            SeResult.Ok(body.text("currency")?.takeIf { it.length == 3 }?.uppercase())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: SerializationException) {
+            SeResult.Ok(null)
+        } catch (_: IllegalArgumentException) {
+            SeResult.Ok(null)
+        } catch (e: IOException) {
+            SeResult.Failed(e.message ?: "network")
+        }
+    }
 }
 
 /** The `channel` claim of a StreamElements JWT (its payload is not checked, only read); null when there is none. */

@@ -40,6 +40,8 @@ data class DonationsCardState(
     val minimumCents: Long,
     val health: DonationHealth,
     val keyDaysLeft: Int?,
+    /** False for StreamElements while its channel's currency is unknown: the minimum is then compared in each tip's currency. */
+    val currencyKnown: Boolean = true,
 )
 
 /**
@@ -79,6 +81,7 @@ class DonationsSetupViewModel(
             // Before its source runs: StreamElements is live-only (no confirmed way to fetch tips made meanwhile).
             health = if (h.kind == kind) h else DonationHealth(kind, canCatchUp = kind != DonationSourceKind.StreamElements),
             keyDaysLeft = expires?.let { ((it - clock()) / DAY_MS).toInt().coerceAtLeast(0) },
+            currencyKnown = kind != DonationSourceKind.StreamElements || s.donations.streamElementsCurrency != null,
         )
     }
 
@@ -137,7 +140,12 @@ class DonationsSetupViewModel(
                     is DonoLinkResult.Failed -> DonationTest.Failed(me.message)
                 }
                 DonationSourceKind.StreamElements -> when (val channel = streamElements.channel()) {
-                    is SeResult.Ok -> DonationTest.Ok(channel.value.name, null)
+                    is SeResult.Ok -> {
+                        (streamElements.channelCurrency(channel.value.id) as? SeResult.Ok)?.value?.let { currency ->
+                            settings.tryUpdate { it.copy(donations = it.donations.copy(streamElementsCurrency = currency)) }
+                        }
+                        DonationTest.Ok(channel.value.name, null)
+                    }
                     SeResult.Refused -> DonationTest.Refused
                     is SeResult.Failed -> DonationTest.Failed(channel.message)
                 }

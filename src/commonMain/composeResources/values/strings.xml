@@ -495,7 +495,8 @@
     <string name="donations_test_failed">Couldn’t reach %1$s: %2$s</string>
     <string name="donations_minimum">Minimum per request</string>
     <string name="donations_minimum_hint_donolink">In euros</string>
-    <string name="donations_minimum_hint_streamelements">In your tips’ currency</string>
+    <string name="donations_minimum_hint_streamelements">In your channel’s currency; a tip in another currency waits in Rejected</string>
+    <string name="donations_minimum_hint_streamelements_unknown">Your channel’s currency is unknown: the minimum is compared in each tip’s own currency</string>
     <string name="donations_minimum_invalid">At least 0.01</string>
     <string name="donations_no_catch_up">Tips made while Requestify is off are not picked up.</string>
 </resources>

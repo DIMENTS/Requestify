@@ -45,3 +45,12 @@ No confirmed way to fetch tips made while Requestify was off → StreamElements 
 `DonationHealth.canCatchUp = false`, the Donations card says tips made while Requestify is off are not picked up, and the
 Log gets a "possible missed tips" gap for every time the source was on but not connected (app off, connection lost).
 A tip whose moderation says `rejected` is not a request; `pending` and `allowed` ones are (the money is in).
+
+## Channel currency (plan 4, 2026-11-18)
+
+- `GET /kappa/v2/channels/me` gives no currency. Requestify reads the channel's tipping settings,
+  `GET /kappa/v2/tipping/<channel id>` (Bearer JWT), field `currency` (3 letters), when the streamer's key is tested,
+  and saves it as the StreamElements minimum's currency.
+- **Unverified** against SE's current documentation (it could not be checked while building plan 4, and the user's
+  viewers use DonoLink, so it cannot be live-tested). When the call fails or has no such field, the currency stays
+  unknown and the minimum is compared in each tip's own currency (plan 3's behaviour); the Donations card says so.

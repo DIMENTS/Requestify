@@ -49,6 +49,7 @@ import nl.diments.requestify.resources.donations_linked
 import nl.diments.requestify.resources.donations_minimum
 import nl.diments.requestify.resources.donations_minimum_hint_donolink
 import nl.diments.requestify.resources.donations_minimum_hint_streamelements
+import nl.diments.requestify.resources.donations_minimum_hint_streamelements_unknown
 import nl.diments.requestify.resources.donations_minimum_invalid
 import nl.diments.requestify.resources.donations_no_catch_up
 import nl.diments.requestify.resources.donations_none
@@ -218,7 +219,8 @@ private fun MinimumField(state: DonationsCardState, vm: DonationsSetupViewModel)
                 stringResource(
                     when {
                         invalid -> Res.string.donations_minimum_invalid
-                        streamElements -> Res.string.donations_minimum_hint_streamelements
+                        streamElements && state.currencyKnown -> Res.string.donations_minimum_hint_streamelements
+                        streamElements -> Res.string.donations_minimum_hint_streamelements_unknown
                         else -> Res.string.donations_minimum_hint_donolink
                     },
                 ),

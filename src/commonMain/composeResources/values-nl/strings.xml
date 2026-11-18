@@ -495,7 +495,8 @@
     <string name="donations_test_failed">Kon %1$s niet bereiken: %2$s</string>
     <string name="donations_minimum">Minimum per verzoek</string>
     <string name="donations_minimum_hint_donolink">In euro</string>
-    <string name="donations_minimum_hint_streamelements">In de valuta van je tips</string>
+    <string name="donations_minimum_hint_streamelements">In de valuta van je kanaal; een tip in een andere valuta wacht bij Geweigerd</string>
+    <string name="donations_minimum_hint_streamelements_unknown">De valuta van je kanaal is onbekend: het minimum geldt in de valuta van elke tip</string>
     <string name="donations_minimum_invalid">Minstens 0,01</string>
     <string name="donations_no_catch_up">Tips gedaan terwijl Requestify uit staat, worden niet opgehaald.</string>
 </resources>

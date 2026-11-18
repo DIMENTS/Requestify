@@ -141,6 +141,22 @@ class DonationHandlerTest {
     }
 
     @Test
+    fun aTipInAnotherCurrencyThanTheChannelsIsOtherCurrency() = runTest {
+        val h = harness()
+        h.rig.settings.tryUpdate { it.copy(donations = it.donations.copy(streamElementsCurrency = "EUR", streamElementsMinimumCents = 100)) }
+        val out = handled(h, donation(id = "se-1", source = RequestSource.STREAMELEMENTS, currency = "USD", cents = 500))
+        assertEquals(RejectReason.OtherCurrency("USD"), assertIs<IntakeOutcome.Rejected>(out).reason)
+        assertEquals("Alpha", h.rig.rejectedEntries.single().request?.track?.name, "listed with its track: Add anyway works")
+    }
+
+    @Test
+    fun anUnknownChannelCurrencyComparesInTheTipsCurrency() = runTest {
+        val h = harness()
+        h.rig.settings.tryUpdate { it.copy(donations = it.donations.copy(streamElementsCurrency = null, streamElementsMinimumCents = 100)) }
+        assertIs<IntakeOutcome.Accepted>(handled(h, donation(id = "se-2", source = RequestSource.STREAMELEMENTS, currency = "USD", cents = 500)))
+    }
+
+    @Test
     fun belowTheMinimumIsListedWithItsTrack() = runTest {
         val h = harness()
         h.rig.settings.tryUpdate { it.copy(donations = it.donations.copy(donoLinkMinimumCents = 500)) }
