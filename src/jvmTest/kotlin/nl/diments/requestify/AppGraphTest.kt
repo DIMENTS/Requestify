@@ -49,6 +49,10 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.log.LogKind
+import nl.diments.requestify.core.log.LogRecord
+import nl.diments.requestify.core.log.LogStep
+import nl.diments.requestify.core.log.LogStreamChange
 import nl.diments.requestify.core.model.ChannelPointsRef
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -289,6 +293,26 @@ class AppGraphTest {
             assertEquals(RequestSource.CHAT, request.source)
             assertEquals("Viewer_One", request.requester.displayName)
             assertEquals(listOf("msg-1"), services.sends.map { it.replyTo }, "one reply, threaded under the message")
+        }
+    }
+
+    @Test
+    fun aChatRequestEndsUpInTheLog() = runBlocking {
+        val services = Services()
+        withGraph(services, loggedInToBoth()) { graph ->
+            awaitTwitch(graph, services, sockets = 1)
+            await("requests open") { graph.gate.open.value }
+            services.lastSocket.push(chat("msg-1", "!sr https://open.spotify.com/track/$TRACK_A"))
+
+            await("the request in the Log") { graph.logbook.rows.value.any { it.latestStep is LogStep.Queued } }
+            val row = graph.logbook.rows.value.single { it.kind == LogKind.Request }
+            assertEquals(RequestSource.CHAT, row.received?.source)
+            assertEquals("Viewer_One", row.received?.requester?.displayName)
+            assertEquals(TRACK_A, row.track?.id)
+            assertEquals(LogStep.Queued(1), row.latestStep)
+            await("the stream's start in the Log") {
+                graph.logbook.rows.value.any { r -> r.records.any { it is LogRecord.StreamChanged && it.change == LogStreamChange.Live } }
+            }
         }
     }
 

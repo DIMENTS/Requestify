@@ -192,7 +192,10 @@ class AppScaffoldTest {
     @Test
     fun railHasRules() = runDesktopComposeUiTest(width = 1180, height = 760) {
         assertEquals(
-            listOf(Destination.Home, Destination.Connections, Destination.Rules, Destination.Blacklist, Destination.Settings),
+            listOf(
+                Destination.Home, Destination.Connections, Destination.Rules, Destination.Blacklist, Destination.Log,
+                Destination.Settings,
+            ),
             Destination.entries,
         )
         val graph = graph()
@@ -203,5 +206,16 @@ class AppScaffoldTest {
         headline("Rules").let { assertEquals(TitleBarHeight + 24.dp, it.top, "Rules starts where Home starts") }
         onNodeWithText("Paid requests skip the limits. Blacklist, length and explicit always apply.").assertIsDisplayed()
         onNodeWithText("25").assertIsDisplayed()
+    }
+
+    @Test
+    fun railOpensTheLog() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        val graph = graph()
+        setContent { AppScaffold(graph) }
+        onNode(hasText("Log") and hasClickAction()).performClick()
+        waitForIdle()
+
+        headline("Log").let { assertEquals(TitleBarHeight + 24.dp, it.top, "the Log starts where Home starts") }
+        onNodeWithText("What went right or wrong, and why. Kept for 30 days.").assertIsDisplayed()
     }
 }

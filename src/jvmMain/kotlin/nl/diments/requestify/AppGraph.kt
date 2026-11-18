@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,7 +33,16 @@ import nl.diments.requestify.core.intake.RejectedStore
 import nl.diments.requestify.core.intake.RequestIntake
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.isFreeViewerRequest
+import nl.diments.requestify.core.log.BitsGapWatcher
+import nl.diments.requestify.core.log.ConnectionSnapshot
+import nl.diments.requestify.core.log.LogInputs
+import nl.diments.requestify.core.log.LogService
+import nl.diments.requestify.core.log.LogStore
+import nl.diments.requestify.core.log.Logbook
 import nl.diments.requestify.core.playback.PlaybackController
+import nl.diments.requestify.core.playback.SpotifyHealth
+import nl.diments.requestify.ui.common.TwitchHealth
+import nl.diments.requestify.ui.log.LogViewModel
 import nl.diments.requestify.core.playback.RemoveReason
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
@@ -272,6 +282,38 @@ class AppGraph(
         copyToClipboard = ::copyToClipboard,
     )
 
+    private val logStore = LogStore(paths.logDir, scope, clock = System::currentTimeMillis)
+
+    /** Notices the times Bits could have been missed: EventSub down during the stream, or the app off. */
+    private val bitsGaps = BitsGapWatcher(
+        eventSubState = eventSub.state,
+        gateEvents = gate.events,
+        loadedLastSeenLiveMs = gate.loadedLastSeenLiveMs,
+        appStartMs = System.currentTimeMillis(),
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
+    /** The Log: it listens to what the app already reports. */
+    val logbook = Logbook(
+        store = logStore,
+        scope = scope,
+        clock = System::currentTimeMillis,
+        inputs = LogInputs(
+            intake = intake.records,
+            requests = controller.events,
+            refunds = redemptionOutbox.results,
+            gate = gate.events,
+            connections = merge(
+                controller.health.map { LogService.Spotify to it.toSnapshot() },
+                twitchSession.health.map { LogService.Twitch to it.toSnapshot() },
+            ),
+            gaps = bitsGaps.gaps,
+        ),
+    )
+
+    val logScreen = LogViewModel(logbook, scope)
+
     /**
      * Starts settling Channel Points redemptions, resumes the offline grace (or ends a stream whose grace ran out while
      * the app was off), starts polling Spotify, resumes the paid requests that waited for it, and connects to Twitch
@@ -281,7 +323,9 @@ class AppGraph(
         // For the app's whole life, before anything can change the queue: the controller's request events do not
         // replay. That includes the gate, whose start can end a stream that ended while the app was closed, and clear
         // its free requests on the UI thread while this runs on another. A redemption is fulfilled or refunded also
-        // without a Twitch login: the outbox keeps it until it can be sent.
+        // without a Twitch login: the outbox keeps it until it can be sent. The Log listens first of all.
+        logbook.start()
+        bitsGaps.start()
         channelPoints.startLifecycle()
         gate.start()
         controller.start()
@@ -300,7 +344,9 @@ class AppGraph(
         stopFollowingTwitchSession()
         controller.stop()
         gate.stop() // remembers that the stream was live until now, for the next start
-        channelPoints.stopLifecycle() // last: a change the controller still saves is settled too
+        channelPoints.stopLifecycle() // a change the controller still saves is settled too
+        bitsGaps.stop()
+        logbook.stop() // last: everything above is in the Log (its store writes what is left in stopGracefully)
     }
 
     /** Runs the Twitch sources while the Twitch session is connected, from now until [stop]. */
@@ -364,6 +410,7 @@ class AppGraph(
     suspend fun stopGracefully() {
         withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { withContext(Dispatchers.IO) { rewardManager.pauseForExit() } }
         stop()
+        withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { logStore.stop() } // writes what the Log still holds
     }
 
     /** Opens the Spotify login page in the default browser, or shows its address when that is not possible. */
@@ -387,4 +434,17 @@ class AppGraph(
         } catch (_: Exception) {
         }
     }
+}
+
+/** Spotify as the Log sees it: a playback state (nothing playing, no device, not set up) is no connection news. */
+private fun SpotifyHealth.toSnapshot(): ConnectionSnapshot = when (this) {
+    SpotifyHealth.LoginNeeded -> ConnectionSnapshot.LoginExpired
+    is SpotifyHealth.Unreachable -> ConnectionSnapshot.Down
+    else -> ConnectionSnapshot.Up
+}
+
+private fun TwitchHealth.toSnapshot(): ConnectionSnapshot = when {
+    loginNeeded -> ConnectionSnapshot.LoginExpired
+    disconnected -> ConnectionSnapshot.Down
+    else -> ConnectionSnapshot.Up
 }

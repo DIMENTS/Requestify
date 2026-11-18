@@ -34,7 +34,8 @@ class LogViewModel(
     /** Why the Log cannot save right now; null while it can. */
     val writeError: StateFlow<String?>,
     scope: CoroutineScope,
-    private val zone: ZoneId = ZoneId.systemDefault(),
+    /** The local time zone the rows are shown in. */
+    val zone: ZoneId = ZoneId.systemDefault(),
     private val work: CoroutineDispatcher = Dispatchers.Default,
 ) {
     constructor(
