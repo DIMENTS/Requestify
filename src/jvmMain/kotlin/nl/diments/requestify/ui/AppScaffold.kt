@@ -47,6 +47,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.mutableIntStateOf
+import nl.diments.requestify.ui.home.WideLayoutMinWidth
 import coil3.SingletonImageLoader
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
@@ -125,6 +129,8 @@ private const val SEED_ART_SIZE_PX = 128
 fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     val settings by graph.settings.settings.collectAsState()
     val settingsUnreadable by graph.settings.loadFailed.collectAsState()
+    var contentWidthPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     val saveProblems by graph.saveHealth.problems.collectAsState()
     // What the banner showed last, so it does not go blank while it slides away.
     var lastSaveProblems by remember { mutableStateOf(emptyList<SaveProblem>()) }
@@ -165,8 +171,10 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                         },
                     )
                     val motion = MaterialTheme.motionScheme
-                    Column(Modifier.weight(1f).fillMaxHeight()) {
-                        // The defaults are in use and nothing is saved over the file; a later change reads it again.
+                    // Home is narrow below this width: the banners then take one line, so the queue keeps its room.
+                    Column(Modifier.weight(1f).fillMaxHeight().onSizeChanged { contentWidthPx = it.width }) {
+                        val compactBanners = with(density) { contentWidthPx.toDp() } < WideLayoutMinWidth
+                        // The defaults are in use and nothing is saved over the file; it is read again in the background.
                         AnimatedVisibility(
                             visible = settingsUnreadable,
                             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
@@ -175,6 +183,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                             ProblemBanner(
                                 stringResource(Res.string.settings_load_failed),
                                 Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl),
+                                compact = compactBanners,
                             )
                         }
                         // A file that cannot be saved right now: the change stands and saving is retried. The
@@ -188,6 +197,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                             ProblemBanner(
                                 stringResource(Res.string.save_problem, shown.joinToString { it.file }),
                                 Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl),
+                                compact = compactBanners,
                             )
                         }
                         AnimatedContent(

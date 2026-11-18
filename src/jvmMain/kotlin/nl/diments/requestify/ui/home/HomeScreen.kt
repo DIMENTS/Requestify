@@ -27,7 +27,7 @@ import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
 
 /** From this width of Home the panes sit side by side; below it Now Playing moves above the queue. */
-private val WideLayoutMinWidth = 900.dp
+internal val WideLayoutMinWidth = 900.dp
 
 /**
  * Beside the queue, Now Playing takes this share of Home's width, within [NowPlayingMinWidth]..[NowPlayingMaxWidth]:
@@ -68,6 +68,7 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
                         onMove = vm::onMove,
                         modifier = modifier,
                         addFieldFocus = addFieldFocus,
+                        compact = !wide,
                     )
                 }
             }

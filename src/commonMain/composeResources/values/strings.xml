@@ -127,7 +127,7 @@
     <string name="settings_language_english">English</string>
     <string name="settings_language_dutch">Nederlands</string>
     <string name="settings_language_restart">The new language is used after you restart Requestify.</string>
-    <string name="save_failed">Couldn’t save the change. Try again.</string>
+    <string name="save_failed">Can’t change this yet: its file can’t be read. Try again in a moment.</string>
     <string name="settings_load_failed">Couldn’t read your settings, so Requestify uses the defaults until it can read them again.</string>
     <string name="save_problem">Can’t save %1$s. Your changes stay; Requestify keeps trying.</string>
 
@@ -206,7 +206,7 @@
     <string name="rules_decrease">Decrease %1$s</string>
     <string name="rules_increase">Increase %1$s</string>
 
-    <string name="home_block_failing">Couldn’t save the blacklist. Try again.</string>
+    <string name="home_block_failing">The blacklist can’t be read yet. Try again in a moment.</string>
 
     <string name="twitch_title">Twitch</string>
     <string name="twitch_intro">Log in with Twitch so viewers can request songs from your chat.</string>

@@ -46,6 +46,29 @@ class Renders {
     }
 
     @Test
+    fun narrowBanners() {
+        if (out == null) return
+        dutch {
+            for (dark in listOf(true, false)) {
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val dataDir = createTempDirectory("requestify-render").resolve("blocker").createFile()
+                try {
+                    runDesktopComposeUiTest(width = 720, height = 640) {
+                        val graph = AppGraph(AppPaths(dataDir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+                        graph.settings.tryUpdate { it.copy(darkMode = if (dark) DarkMode.Dark else DarkMode.Light) }
+                        setContent { AppScaffold(graph) }
+                        waitUntil(timeoutMillis = 5_000) { graph.saveHealth.problems.value.isNotEmpty() }
+                        waitForIdle()
+                        capture("narrow-banner-${if (dark) "dark" else "light"}")
+                    }
+                } finally {
+                    scope.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
     fun saveBanner() {
         if (out == null) return
         dutch {

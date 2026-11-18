@@ -84,6 +84,24 @@ class AppScaffoldTest {
     }
 
     @Test
+    fun bannersLeaveTheNarrowHomeItsRoom() = runDesktopComposeUiTest(width = 720, height = 640) {
+        Locale.setDefault(Locale.forLanguageTag("nl-NL")) // the longer text, which wraps at this width
+        // The smallest window: Home is narrow. A file where the data folder should be: every save fails.
+        val graph = graph(dataDir = dir.resolve("blocker").createFile())
+        setContent { AppScaffold(graph) }
+        graph.settings.tryUpdate { it.copy(darkMode = DarkMode.Dark) }
+        waitUntil(timeoutMillis = 5_000) { graph.saveHealth.problems.value.isNotEmpty() }
+        waitForIdle()
+
+        val text = onNode(hasText("Kan settings.json niet opslaan", substring = true), useUnmergedTree = true)
+        val oneLine = text.fetchSemanticsNode().boundsInRoot.height
+        assertTrue(oneLine < 30f, "one line of text in a narrow window, was $oneLine")
+        onNode(hasText("Kan settings.json niet opslaan", substring = true)).performClick()
+        waitForIdle()
+        assertTrue(text.fetchSemanticsNode().boundsInRoot.height > oneLine, "a click shows all of it")
+    }
+
+    @Test
     fun aSaveProblemShowsOneBanner() = runDesktopComposeUiTest(width = 1180, height = 760) {
         // A file where the data folder should be: every save fails.
         val graph = graph(dataDir = dir.resolve("blocker").createFile())

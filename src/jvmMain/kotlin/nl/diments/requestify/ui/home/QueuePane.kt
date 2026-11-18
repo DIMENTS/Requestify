@@ -91,6 +91,8 @@ fun QueuePane(
     onMove: (id: String, toIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
     addFieldFocus: FocusRequester = remember { FocusRequester() },
+    /** The narrow layout: problem banners take one line, so the queue keeps its room. */
+    compact: Boolean = false,
 ) {
     var tab by rememberSaveable { mutableStateOf(QueueTab.Queue) }
     val motion = MaterialTheme.motionScheme
@@ -115,14 +117,14 @@ fun QueuePane(
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
-            ProblemBanner(stringResource(Res.string.home_load_failing))
+            ProblemBanner(stringResource(Res.string.home_load_failing), compact = compact)
         }
         AnimatedVisibility(
             visible = state.blockFailing,
             enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
-            ProblemBanner(stringResource(Res.string.home_block_failing))
+            ProblemBanner(stringResource(Res.string.home_block_failing), compact = compact)
         }
         AddTrackField(
             results = state.results,

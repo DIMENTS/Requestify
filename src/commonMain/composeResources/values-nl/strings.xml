@@ -127,7 +127,7 @@
     <string name="settings_language_english">English</string>
     <string name="settings_language_dutch">Nederlands</string>
     <string name="settings_language_restart">De nieuwe taal wordt gebruikt nadat je Requestify opnieuw hebt gestart.</string>
-    <string name="save_failed">De wijziging kon niet worden opgeslagen. Probeer het opnieuw.</string>
+    <string name="save_failed">Dit kan nog niet worden gewijzigd: het bestand kan niet worden gelezen. Probeer het zo opnieuw.</string>
     <string name="settings_load_failed">Je instellingen konden niet worden gelezen, dus Requestify gebruikt de standaardinstellingen tot dat weer lukt.</string>
     <string name="save_problem">Kan %1$s niet opslaan. Je wijzigingen blijven staan; Requestify blijft het proberen.</string>
 
@@ -206,7 +206,7 @@
     <string name="rules_decrease">%1$s verlagen</string>
     <string name="rules_increase">%1$s verhogen</string>
 
-    <string name="home_block_failing">Blacklist opslaan mislukt. Probeer het opnieuw.</string>
+    <string name="home_block_failing">De blacklist kan nog niet worden gelezen. Probeer het zo opnieuw.</string>
 
     <string name="twitch_title">Twitch</string>
     <string name="twitch_intro">Log in met Twitch, dan kunnen kijkers nummers aanvragen in je chat.</string>
