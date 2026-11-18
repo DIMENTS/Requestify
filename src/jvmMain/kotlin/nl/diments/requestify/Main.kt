@@ -12,6 +12,7 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
 import nl.diments.requestify.core.secrets.DpapiSecretStore
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.storage.AppPaths
@@ -34,7 +35,8 @@ fun main() {
         val windowState = rememberWindowState(size = DpSize(1180.dp, 760.dp))
         Window(
             onCloseRequest = {
-                graph.stop()
+                // Pauses the Channel Points reward first (at most 3 s), so nobody redeems it while the app is gone.
+                runBlocking { graph.stopGracefully() }
                 exitApplication()
             },
             state = windowState,

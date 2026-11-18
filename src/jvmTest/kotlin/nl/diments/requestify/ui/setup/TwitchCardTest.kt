@@ -27,6 +27,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.settings.ChannelPointsSettings
 import nl.diments.requestify.core.settings.ChatPermission
 import nl.diments.requestify.core.settings.TwitchAccount
 import nl.diments.requestify.core.twitch.FakeTwitch
@@ -179,5 +181,145 @@ class TwitchCardTest {
         waitForIdle()
         onNode(hasText("Log in with Twitch") and hasClickAction()).assertIsDisplayed()
         assertEquals(null, p.settings.settings.value.twitch.account)
+    }
+
+    private val own = ChannelPointsSettings(
+        enabled = true,
+        rewardId = "rw-1",
+        managed = true,
+        title = "Song request",
+        cost = 500,
+        prompt = "Type a song",
+    )
+
+    private fun pointsParts(points: ChannelPointsSettings, account: TwitchAccount = affiliate) =
+        TwitchSetupParts(dir, scope, FakeTwitch(), loggedIn = true, account = account, points = points)
+
+    private fun ComposeUiTest.awaitText(text: String, substring: Boolean = false) =
+        waitUntil(timeoutMillis = 10_000) { onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty() }
+
+    @Test
+    fun nonAffiliateRowDisabled() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        show(pointsParts(ChannelPointsSettings(), account = affiliate.copy(broadcasterType = "")))
+        onNodeWithText("Channel Points are only available to Twitch Affiliates and Partners.").assertIsDisplayed()
+        onNode(hasContentDescription("Channel Points reward")).assertIsNotEnabled()
+    }
+
+    @Test
+    fun anAffiliateSwitchesOnAndCreatesTheRewardFromTheSheet() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(ChannelPointsSettings())
+        show(p)
+        onNodeWithText("Viewers spend Channel Points on a song request").assertIsDisplayed()
+        onNode(hasContentDescription("Channel Points reward")).performClick()
+        awaitText("Create new reward")
+        onNode(hasText("Create") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.rewardId != null }
+        assertEquals(1, p.helix.creates.size)
+        assertEquals(true, p.settings.settings.value.twitch.channelPoints.managed)
+        awaitText("Open while requests are open")
+        onAllNodesWithText("Create new reward").fetchSemanticsNodes().let { assertEquals(0, it.size, "the sheet is closed") }
+        onNodeWithText("Song request").assertIsDisplayed()
+    }
+
+    @Test
+    fun theSheetGroupsOwnAndForeignRewards() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(ChannelPointsSettings())
+        p.helix.rewards += p.helix.reward("rw-1")
+        p.helix.manageable += "rw-1"
+        p.helix.rewards += p.helix.reward("rw-2", title = "Hydrate", cost = 100)
+        show(p)
+        onNode(hasContentDescription("Channel Points reward")).performClick()
+        awaitText("Made elsewhere")
+        onNodeWithText("Made by Requestify").assertIsDisplayed()
+        onNodeWithText("Hydrate").assertIsDisplayed()
+        onNodeWithText("Recommended").assertIsDisplayed()
+        onNode(hasText("Use") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.rewardId == "rw-1" }
+        assertEquals(emptyList(), p.helix.creates, "no duplicate")
+        assertEquals(true, p.settings.settings.value.twitch.channelPoints.managed)
+    }
+
+    @Test
+    fun foreignLinkShowsWarningFirst() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(ChannelPointsSettings())
+        p.helix.rewards += p.helix.reward("rw-2", title = "Hydrate", cost = 100)
+        show(p)
+        onNode(hasContentDescription("Channel Points reward")).performClick()
+        awaitText("Made elsewhere")
+        onNode(hasText("Link directly") and hasClickAction()).performClick()
+
+        onNodeWithText("Link without management?").assertIsDisplayed()
+        onNodeWithText("No refunds and no fulfilling", substring = true).assertIsDisplayed()
+        onNodeWithText("Not paused when requests close", substring = true).assertIsDisplayed()
+        onNodeWithText("No catch-up after a restart", substring = true).assertIsDisplayed()
+        onNodeWithText("read-only here", substring = true).assertIsDisplayed()
+        assertEquals(null, p.settings.settings.value.twitch.channelPoints.rewardId, "nothing is linked before the user agrees")
+
+        onNode(hasText("Link anyway") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.rewardId == "rw-2" }
+        assertEquals(false, p.settings.settings.value.twitch.channelPoints.managed)
+        awaitText("Linked without management: Requestify cannot refund points")
+        onNode(hasText("Copy as Requestify reward") and hasClickAction()).assertIsDisplayed()
+        assertEquals(emptyList(), p.helix.patches + p.helix.creates)
+    }
+
+    @Test
+    fun aCopyAsksForTheNameAndReportsADuplicate() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(ChannelPointsSettings())
+        p.helix.rewards += p.helix.reward("rw-2", title = "Hydrate", cost = 100)
+        p.helix.createStatus = 400
+        show(p)
+        onNode(hasContentDescription("Channel Points reward")).performClick()
+        awaitText("Made elsewhere")
+        onNode(hasText("Copy as Requestify reward") and hasClickAction()).performClick()
+        onNode(hasText("Copy") and hasClickAction()).performClick()
+        awaitText("Another reward on your channel already has this name.")
+
+        p.helix.createStatus = 200
+        onNode(hasText("Name")).performTextClearance()
+        onNode(hasText("Name")).performTextInput("Hydrate 2")
+        onNode(hasText("Copy") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.rewardId != null }
+        assertEquals("Hydrate 2", p.settings.settings.value.twitch.channelPoints.title)
+        assertEquals(100, p.settings.settings.value.twitch.channelPoints.cost)
+    }
+
+    @Test
+    fun anOwnRewardShowsItsSettingsAndPausesWithTheRequests() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(own)
+        p.helix.rewards += p.helix.reward("rw-1")
+        p.helix.manageable += "rw-1"
+        show(p)
+        onNodeWithText("Song request").assertIsDisplayed()
+        onNodeWithText("Type a song").assertIsDisplayed()
+        onNodeWithText("500").assertIsDisplayed()
+        onNodeWithText("Open while requests are open").assertIsDisplayed()
+        onNodeWithText("Change this in the Twitch dashboard").assertDoesNotExist()
+
+        p.requestsOpen.value = false
+        onNodeWithText("Paused: stream is offline").assertIsDisplayed()
+
+        onNode(hasContentDescription("Increase Cost")).performClick()
+        waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.cost == 550 }
+    }
+
+    @Test
+    fun aLinkedForeignRewardIsReadOnly() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        show(pointsParts(own.copy(managed = false)))
+        onNodeWithText("Linked without management: Requestify cannot refund points").assertIsDisplayed()
+        onNodeWithText("Change this in the Twitch dashboard").assertIsDisplayed()
+        onNodeWithText("500 points").assertIsDisplayed()
+        onAllNodesWithText("Increase Cost").fetchSemanticsNodes().let { assertEquals(0, it.size) }
+    }
+
+    @Test
+    fun aRemovedRewardOffersCreateAgain() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(own.copy(rewardRemoved = true))
+        show(p)
+        onNodeWithText("The reward was removed on Twitch").assertIsDisplayed()
+        onNode(hasText("Create again") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.rewardId == "new-1" }
+        assertEquals(false, p.settings.settings.value.twitch.channelPoints.rewardRemoved)
+        assertEquals("Song request", p.helix.creates.single().body!!.getValue("title").jsonPrimitive.content)
     }
 }

@@ -13,10 +13,14 @@ import java.awt.datatransfer.StringSelection
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
@@ -47,10 +51,14 @@ import nl.diments.requestify.core.twitch.TwitchSession
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
 import nl.diments.requestify.core.twitch.eventsub.EventSubClient
 import nl.diments.requestify.core.twitch.eventsub.KtorEventSubConnector
+import nl.diments.requestify.core.twitch.points.RewardManager
 import nl.diments.requestify.ui.blacklist.BlacklistViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 import nl.diments.requestify.ui.setup.TwitchSetupViewModel
+
+/** The most the exit waits for Twitch to pause the reward. */
+internal const val EXIT_PAUSE_TIMEOUT_MS = 3_000L
 
 /**
  * Builds the app's objects once, for the app's whole life, on [scope] (an app-lifetime scope on the UI thread).
@@ -165,9 +173,23 @@ class AppGraph(
         scope = scope,
     )
 
+    /** Requestify's Channel Points reward: created or linked from the Twitch card, paused with the requests. */
+    private val rewardManager = RewardManager(
+        api = twitchApi,
+        settings = settings,
+        eventSub = eventSub,
+        requestsOpen = gate.open,
+        language = { settings.settings.value.language },
+        scope = scope,
+    )
+
+    private val appScope = scope
+    private var rewardJob: Job? = null
+
     val twitchSetup = TwitchSetupViewModel(
         auth = twitchAuth,
         api = twitchApi,
+        rewards = rewardManager,
         settings = settings,
         scope = scope,
         openBrowser = { url -> browse(url) },
@@ -183,6 +205,10 @@ class AppGraph(
         controller.start()
         intake.start()
         twitchSession.start()
+        // The reward follows Twitch's connection: its pausing and its events need a login.
+        rewardJob = appScope.launch {
+            twitchSession.connected.collect { connected -> if (connected) rewardManager.start() else rewardManager.stop() }
+        }
     }
 
     /**
@@ -190,8 +216,20 @@ class AppGraph(
      * can be cut off; the atomic write then keeps the previous file, so at most the last change is lost.
      */
     fun stop() {
+        rewardJob?.cancel()
+        rewardJob = null
+        rewardManager.stop()
         twitchSession.stop()
         controller.stop()
+    }
+
+    /**
+     * The exit: pauses Requestify's own Channel Points reward (when it is switched on, so viewers cannot redeem it
+     * while nobody is listening), then [stop]s everything. The pause gets [EXIT_PAUSE_TIMEOUT_MS] at most.
+     */
+    suspend fun stopGracefully() {
+        withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { withContext(Dispatchers.IO) { rewardManager.pauseForExit() } }
+        stop()
     }
 
     /** Opens the Spotify login page in the default browser, or shows its address when that is not possible. */

@@ -122,7 +122,7 @@ import org.jetbrains.compose.resources.stringResource
 private const val COPIED_CONFIRMATION_MS = 2_000L
 
 /** The bits minimum steps to the next multiple of this (and 1 at the bottom). */
-private const val BITS_STEP = 50
+internal const val BITS_STEP = 50
 
 private val AvatarSize = 40.dp
 
@@ -132,7 +132,7 @@ private enum class Phase { LoggedOut, LoggingIn, LoggedIn }
  * The Twitch card on Connections: the device-code login, then the account on top and, per source, one row with its
  * main setting and a switch (Chat, Bits), with the command names folded away in a row of their own.
  */
-// The Channel Points section goes between Chat and Bits (the Channel Points task adds it).
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TwitchCard(vm: TwitchSetupViewModel) {
@@ -345,6 +345,9 @@ private fun LoggedInContent(account: TwitchAccount, login: TwitchLoginState, log
         }
         RowDivider()
 
+        ChannelPointsSection(vm, eligible = eligibleForBits)
+        RowDivider()
+
         SectionHeader(stringResource(Res.string.twitch_section_bits), AppIcons.Diamond)
         val bitsTitle = stringResource(Res.string.twitch_bits_title)
         SourceRow(
@@ -370,9 +373,9 @@ private fun LoggedInContent(account: TwitchAccount, login: TwitchLoginState, log
     }
 }
 
-private fun stepUp(value: Int) = ((value / BITS_STEP) + 1) * BITS_STEP
+internal fun stepUp(value: Int) = ((value / BITS_STEP) + 1) * BITS_STEP
 
-private fun stepDown(value: Int) = if (value % BITS_STEP == 0) value - BITS_STEP else (value / BITS_STEP) * BITS_STEP
+internal fun stepDown(value: Int) = if (value % BITS_STEP == 0) value - BITS_STEP else (value / BITS_STEP) * BITS_STEP
 
 /** The logged-in account: its initial on an Expressive cookie shape, its name, its Affiliate/Partner tag and Log out. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -429,7 +432,7 @@ private fun AccountRow(account: TwitchAccount, onLogout: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun SectionHeader(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+internal fun SectionHeader(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Row(
         modifier = Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.m, bottom = Spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(Spacing.s),
@@ -443,7 +446,7 @@ private fun SectionHeader(title: String, icon: androidx.compose.ui.graphics.vect
 /** One source: its main setting's name and hint, a [control] for the setting, and its on/off switch. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun SourceRow(
+internal fun SourceRow(
     title: String,
     hint: String,
     checked: Boolean,

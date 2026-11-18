@@ -16,12 +16,16 @@ import nl.diments.requestify.core.settings.ChatPermission
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.settings.TwitchAccount
+import nl.diments.requestify.core.twitch.Reward
 import nl.diments.requestify.core.twitch.TwitchApi
 import nl.diments.requestify.core.twitch.TwitchResult
 import nl.diments.requestify.core.twitch.auth.DeviceCode
 import nl.diments.requestify.core.twitch.auth.DeviceLoginResult
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
 import nl.diments.requestify.core.twitch.auth.TwitchAuthStatus
+import nl.diments.requestify.core.twitch.points.RewardActionResult
+import nl.diments.requestify.core.twitch.points.RewardManager
+import nl.diments.requestify.core.twitch.points.ScannedReward
 
 /** Where a Twitch login (device code) stands. The card shows its own message for each, never Twitch's text. */
 sealed interface TwitchLoginState {
@@ -74,6 +78,34 @@ fun commandNameErrors(names: ChatCommandNames): Map<CommandField, CommandError> 
 const val BITS_MINIMUM_MIN = 1
 const val BITS_MINIMUM_MAX = 10_000
 
+const val REWARD_COST_MIN = 1
+const val REWARD_COST_MAX = 1_000_000
+
+/** Twitch's longest reward name. */
+const val REWARD_TITLE_MAX = 45
+
+/** What is wrong with the last Channel Points action; the card says it in its own words. */
+enum class RewardProblem { DuplicateTitle, NotAffiliate, Failed }
+
+/** The channel's rewards as the "Choose reward" sheet shows them, in its two groups. */
+sealed interface RewardScan {
+    data object Scanning : RewardScan
+
+    /** Twitch could not list the rewards. */
+    data object Failed : RewardScan
+
+    data class Done(val own: List<ScannedReward>, val other: List<ScannedReward>) : RewardScan
+}
+
+/**
+ * The open "Choose reward" sheet. "Create new reward" does not wait for the [scan]; [problem] is why the last create
+ * did not work, [creating] while Twitch is being asked.
+ */
+data class RewardSheet(val scan: RewardScan, val creating: Boolean = false, val problem: RewardProblem? = null)
+
+/** "Copy as Requestify reward": the reward being copied and the name the copy gets (editable). */
+data class CopyDraft(val from: Reward, val title: String, val problem: RewardProblem? = null, val busy: Boolean = false)
+
 /**
  * The Twitch card: the device-code login, the logged-in account and the chat and Bits settings. Runs on the caller's
  * [scope] (an app-lifetime scope on the UI thread). Every setting is saved at once; one that cannot be saved is not
@@ -82,6 +114,7 @@ const val BITS_MINIMUM_MAX = 10_000
 class TwitchSetupViewModel(
     private val auth: TwitchAuth,
     private val api: TwitchApi,
+    private val rewards: RewardManager,
     settings: SettingsStore,
     private val scope: CoroutineScope,
     private val openBrowser: (String) -> Unit,
@@ -93,6 +126,11 @@ class TwitchSetupViewModel(
     private val _commandErrors = MutableStateFlow<Map<CommandField, CommandError>>(emptyMap())
     private val _saveFailed = MutableStateFlow(false)
     private var loginJob: Job? = null
+    private val _sheet = MutableStateFlow<RewardSheet?>(null)
+    private val _copyDraft = MutableStateFlow<CopyDraft?>(null)
+    private val _linkWarning = MutableStateFlow<ScannedReward?>(null)
+    private val _rewardProblem = MutableStateFlow<RewardProblem?>(null)
+    private var scanJob: Job? = null
 
     val login: StateFlow<TwitchLoginState> = _login.asStateFlow()
     val settings: StateFlow<Settings> = store.settings
@@ -106,6 +144,19 @@ class TwitchSetupViewModel(
 
     /** The last change could not be saved (e.g. another program holds the file); nothing changed. */
     val saveFailed: StateFlow<Boolean> = _saveFailed.asStateFlow()
+
+    /** Whether requests are open; Requestify's own reward is paused while they are not. */
+    val requestsOpen: StateFlow<Boolean> get() = rewards.requestsOpen
+
+    /** The "Choose reward" sheet; null while it is closed. */
+    val rewardSheet: StateFlow<RewardSheet?> = _sheet.asStateFlow()
+    val copyDraft: StateFlow<CopyDraft?> = _copyDraft.asStateFlow()
+
+    /** The foreign reward the user wants to link directly; the card shows the limits first. */
+    val linkWarning: StateFlow<ScannedReward?> = _linkWarning.asStateFlow()
+
+    /** Why the last edit or "Create again" did not work. */
+    val rewardProblem: StateFlow<RewardProblem?> = _rewardProblem.asStateFlow()
 
     /** Asks Twitch for a code and waits for the user to confirm it, then saves the account. */
     fun onLogin() {
@@ -193,6 +244,148 @@ class TwitchSetupViewModel(
 
     fun onBitsMinimum(value: Int) =
         save { it.copy(twitch = it.twitch.copy(bitsMinimum = value.coerceIn(BITS_MINIMUM_MIN, BITS_MINIMUM_MAX))) }
+
+    /** The Channel Points switch. Switching on without a reward opens the "Choose reward" sheet. */
+    fun onPointsEnabled(on: Boolean) {
+        scope.launch {
+            rewards.setEnabled(on)
+            if (!on) {
+                closeSheet()
+                return@launch
+            }
+            val points = store.settings.value.twitch.channelPoints
+            if (points.rewardId == null) onChooseReward()
+        }
+    }
+
+    /** Opens the "Choose reward" sheet and scans the channel's rewards for it. */
+    fun onChooseReward() {
+        scanJob?.cancel()
+        _sheet.update { (it ?: RewardSheet(RewardScan.Scanning)).copy(scan = RewardScan.Scanning) }
+        scanJob = scope.launch {
+            val scanned = rewards.scan()
+            val scan = if (scanned == null) {
+                RewardScan.Failed
+            } else {
+                RewardScan.Done(own = scanned.filter { it.manageable }, other = scanned.filterNot { it.manageable })
+            }
+            _sheet.update { it?.copy(scan = scan) }
+        }
+    }
+
+    fun onCloseSheet() = closeSheet()
+
+    private fun closeSheet() {
+        scanJob?.cancel()
+        scanJob = null
+        _sheet.value = null
+    }
+
+    /** "Create new reward" in the sheet. */
+    fun onCreateReward() {
+        val sheet = _sheet.value ?: return
+        if (sheet.creating) return
+        _sheet.value = sheet.copy(creating = true, problem = null)
+        scope.launch {
+            when (val result = rewards.createNew()) {
+                RewardActionResult.Ok -> closeSheet()
+                else -> _sheet.update { it?.copy(creating = false, problem = result.problem()) }
+            }
+        }
+    }
+
+    /** Uses one of Requestify's own rewards that Twitch lists (e.g. from before a reinstall): no duplicate is made. */
+    fun onUseOwnReward(reward: ScannedReward) {
+        rewards.link(reward)
+        closeSheet()
+    }
+
+    /** "Link directly": the warning with the limits comes first; [onConfirmLink] does it. */
+    fun onLinkDirectly(reward: ScannedReward) {
+        _linkWarning.value = reward
+    }
+
+    fun onConfirmLink() {
+        val reward = _linkWarning.value ?: return
+        _linkWarning.value = null
+        rewards.link(reward)
+        closeSheet()
+    }
+
+    fun onDismissLinkWarning() {
+        _linkWarning.value = null
+    }
+
+    /** "Copy as Requestify reward" of one of the channel's rewards: asks for the name of the copy first. */
+    fun onCopyReward(reward: Reward) {
+        _copyDraft.value = CopyDraft(reward, reward.title)
+    }
+
+    /** The same for the reward that is linked directly now. */
+    fun onCopyLinkedReward() {
+        val p = store.settings.value.twitch.channelPoints
+        val id = p.rewardId ?: return
+        onCopyReward(
+            Reward(
+                id = id,
+                title = p.title.orEmpty(),
+                cost = p.cost,
+                prompt = p.prompt.orEmpty(),
+                isEnabled = true,
+                isPaused = false,
+                isUserInputRequired = true,
+                skipsRequestQueue = false,
+            ),
+        )
+    }
+
+    fun onCopyTitle(title: String) {
+        _copyDraft.update { it?.copy(title = title.take(REWARD_TITLE_MAX), problem = null) }
+    }
+
+    fun onConfirmCopy() {
+        val draft = _copyDraft.value ?: return
+        if (draft.busy || draft.title.isBlank()) return
+        _copyDraft.value = draft.copy(busy = true, problem = null)
+        scope.launch {
+            when (val result = rewards.copy(draft.from, draft.title)) {
+                RewardActionResult.Ok -> {
+                    _copyDraft.value = null
+                    closeSheet()
+                }
+                else -> _copyDraft.update { it?.copy(busy = false, problem = result.problem()) }
+            }
+        }
+    }
+
+    fun onDismissCopy() {
+        _copyDraft.value = null
+    }
+
+    /** "Create again" after the reward was removed on Twitch. */
+    fun onCreateAgain() {
+        _rewardProblem.value = null
+        scope.launch { _rewardProblem.value = rewards.createNew().problem() }
+    }
+
+    /** Writes a changed name, cost or text of Requestify's own reward to Twitch at once. */
+    fun onRewardEdit(title: String? = null, cost: Int? = null, prompt: String? = null) {
+        _rewardProblem.value = null
+        scope.launch {
+            _rewardProblem.value = rewards.edit(
+                title = title?.takeIf { it.isNotBlank() },
+                cost = cost?.coerceIn(REWARD_COST_MIN, REWARD_COST_MAX),
+                prompt = prompt,
+            ).problem()
+        }
+    }
+
+    private fun RewardActionResult.problem(): RewardProblem? = when (this) {
+        RewardActionResult.Ok -> null
+        RewardActionResult.DuplicateTitle -> RewardProblem.DuplicateTitle
+        RewardActionResult.NotAffiliate -> RewardProblem.NotAffiliate
+        RewardActionResult.Failed -> RewardProblem.Failed
+    }
 
     /**
      * Applies [edit] to the command names as typed. They are saved (normalised) only when none is blank and none is
