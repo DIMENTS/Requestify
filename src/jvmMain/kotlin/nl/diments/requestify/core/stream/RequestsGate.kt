@@ -223,11 +223,13 @@ class RequestsGate(
                     happened += GateEvent.WentLive(now, read)
                     afterEnd.copy(live = true, offlineSinceMs = null, clearPostponed = false, lastSeenLiveMs = now, streamStartedAtEpochMs = startedAtMs)
                 }
-                live && s.live -> s.copy(lastSeenLiveMs = now, streamStartedAtEpochMs = savedStart ?: startedAtMs ?: now)
+                // Helix's started_at for the stream heard in this run is the truth (after a drop it is the reconnect).
+                live && s.live -> s.copy(lastSeenLiveMs = now, streamStartedAtEpochMs = (if (!leftover) startedAtMs else null) ?: savedStart ?: startedAtMs ?: now)
                     .also { if (leftover) happened += GateEvent.WentLive(now, read) }
                 // A drop: as if nothing happened. An open made during it now belongs to the stream it returns to.
                 live && s.offlineSinceMs != null -> s.copy(
                     live = true, offlineSinceMs = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now,
+                    streamStartedAtEpochMs = startedAtMs ?: now, // Twitch counts the reconnect as the stream's start
                 ).also { happened += GateEvent.WentLive(now, read) }
                 live -> s.copy(
                     live = true, override = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now,

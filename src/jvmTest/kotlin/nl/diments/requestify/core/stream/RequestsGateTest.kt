@@ -72,6 +72,26 @@ class RequestsGateTest {
     }
 
     @Test
+    fun aRestartAfterADropInTheSameStreamClearsNothing() = runTest {
+        val first = appScope()
+        val gate = gate(scope = first)
+        gate.onLive(true) // stream.online at 0
+        wait(30 * minute)
+        gate.onLive(false) // the IRL connection drops
+        wait(2 * minute)
+        gate.onLive(true) // back within the grace: Twitch's started_at is now this moment
+        val reconnectedAt = testScheduler.currentTime
+        runCurrent()
+        wait(20 * minute)
+        first.cancel() // the app restarts (a crash, or a language change)
+        val after = gate()
+        after.onLive(true, read = true, startedAtMs = reconnectedAt)
+        runCurrent()
+        assertEquals(0, cleared, "the same stream: no end-of-stream clear, no refunds")
+        assertTrue(after.open.value)
+    }
+
+    @Test
     fun theHeartbeatTicksOnlyWhileTheSessionIsConnected() = runTest {
         var connected = true
         val gate = gate(session = { connected })
