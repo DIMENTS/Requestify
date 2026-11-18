@@ -2,6 +2,7 @@ package nl.diments.requestify.core.twitch.chat
 
 import java.util.Locale
 import kotlin.test.AfterTest
+import kotlin.test.assertEquals
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -65,11 +66,19 @@ class ChatRepliesTest {
             add(replies.wrongSong(null, null))
             add(replies.skipped(track, null))
             add(replies.blacklisted(track, null))
+            add(replies.blockedNotSkipped(track, null))
             add(replies.blacklistFailed(null))
             add(replies.removed(request, 1, "remove", null))
             add(replies.removed(null, 4, "remove", null))
             add(replies.removed(null, null, "remove", null))
         }.filterNotNull()
+    }
+
+    @Test
+    fun blacklistWithoutASkipSaysBlockedOnly() = runBlocking {
+        Locale.setDefault(Locale.forLanguageTag("nl-NL"))
+        val text = ChatReplies().blockedNotSkipped(Track("t2", "spotify:track:t2", "Alpha", listOf("Artist"), 200_000, false, null), null)
+        assertEquals("Geblokkeerd: Alpha – Artist", text)
     }
 
     @Test

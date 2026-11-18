@@ -77,6 +77,8 @@
     <string name="setup_status_connected">Gekoppeld</string>
     <string name="setup_status_not_connected">Niet gekoppeld</string>
     <string name="setup_status_login_expired">Login verlopen</string>
+    <string name="setup_status_key_refused">Sleutel geweigerd</string>
+    <string name="setup_status_token_refused">Token geweigerd</string>
     <string name="setup_step_dashboard_title">Maak een Spotify-app</string>
     <string name="setup_step_dashboard_body">Open het Spotify-dashboard voor ontwikkelaars, maak een app met een naam en beschrijving naar keuze en vink “Web API” aan.</string>
     <string name="setup_open_dashboard">Dashboard openen</string>
@@ -367,6 +369,7 @@
     <string name="chat_wrongsong_none">Je hebt geen nummer in de wachtrij.</string>
     <string name="chat_skipped">Overgeslagen: %1$s – %2$s</string>
     <string name="chat_blacklisted">Geblokkeerd en overgeslagen: %1$s – %2$s</string>
+    <string name="chat_blocked_not_skipped">Geblokkeerd: %1$s – %2$s</string>
     <string name="chat_blacklist_failed">Kon dat nummer nu niet blokkeren.</string>
     <string name="chat_remove_none">Geen positie %1$s.</string>
     <string name="chat_remove_usage">Gebruik: %1$s &lt;positie&gt;</string>
@@ -390,6 +393,12 @@
     <string name="log_step_received">Binnengekomen</string>
     <string name="log_step_track">Nummer: %1$s</string>
     <string name="log_step_queued">In wachtrij, plek %1$d</string>
+    <string name="log_step_queued_next">In wachtrij, als volgende</string>
+    <string name="log_step_ignored_moderation">Geen verzoek: afgewezen door de moderatie van StreamElements</string>
+    <string name="log_step_ignored_failed">Geen verzoek: de betaling van de tip is mislukt</string>
+    <string name="log_step_received_given_at">Ontvangen (gedoneerd om %1$s)</string>
+    <string name="log_conn_source_changed">Donatiebron gewijzigd</string>
+    <string name="log_conn_ended_with_app">Afgesloten met Requestify</string>
     <string name="log_step_rejected">Geweigerd: %1$s</string>
     <string name="log_step_pending">Wacht op Spotify</string>
     <string name="log_step_ignored">Genegeerd: geen Spotify-link</string>
@@ -464,6 +473,9 @@
     <string name="connection_donolink_disconnected">DonoLink niet verbonden</string>
     <string name="connection_streamelements_disconnected">StreamElements niet verbonden</string>
     <string name="connection_donolink_key_expiring">DonoLink-sleutel verloopt binnenkort</string>
+    <string name="connection_donolink_key_expiring_days">DonoLink-sleutel verloopt over %1$d dagen</string>
+    <string name="connection_donolink_key_expiring_one_day">DonoLink-sleutel verloopt over 1 dag</string>
+    <string name="connection_donolink_key_expiring_hours">DonoLink-sleutel verloopt binnen 24 uur</string>
     <string name="donations_title">Donaties</string>
     <string name="donations_none">Geen</string>
     <string name="donations_intro">Een donatie met een Spotify-link in het bericht wordt een betaald verzoek. Je gebruikt één donatieplatform.</string>

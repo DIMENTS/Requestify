@@ -126,6 +126,30 @@ class Renders {
         }
     }
 
+    /** The title-bar chip with a DonoLink key that expires in 6 days. */
+    @Test
+    fun keyExpiringChip() {
+        if (out == null) return
+        dutch {
+            val problem = nl.diments.requestify.core.health.ConnectionProblem.Donation(
+                nl.diments.requestify.core.settings.DonationSourceKind.DonoLink,
+                nl.diments.requestify.core.health.DonationProblem.KeyExpiring,
+                System.currentTimeMillis() + 6 * 24 * 3_600_000L + 3_600_000L,
+            )
+            runDesktopComposeUiTest(width = 620, height = 56) {
+                setContent {
+                    nl.diments.requestify.ui.theme.RequestifyTheme(nl.diments.requestify.ui.theme.BrandSeed, true) {
+                        androidx.compose.material3.Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.surface) {
+                            nl.diments.requestify.ui.window.TitleBar(problems = listOf(problem))
+                        }
+                    }
+                }
+                waitForIdle()
+                capture("chip-key-expiring")
+            }
+        }
+    }
+
     @Test
     fun narrowBanners() {
         if (out == null) return

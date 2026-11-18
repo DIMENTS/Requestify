@@ -142,4 +142,17 @@ class ConnectionChipTest {
         }
         onNodeWithText("StreamElements: token needed").assertIsDisplayed()
     }
+
+    @Test
+    fun keyExpiringSaysTheDays() = kotlinx.coroutines.runBlocking {
+        val now = 1_800_000_000_000L
+        val day = 24 * 3_600_000L
+        suspend fun text(expiresAt: Long): String {
+            val look = ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, expiresAt).statusLook(now)
+            return org.jetbrains.compose.resources.getString(look.text, *look.args.toTypedArray())
+        }
+        assertEquals("DonoLink key expires in 6 days", text(now + 6 * day + 3_600_000))
+        assertEquals("DonoLink key expires in 1 day", text(now + day + 3_600_000))
+        assertEquals("DonoLink key expires within 24 hours", text(now + 2 * 3_600_000))
+    }
 }

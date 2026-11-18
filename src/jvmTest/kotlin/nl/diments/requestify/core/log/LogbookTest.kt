@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.intake.IncomingRequest
 import nl.diments.requestify.core.intake.IntakeOutcome
@@ -94,7 +95,7 @@ class LogbookTest {
         assertEquals(track, log.row("a").track)
         assertEquals(LogStep.Rejected(RejectReason.TooLong(420_000), listed = true), log.row("r").latestStep)
         assertEquals(track, log.row("r").track)
-        assertEquals(LogStep.Ignored, log.row("i").latestStep)
+        assertEquals(LogStep.Ignored(), log.row("i").latestStep)
         assertEquals(LogStep.Pending, log.row("p").latestStep)
         assertEquals(RequestSource.CHAT, log.row("a").received?.source)
     }
@@ -139,6 +140,49 @@ class LogbookTest {
         runCurrent()
         assertEquals(LogStep.Refunded, log.row("cp1").latestStep)
         assertFalse(log.row("cp1").isProblem)
+    }
+
+    @Test
+    fun switchingAwayClosesTheOutageRow() = runTest {
+        val log = logbook()
+        connections.tryEmit(LogService.DonoLink to ConnectionSnapshot.Down)
+        runCurrent()
+        connections.tryEmit(LogService.DonoLink to ConnectionSnapshot.SourceChanged) // the streamer chose StreamElements
+        runCurrent()
+        val row = log.rows.value.single()
+        assertEquals(listOf(LogConnectionState.Lost, LogConnectionState.SourceChanged), row.records.map { (it as LogRecord.ConnectionChanged).state })
+        assertFalse(row.isProblem, "a source switched away is no open problem")
+    }
+
+    @Test
+    fun anOutageLeftOpenByTheLastRunIsNotRestoredNow() = runTest {
+        val earlier = store()
+        earlier.start()
+        earlier.append(LogRecord.ConnectionChanged("conn:Twitch:0", 0, LogService.Twitch, LogConnectionState.Lost))
+        earlier.stop()
+        advanceTimeBy(3_600_000)
+        val log = logbook()
+        connections.tryEmit(LogService.Twitch to ConnectionSnapshot.Up) // the first connect of this run
+        runCurrent()
+        val row = log.rows.value.single()
+        assertEquals(listOf(LogConnectionState.Lost, LogConnectionState.EndedWithApp), row.records.map { (it as LogRecord.ConnectionChanged).state })
+        assertFalse(row.isProblem)
+    }
+
+    @Test
+    fun donationDetailsShowWhenItWasMade() = runTest {
+        val log = logbook()
+        intake.tryEmit(IntakeRecord(incoming("d").copy(source = RequestSource.DONOLINK, occurredAtEpochMs = 123), IntakeOutcome.Pending, 5_000))
+        runCurrent()
+        assertEquals(123L, (log.row("d").records.first() as LogRecord.RequestReceived).occurredAtEpochMs)
+    }
+
+    @Test
+    fun anIgnoredTipKeepsItsReason() = runTest {
+        val log = logbook()
+        intake.tryEmit(IntakeRecord(incoming("se"), IntakeOutcome.Ignored, 0, ignoredReason = IgnoredReason.ModerationRejected))
+        runCurrent()
+        assertEquals(LogStep.Ignored(IgnoredReason.ModerationRejected), log.row("se").latestStep)
     }
 
     @Test

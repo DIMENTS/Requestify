@@ -42,6 +42,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.log.LogConnectionState
 import nl.diments.requestify.core.log.LogKind
 import nl.diments.requestify.core.log.LogRecord
@@ -84,6 +85,12 @@ import nl.diments.requestify.resources.log_save_restored_after
 import nl.diments.requestify.resources.log_step_fulfilled
 import nl.diments.requestify.resources.log_step_handed_over
 import nl.diments.requestify.resources.log_step_ignored
+import nl.diments.requestify.resources.log_step_received_given_at
+import nl.diments.requestify.resources.log_conn_ended_with_app
+import nl.diments.requestify.resources.log_conn_source_changed
+import nl.diments.requestify.resources.log_step_ignored_failed
+import nl.diments.requestify.resources.log_step_ignored_moderation
+import nl.diments.requestify.resources.log_step_queued_next
 import nl.diments.requestify.resources.log_step_pending
 import nl.diments.requestify.resources.log_step_played
 import nl.diments.requestify.resources.log_step_queued
@@ -317,10 +324,15 @@ private fun LogRow.stateText(zone: ZoneId): String? {
 
 @Composable
 private fun LogStep.text(): String = when (this) {
-    is LogStep.Queued -> stringResource(Res.string.log_step_queued, position)
+    // 0: the request went to Spotify before its place was read; there is no place 0.
+    is LogStep.Queued -> if (position >= 1) stringResource(Res.string.log_step_queued, position) else stringResource(Res.string.log_step_queued_next)
     is LogStep.Rejected -> stringResource(Res.string.log_step_rejected, reason.text())
     LogStep.Pending -> stringResource(Res.string.log_step_pending)
-    LogStep.Ignored -> stringResource(Res.string.log_step_ignored)
+    is LogStep.Ignored -> when (reason) {
+        IgnoredReason.NoLink -> stringResource(Res.string.log_step_ignored)
+        IgnoredReason.ModerationRejected -> stringResource(Res.string.log_step_ignored_moderation)
+        IgnoredReason.TipFailed -> stringResource(Res.string.log_step_ignored_failed)
+    }
     LogStep.HandedOver -> stringResource(Res.string.log_step_handed_over)
     LogStep.Played -> stringResource(Res.string.log_step_played)
     is LogStep.Removed -> stringResource(
@@ -347,6 +359,8 @@ private fun LogConnectionState.text(): String = stringResource(
         LogConnectionState.LoginExpired -> Res.string.log_conn_login_expired
         LogConnectionState.KeyRefused -> Res.string.log_conn_key_refused
         LogConnectionState.KeyExpiring -> Res.string.log_conn_key_expiring
+        LogConnectionState.SourceChanged -> Res.string.log_conn_source_changed
+        LogConnectionState.EndedWithApp -> Res.string.log_conn_ended_with_app
     },
 )
 
@@ -387,7 +401,9 @@ private fun LogService.label(): String = when (this) {
 /** One record of a row's timeline, as text. */
 @Composable
 private fun LogRecord.text(row: LogRow, zone: ZoneId): String = when (this) {
-    is LogRecord.RequestReceived -> stringResource(Res.string.log_step_received)
+    is LogRecord.RequestReceived -> occurredAtEpochMs?.takeIf { atEpochMs - it >= 60_000 }
+        ?.let { stringResource(Res.string.log_step_received_given_at, timeOf(it, zone)) }
+        ?: stringResource(Res.string.log_step_received)
     is LogRecord.RequestStep -> step.text()
     is LogRecord.ConnectionChanged -> state.text()
     is LogRecord.StreamChanged -> change.text(row)

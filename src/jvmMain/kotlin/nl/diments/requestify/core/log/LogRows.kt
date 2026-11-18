@@ -68,7 +68,7 @@ private fun LogRow.problem(): Boolean = when (kind) {
             else -> false
         }
     }
-    LogKind.Connection -> (records.last() as LogRecord.ConnectionChanged).state != LogConnectionState.Restored
+    LogKind.Connection -> !(records.last() as LogRecord.ConnectionChanged).state.closesOutage
     LogKind.Stream -> false
     LogKind.Gap -> true
     LogKind.App -> true

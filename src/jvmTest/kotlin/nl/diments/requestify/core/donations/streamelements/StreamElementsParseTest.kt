@@ -7,6 +7,7 @@ import kotlin.test.assertNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.donations.Donation
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.storage.AppJson
@@ -48,6 +49,14 @@ class StreamElementsParseTest {
         assertEquals(268, parseStreamElementsTip(withAmount(2.675), now)?.amountCents, "half up")
         assertEquals(500, parseStreamElementsTip(withAmount(5.0), now)?.amountCents)
         assertNull(parseStreamElementsTip(withAmount(-1.0), now))
+    }
+
+    @Test
+    fun skippedTipsSayWhy() {
+        assertEquals(IgnoredReason.ModerationRejected, skippedStreamElementsTip(tip.with("approved", "rejected"), now)?.second)
+        assertEquals(IgnoredReason.TipFailed, skippedStreamElementsTip(tip.with("status", "failed"), now)?.second)
+        assertEquals(350, skippedStreamElementsTip(tip.with("status", "failed"), now)?.first?.amountCents, "who and how much, for the Log")
+        assertNull(skippedStreamElementsTip(tip, now), "a paid tip is no skipped one")
     }
 
     @Test

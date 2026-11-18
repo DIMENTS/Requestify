@@ -133,6 +133,16 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun aShortLinkToAnAlbumSaysNotATrack() = runTest {
+        val shortLinks = FakeShortLinks()
+        shortLinks.leadsTo("https://spotify.link/album", "https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy")
+        val home = home(shortLinks = shortLinks)
+        home.vm.onAddInput("https://spotify.link/album")
+        settle()
+        assertEquals(AddMessage.NotATrack("album"), home.vm.state.value.addMessage)
+    }
+
+    @Test
     fun shortLinkIsFollowedToItsTrack() = runTest {
         val shortLinks = FakeShortLinks()
         shortLinks.leadsTo("https://spotify.link/abc", "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT?si=x")

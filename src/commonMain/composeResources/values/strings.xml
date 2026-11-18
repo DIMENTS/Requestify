@@ -77,6 +77,8 @@
     <string name="setup_status_connected">Connected</string>
     <string name="setup_status_not_connected">Not connected</string>
     <string name="setup_status_login_expired">Login expired</string>
+    <string name="setup_status_key_refused">Key refused</string>
+    <string name="setup_status_token_refused">Token refused</string>
     <string name="setup_step_dashboard_title">Create a Spotify app</string>
     <string name="setup_step_dashboard_body">Open the Spotify developer dashboard, create an app with any name and description, and tick “Web API”.</string>
     <string name="setup_open_dashboard">Open dashboard</string>
@@ -367,6 +369,7 @@
     <string name="chat_wrongsong_none">You have no song in the queue.</string>
     <string name="chat_skipped">Skipped: %1$s – %2$s</string>
     <string name="chat_blacklisted">Blocked and skipped: %1$s – %2$s</string>
+    <string name="chat_blocked_not_skipped">Blocked: %1$s – %2$s</string>
     <string name="chat_blacklist_failed">Couldn’t block that song right now.</string>
     <string name="chat_remove_none">No position %1$s.</string>
     <string name="chat_remove_usage">Usage: %1$s &lt;position&gt;</string>
@@ -390,6 +393,12 @@
     <string name="log_step_received">Received</string>
     <string name="log_step_track">Song: %1$s</string>
     <string name="log_step_queued">In queue, #%1$d</string>
+    <string name="log_step_queued_next">In queue, up next</string>
+    <string name="log_step_ignored_moderation">Not a request: rejected by StreamElements moderation</string>
+    <string name="log_step_ignored_failed">Not a request: the tip's payment failed</string>
+    <string name="log_step_received_given_at">Received (given at %1$s)</string>
+    <string name="log_conn_source_changed">Donation source changed</string>
+    <string name="log_conn_ended_with_app">Ended when Requestify closed</string>
     <string name="log_step_rejected">Rejected: %1$s</string>
     <string name="log_step_pending">Waiting for Spotify</string>
     <string name="log_step_ignored">Ignored: no Spotify link</string>
@@ -464,6 +473,9 @@
     <string name="connection_donolink_disconnected">DonoLink not connected</string>
     <string name="connection_streamelements_disconnected">StreamElements not connected</string>
     <string name="connection_donolink_key_expiring">DonoLink key expires soon</string>
+    <string name="connection_donolink_key_expiring_days">DonoLink key expires in %1$d days</string>
+    <string name="connection_donolink_key_expiring_one_day">DonoLink key expires in 1 day</string>
+    <string name="connection_donolink_key_expiring_hours">DonoLink key expires within 24 hours</string>
     <string name="donations_title">Donations</string>
     <string name="donations_none">None</string>
     <string name="donations_intro">A donation with a Spotify link in its message becomes a paid request. You use one donation platform.</string>

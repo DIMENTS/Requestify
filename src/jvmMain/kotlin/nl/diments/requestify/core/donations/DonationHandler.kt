@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.intake.IncomingRequest
 import nl.diments.requestify.core.intake.IntakeOutcome
 import nl.diments.requestify.core.intake.RequestIntake
@@ -74,15 +75,7 @@ class DonationHandler(
     private suspend fun decide(d: Donation): IntakeOutcome? {
         if (intake.isKnown(d.id)) return null
         val currency = d.currency.uppercase()
-        val incoming = IncomingRequest(
-            id = d.id,
-            input = d.message,
-            linkOnly = true,
-            requester = Requester(cleanName(d.donorName) ?: getString(Res.string.donation_anonymous)),
-            source = d.source,
-            payment = Payment.Money(d.amountCents, currency),
-            receivedAtEpochMs = clock(),
-        )
+        val incoming = incomingOf(d)
         val input = classifySpotifyInput(d.message)
         if (input is SpotifyInput.SearchText || input is SpotifyInput.Empty) return intake.submit(incoming)
 
@@ -95,6 +88,22 @@ class DonationHandler(
         replySafely(incoming.requester.displayName, outcome)
         return outcome
     }
+
+    /** A tip StreamElements rejected or failed: no request, but the Log shows it arrived ([reason]). */
+    suspend fun ignore(d: Donation, reason: IgnoredReason) {
+        intake.recordIgnored(incomingOf(d), reason)
+    }
+
+    private suspend fun incomingOf(d: Donation) = IncomingRequest(
+        id = d.id,
+        input = d.message,
+        linkOnly = true,
+        requester = Requester(cleanName(d.donorName) ?: getString(Res.string.donation_anonymous)),
+        source = d.source,
+        payment = Payment.Money(d.amountCents, d.currency.uppercase()),
+        receivedAtEpochMs = clock(),
+        occurredAtEpochMs = d.occurredAtEpochMs,
+    )
 
     /** The minimum in cents and its currency: DonoLink is euros, StreamElements the channel's currency. */
     private fun minimumFor(source: RequestSource, currency: String): Pair<Long, String> {

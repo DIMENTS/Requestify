@@ -2,6 +2,7 @@ package nl.diments.requestify.core.log
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.RequestSource
@@ -29,6 +30,8 @@ sealed interface LogRecord {
         val input: String,
         val payment: Payment? = null,
         val sourceRef: String? = null,
+        /** When the donor gave, for a donation (it can arrive later, through a catch-up). */
+        val occurredAtEpochMs: Long? = null,
     ) : LogRecord
 
     @Serializable
@@ -86,9 +89,9 @@ sealed interface LogStep {
     @Serializable @SerialName("pending")
     data object Pending : LogStep
 
-    /** Not a request: a cheer or donation without a Spotify link. */
+    /** Not a request: a cheer or donation without a Spotify link, or a tip StreamElements rejected or failed ([reason]). */
     @Serializable @SerialName("ignored")
-    data object Ignored : LogStep
+    data class Ignored(val reason: IgnoredReason = IgnoredReason.NoLink) : LogStep
 
     @Serializable @SerialName("handed_over")
     data object HandedOver : LogStep
@@ -139,6 +142,15 @@ enum class LogConnectionState {
     @SerialName("login_expired") LoginExpired,
     @SerialName("key_refused") KeyRefused,
     @SerialName("key_expiring") KeyExpiring,
+
+    /** The streamer switched to another donation source: the old one's outage is over. */
+    @SerialName("source_changed") SourceChanged,
+
+    /** Still open when Requestify last closed: over with that run (the next one does not "restore" it). */
+    @SerialName("ended_with_app") EndedWithApp;
+
+    /** Whether this ends an outage row. */
+    val closesOutage: Boolean get() = this == Restored || this == SourceChanged || this == EndedWithApp
 }
 
 @Serializable

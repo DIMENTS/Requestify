@@ -23,6 +23,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonPrimitive
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.donations.Donation
 import nl.diments.requestify.core.donations.DonationCursor
@@ -63,6 +65,7 @@ class StreamElementsSourceTest {
     private class Sink {
         val calls = mutableListOf<String>()
         val kept = mutableListOf<Donation>()
+        val ignored = mutableListOf<Pair<String, IgnoredReason>>()
         var failures = 0
         suspend fun handle(d: Donation) {
             calls += d.id
@@ -98,7 +101,7 @@ class StreamElementsSourceTest {
     private fun TestScope.start(store: DonationCursorStore = cursors()): Run {
         val feed = FakeFeed()
         val sink = Sink()
-        val source = StreamElementsSource(feed, sink::handle, store, backgroundScope, clock = { now() })
+        val source = StreamElementsSource(feed, sink::handle, store, backgroundScope, clock = { now() }, ignore = { d, reason -> sink.ignored += d.id to reason })
         val gaps = mutableListOf<LogRecord.GapNoticed>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { source.gaps.collect { gaps += it } }
         source.start()
@@ -125,6 +128,17 @@ class StreamElementsSourceTest {
         assertEquals(listOf("se-t1"), r.sink.calls)
         assertEquals(DonationStatus.Connected, r.source.health.value.status)
         assertFalse(r.source.health.value.canCatchUp, "tips made while Requestify is off are not picked up")
+    }
+
+    @Test
+    fun moderatedAndFailedTipsReachTheLog() = runTest {
+        val r = start()
+        r.feed.state.value = AstroState.Connected
+        r.feed.tips.emit(JsonObject(tip("m1") + ("approved" to JsonPrimitive("rejected"))))
+        r.feed.tips.emit(JsonObject(tip("f1") + ("status" to JsonPrimitive("failed"))))
+        runCurrent()
+        assertEquals(emptyList(), r.sink.calls, "no request")
+        assertEquals(listOf("se-m1" to IgnoredReason.ModerationRejected, "se-f1" to IgnoredReason.TipFailed), r.sink.ignored)
     }
 
     @Test

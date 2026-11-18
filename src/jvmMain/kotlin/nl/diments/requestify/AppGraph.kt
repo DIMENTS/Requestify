@@ -55,6 +55,7 @@ import nl.diments.requestify.core.donations.streamelements.StreamElementsSource
 import nl.diments.requestify.core.donations.streamelements.channelIdFromJwt
 import nl.diments.requestify.core.log.BitsGapWatcher
 import nl.diments.requestify.core.log.ConnectionSnapshot
+import nl.diments.requestify.core.log.donationConnections
 import nl.diments.requestify.core.log.LogInputs
 import nl.diments.requestify.core.log.LogService
 import nl.diments.requestify.core.log.LogStore
@@ -366,6 +367,7 @@ class AppGraph(
             clock = System::currentTimeMillis,
         ),
         handle = { donationHandler.handle(it) },
+        ignore = { donation, reason -> donationHandler.ignore(donation, reason) },
         cursors = donationCursors,
         scope = scope,
         clock = System::currentTimeMillis,
@@ -433,7 +435,7 @@ class AppGraph(
             connections = merge(
                 controller.health.map { LogService.Spotify to it.toSnapshot() },
                 twitchSession.health.map { LogService.Twitch to it.toSnapshot() },
-                donationSources.health.mapNotNull { h -> h.service()?.let { it to h.toSnapshot(System.currentTimeMillis()) } },
+                donationConnections(donationSources.health, System::currentTimeMillis),
             ),
             gaps = merge(bitsGaps.gaps, streamElementsSource.gaps),
             saves = saveHealth.problems,
@@ -602,16 +604,3 @@ private fun TwitchHealth.toSnapshot(): ConnectionSnapshot = when {
     else -> ConnectionSnapshot.Up
 }
 
-private fun DonationHealth.service(): LogService? = when (kind) {
-    DonationSourceKind.DonoLink -> LogService.DonoLink
-    DonationSourceKind.StreamElements -> LogService.StreamElements
-    DonationSourceKind.None -> null
-}
-
-/** The donation source as the Log sees it: a key about to expire is news once, like a lost connection. */
-private fun DonationHealth.toSnapshot(nowMs: Long): ConnectionSnapshot = when {
-    status == DonationStatus.KeyRefused -> ConnectionSnapshot.KeyRefused
-    status == DonationStatus.Retrying -> ConnectionSnapshot.Down
-    keyExpiresAtEpochMs?.let { it - nowMs <= 7 * 24 * 3_600_000L } == true -> ConnectionSnapshot.KeyExpiring
-    else -> ConnectionSnapshot.Up
-}

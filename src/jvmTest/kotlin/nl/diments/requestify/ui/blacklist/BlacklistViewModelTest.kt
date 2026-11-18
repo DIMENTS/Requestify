@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.intake.FakeShortLinks
 import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -93,7 +94,7 @@ class BlacklistViewModelTest {
         var viewerAnswer: TwitchResult<TwitchUserRef?>,
     )
 
-    private fun TestScope.setup(twitch: Boolean = true): Setup {
+    private fun TestScope.setup(twitch: Boolean = true, shortLinks: FakeShortLinks = FakeShortLinks()): Setup {
         val catalog = FakeCatalog()
         val player = FakeSpotifyPlayer { testScheduler.currentTime }
         val controller = PlaybackController(
@@ -110,7 +111,7 @@ class BlacklistViewModelTest {
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-        val parts = intakeParts(dir, controller, catalog, settings, backgroundScope) { testScheduler.currentTime }
+        val parts = intakeParts(dir, controller, catalog, settings, backgroundScope, shortLinks) { testScheduler.currentTime }
         val connected = MutableStateFlow(twitch)
         val lookups = mutableListOf<String>()
         lateinit var setup: Setup
@@ -127,6 +128,16 @@ class BlacklistViewModelTest {
         )
         setup = Setup(vm, controller, catalog, parts, connected, lookups, TwitchResult.Ok(null))
         return setup
+    }
+
+    @Test
+    fun aShortLinkToAnAlbumSaysNotATrack() = runTest {
+        val shortLinks = FakeShortLinks()
+        shortLinks.leadsTo("https://spotify.link/album", "https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy")
+        val s = setup(shortLinks = shortLinks)
+        s.vm.onInput("https://spotify.link/album")
+        runCurrent()
+        assertEquals(BlacklistMessage.WrongLink("album"), s.vm.state.value.message)
     }
 
     @Test

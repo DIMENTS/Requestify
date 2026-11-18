@@ -14,6 +14,7 @@ import nl.diments.requestify.resources.chat_added_soon
 import nl.diments.requestify.resources.chat_already_next
 import nl.diments.requestify.resources.chat_blacklist_failed
 import nl.diments.requestify.resources.chat_blacklisted
+import nl.diments.requestify.resources.chat_blocked_not_skipped
 import nl.diments.requestify.resources.chat_denied_followers
 import nl.diments.requestify.resources.chat_denied_moderators
 import nl.diments.requestify.resources.chat_denied_subscribers
@@ -168,6 +169,10 @@ class ChatReplies {
     /** A moderator's `!blacklist`: the song that was blocked and skipped. */
     suspend fun blacklisted(track: Track, mention: String?): String =
         mentioned(mention, getString(Res.string.chat_blacklisted, track.name, artistsOf(track)))
+
+    /** A moderator's `!blacklist` whose song had stopped playing by then: blocked, nothing skipped. */
+    suspend fun blockedNotSkipped(track: Track, mention: String?): String =
+        mentioned(mention, getString(Res.string.chat_blocked_not_skipped, track.name, artistsOf(track)))
 
     /** A moderator's `!blacklist` that could not be saved: nothing was blocked or skipped. */
     suspend fun blacklistFailed(mention: String?): String = mentioned(mention, getString(Res.string.chat_blacklist_failed))

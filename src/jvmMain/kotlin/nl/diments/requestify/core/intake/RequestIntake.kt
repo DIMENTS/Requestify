@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.model.ChannelPointsRef
 import nl.diments.requestify.core.model.Payment
@@ -46,7 +47,13 @@ sealed interface IntakeOutcome {
 }
 
 /** What the intake did with [incoming], reported on [RequestIntake.records] once the outcome is kept. */
-data class IntakeRecord(val incoming: IncomingRequest, val outcome: IntakeOutcome, val atEpochMs: Long)
+/** [ignoredReason]: why an [IntakeOutcome.Ignored] donation was no request (null: it had no Spotify link). */
+data class IntakeRecord(
+    val incoming: IncomingRequest,
+    val outcome: IntakeOutcome,
+    val atEpochMs: Long,
+    val ignoredReason: IgnoredReason? = null,
+)
 
 /**
  * Where every source hands its requests: resolves the track, applies the rules atomically through the controller,
@@ -83,6 +90,11 @@ class RequestIntake(
 
     private fun recorded(incoming: IncomingRequest, outcome: IntakeOutcome) {
         _records.tryEmit(IntakeRecord(incoming, outcome, clock()))
+    }
+
+    /** A donation that arrived but is no request ([reason]): only the Log hears of it. */
+    fun recordIgnored(incoming: IncomingRequest, reason: IgnoredReason) {
+        _records.tryEmit(IntakeRecord(incoming, IntakeOutcome.Ignored, clock(), reason))
     }
 
     /** Viewer id to when their last request was accepted. In memory only: a cooldown paces a stream, not restarts. */

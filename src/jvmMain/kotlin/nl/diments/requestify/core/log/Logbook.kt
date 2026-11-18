@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.intake.IntakeOutcome
 import nl.diments.requestify.core.intake.IntakeRecord
 import nl.diments.requestify.core.model.ChannelPointsRef
@@ -28,7 +29,7 @@ import nl.diments.requestify.core.twitch.RedemptionStatus
 import nl.diments.requestify.core.twitch.points.OutboxResult
 
 /** A connection as the Log sees it; a change from one to another may be news. */
-enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring }
+enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged }
 
 /** Everything the Log listens to. None of these replays: the Logbook subscribes before anything can happen. */
 data class LogInputs(
@@ -105,6 +106,10 @@ class Logbook(
             val saved = store.readAll()
             synchronized(lock) { records.addAll(0, saved) }
             saved.forEach(::index)
+            // An outage the last run left open ended with it: the first "up" of this run is no restore.
+            openOutage.toList().forEach { (service, row) ->
+                add(LogRecord.ConnectionChanged(row, clock(), service, LogConnectionState.EndedWithApp))
+            }
             changed.value++
             // Once a day what is older than the retention leaves memory too, like its day files leave the disk.
             launch {
@@ -160,7 +165,7 @@ class Logbook(
         val incoming = r.incoming
         val id = incoming.id
         val at = r.atEpochMs
-        received(id, at, incoming.source, incoming.requester, incoming.input, incoming.payment, incoming.sourceRef)
+        received(id, at, incoming.source, incoming.requester, incoming.input, incoming.payment, incoming.sourceRef, incoming.occurredAtEpochMs)
         when (val o = r.outcome) {
             is IntakeOutcome.Accepted -> {
                 resolved(id, at, o.request.track)
@@ -170,7 +175,7 @@ class Logbook(
                 o.track?.let { resolved(id, at, it) }
                 add(LogRecord.RequestStep(id, at, LogStep.Rejected(o.reason, o.listed)))
             }
-            IntakeOutcome.Ignored -> add(LogRecord.RequestStep(id, at, LogStep.Ignored))
+            IntakeOutcome.Ignored -> add(LogRecord.RequestStep(id, at, LogStep.Ignored(r.ignoredReason ?: IgnoredReason.NoLink)))
             IntakeOutcome.Pending -> add(LogRecord.RequestStep(id, at, LogStep.Pending))
         }
     }
@@ -212,6 +217,12 @@ class Logbook(
     }
 
     private fun onConnection(service: LogService, snapshot: ConnectionSnapshot, detail: String? = null) {
+        if (snapshot == ConnectionSnapshot.SourceChanged) {
+            // The streamer switched sources: this one's outage is over, and it starts afresh if chosen again.
+            connectionNow.remove(service)
+            openOutage[service]?.let { add(LogRecord.ConnectionChanged(it, clock(), service, LogConnectionState.SourceChanged)) }
+            return
+        }
         if (connectionNow[service] == snapshot) return
         connectionNow[service] = snapshot
         val now = clock()
@@ -241,9 +252,10 @@ class Logbook(
         input: String,
         payment: Payment?,
         sourceRef: String?,
+        occurredAtEpochMs: Long? = null,
     ) {
         if (id in receivedRows) return
-        add(LogRecord.RequestReceived(id, at, source, requester, input, payment, sourceRef))
+        add(LogRecord.RequestReceived(id, at, source, requester, input, payment, sourceRef, occurredAtEpochMs))
     }
 
     private fun resolved(id: String, at: Long, track: Track) {
@@ -266,9 +278,9 @@ class Logbook(
                 ChannelPointsRef.parse(record.sourceRef)?.let { redemptionRows[it.redemptionId] = record.rowId }
             }
             is LogRecord.RequestStep -> if (record.step is LogStep.Resolved) resolvedRows += record.rowId
-            // An outage still open when the app last closed is closed by the next "up" of this run.
+            // An outage still open when the app last closed ended with that run (see [start]).
             is LogRecord.ConnectionChanged ->
-                if (record.state == LogConnectionState.Restored) openOutage.remove(record.service) else openOutage[record.service] = record.rowId
+                if (record.state.closesOutage) openOutage.remove(record.service) else openOutage[record.service] = record.rowId
             else -> Unit
         }
     }

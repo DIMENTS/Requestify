@@ -14,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.settings.KeyExpiryNotice
 import nl.diments.requestify.core.log.LogConnectionState
 import nl.diments.requestify.core.log.LogRecord
@@ -176,7 +177,7 @@ class SavedFormatCompatTest {
             LogStep.Queued(1) to "queued",
             LogStep.Rejected(RejectReason.Duplicate, listed = true) to "rejected",
             LogStep.Pending to "pending",
-            LogStep.Ignored to "ignored",
+            LogStep.Ignored() to "ignored",
             LogStep.HandedOver to "handed_over",
             LogStep.Played to "played",
             LogStep.Removed(RemoveReason.WrongSong) to "removed",
@@ -234,6 +235,15 @@ class SavedFormatCompatTest {
         val json = AppJson.instance.encodeToString(Settings.serializer(), Settings(startWithWindows = false))
         assertTrue(""""startWithWindows":false""" in json, json)
         assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").startWithWindows, "never chosen")
+    }
+
+    /** Why a donation was no request is kept in the Log's day files under these names. */
+    @Test
+    fun ignoredReasonsArePinned() {
+        val json = AppJson.instance.encodeToString(LogStep.serializer(), LogStep.Ignored(IgnoredReason.ModerationRejected))
+        assertEquals("""{"type":"ignored","reason":"moderation_rejected"}""", json)
+        assertEquals(LogStep.Ignored(), AppJson.instance.decodeFromString(LogStep.serializer(), """{"type":"ignored"}"""), "plan-3 rows read")
+        assertEquals("\"tip_failed\"", AppJson.instance.encodeToString(IgnoredReason.serializer(), IgnoredReason.TipFailed))
     }
 
     /** A file that could not be saved is logged under this service name. */

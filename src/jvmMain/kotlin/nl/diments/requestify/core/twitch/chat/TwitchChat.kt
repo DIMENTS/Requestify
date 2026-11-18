@@ -234,14 +234,15 @@ class TwitchChat(
     }
 
     /**
-     * Blocks the playing track (by the moderator's login) and skips it, while it is still the one playing. A block
+     * Blocks the playing track (by the moderator's login) and skips it, while it is still the one playing (otherwise the
+     * reply says it was blocked only). A block
      * that cannot be saved skips nothing and says so.
      */
     private suspend fun blacklist(message: EventSubEvent.ChatMessage) {
         val track = playingNow() ?: return reply(message, replies.song(controller.snapshot(), null))
         if (!intake.blockTrack(track, by = message.chatterLogin)) return reply(message, replies.blacklistFailed(null))
-        controller.skipIfPlaying(track.id)
-        reply(message, replies.blacklisted(track, null))
+        val skipped = controller.skipIfPlaying(track.id)
+        reply(message, if (skipped) replies.blacklisted(track, null) else replies.blockedNotSkipped(track, null))
     }
 
     private fun reply(message: EventSubEvent.ChatMessage, text: String) = sender.send(text, message.messageId)

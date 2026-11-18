@@ -15,7 +15,7 @@ import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.connection_all_connected
 import nl.diments.requestify.resources.tray_cannot_save
 import nl.diments.requestify.resources.tray_tooltip
-import nl.diments.requestify.ui.common.label
+import nl.diments.requestify.ui.common.statusLook
 import org.jetbrains.compose.resources.getString
 
 /** What the tray icon shows: the warning mark, its tooltip and the status line at the top of its menu. */
@@ -28,7 +28,7 @@ data class TrayLook(val warning: Boolean, val tooltip: String, val statusLine: S
  */
 suspend fun trayLook(problems: List<ConnectionProblem>, saveProblems: List<SaveProblem>): TrayLook {
     val status = when {
-        problems.isNotEmpty() -> getString(problems.first().label())
+        problems.isNotEmpty() -> problems.first().statusLook().let { getString(it.text, *it.args.toTypedArray()) }
         saveProblems.isNotEmpty() -> getString(Res.string.tray_cannot_save, saveProblems.joinToString { it.file })
         else -> getString(Res.string.connection_all_connected)
     }

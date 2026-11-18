@@ -18,4 +18,6 @@ data class IncomingRequest(
     val receivedAtEpochMs: Long,
     /** The chat message id to reply to. */
     val replyTo: String? = null,
+    /** When the donor gave, for a donation (a catch-up can bring it in later). New field: older pending.json lacks it. */
+    val occurredAtEpochMs: Long? = null,
 )

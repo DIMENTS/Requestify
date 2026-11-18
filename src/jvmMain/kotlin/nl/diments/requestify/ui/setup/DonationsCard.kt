@@ -83,7 +83,8 @@ fun DonationsCard(vm: DonationsSetupViewModel) {
                     ConnectionBadge(
                         when (state.health.status) {
                             DonationStatus.Connected -> LoginStatus.Connected
-                            DonationStatus.KeyRefused -> LoginStatus.LoginExpired
+                            DonationStatus.KeyRefused ->
+                                if (state.kind == DonationSourceKind.StreamElements) LoginStatus.TokenRefused else LoginStatus.KeyRefused
                             else -> LoginStatus.NotConnected
                         },
                     )

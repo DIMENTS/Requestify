@@ -130,15 +130,24 @@ class HomeViewModel(
             is SpotifyInput.NotATrack -> add.value = AddState(text, message = AddMessage.NotATrack(input.kind))
             is SpotifyInput.ArtistId -> add.value = AddState(text, message = AddMessage.NotATrack("artist"))
             is SpotifyInput.TrackId -> lookUp(text) { catalog.track(input.id).valueOrNull()?.let(::listOf) }
-            // A short link is followed first; one that leads to no track finds nothing.
-            is SpotifyInput.ShortLink -> lookUp(text) {
-                when (val target = intake.followShortLink(input)) {
-                    is ShortLinkTarget.Link -> when (val linked = target.input) {
-                        is SpotifyInput.TrackId -> catalog.track(linked.id).valueOrNull()?.let(::listOf)
-                        else -> emptyList()
+            // A short link is followed first; one to an album or artist says so, like a full link does.
+            is SpotifyInput.ShortLink -> {
+                add.value = AddState(text, results = add.value.results, lookingUp = true)
+                lookup = scope.launch {
+                    val state = when (val target = intake.followShortLink(input)) {
+                        is ShortLinkTarget.Link -> when (val linked = target.input) {
+                            is SpotifyInput.TrackId -> catalog.track(linked.id).valueOrNull()
+                                ?.let { AddState(text, results = listOf(it)) }
+                                ?: AddState(text, message = AddMessage.SpotifyUnavailable)
+                            is SpotifyInput.NotATrack -> AddState(text, message = AddMessage.NotATrack(linked.kind))
+                            is SpotifyInput.ArtistId -> AddState(text, message = AddMessage.NotATrack("artist"))
+                            else -> AddState(text, message = AddMessage.NoResults)
+                        }
+                        ShortLinkTarget.Unresolvable -> AddState(text, message = AddMessage.NoResults)
+                        ShortLinkTarget.Unreachable -> AddState(text, message = AddMessage.SpotifyUnavailable)
                     }
-                    ShortLinkTarget.Unresolvable -> emptyList()
-                    ShortLinkTarget.Unreachable -> null
+                    ensureActive() // newer input replaced this lookup while it ran
+                    add.value = state
                 }
             }
             is SpotifyInput.SearchText -> lookUp(text) {

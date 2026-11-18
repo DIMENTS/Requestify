@@ -92,6 +92,8 @@ import nl.diments.requestify.resources.setup_premium_unknown
 import nl.diments.requestify.resources.setup_spotify
 import nl.diments.requestify.resources.setup_status_connected
 import nl.diments.requestify.resources.setup_status_login_expired
+import nl.diments.requestify.resources.setup_status_key_refused
+import nl.diments.requestify.resources.setup_status_token_refused
 import nl.diments.requestify.resources.setup_status_not_connected
 import nl.diments.requestify.resources.setup_step_check_title
 import nl.diments.requestify.resources.setup_step_client_id_body
@@ -182,7 +184,7 @@ private fun ConnectionBadge(auth: SpotifyAuthStatus) = ConnectionBadge(
 )
 
 /** How a service's login stands, as the badge on its card says it. */
-internal enum class LoginStatus { Connected, NotConnected, LoginExpired }
+internal enum class LoginStatus { Connected, NotConnected, LoginExpired, KeyRefused, TokenRefused }
 
 @Composable
 internal fun ConnectionBadge(status: LoginStatus) {
@@ -192,6 +194,10 @@ internal fun ConnectionBadge(status: LoginStatus) {
             Triple(Res.string.setup_status_connected, scheme.primaryContainer, scheme.onPrimaryContainer)
         LoginStatus.NotConnected ->
             Triple(Res.string.setup_status_not_connected, scheme.surfaceContainerHighest, scheme.onSurfaceVariant)
+        LoginStatus.KeyRefused ->
+            Triple(Res.string.setup_status_key_refused, scheme.errorContainer, scheme.onErrorContainer)
+        LoginStatus.TokenRefused ->
+            Triple(Res.string.setup_status_token_refused, scheme.errorContainer, scheme.onErrorContainer)
         LoginStatus.LoginExpired ->
             Triple(Res.string.setup_status_login_expired, scheme.errorContainer, scheme.onErrorContainer)
     }

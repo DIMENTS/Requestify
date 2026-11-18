@@ -37,7 +37,8 @@ import org.jetbrains.compose.resources.stringResource
 
 internal enum class Tone { Good, Neutral, Problem }
 
-internal class StatusLook(val text: StringResource, val icon: ImageVector, val tone: Tone)
+/** [args] fill [text]'s placeholders (a DonoLink key's days left). */
+internal class StatusLook(val text: StringResource, val icon: ImageVector, val tone: Tone, val args: List<Any> = emptyList())
 
 internal fun SpotifyHealth.look(): StatusLook = when (this) {
     SpotifyHealth.Ok -> StatusLook(Res.string.spotify_status_ok, AppIcons.CheckCircle, Tone.Good)
@@ -90,7 +91,7 @@ internal fun StatusChip(look: StatusLook, modifier: Modifier = Modifier, onClick
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(shown.icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-                Text(stringResource(shown.text), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(shown.text, *shown.args.toTypedArray()), style = MaterialTheme.typography.labelLarge)
             }
         }
     }

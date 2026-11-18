@@ -5,6 +5,7 @@ import java.math.RoundingMode
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.donations.Donation
 import nl.diments.requestify.core.donations.donolink.parseInstant
 import nl.diments.requestify.core.model.RequestSource
@@ -31,6 +32,20 @@ fun parseStreamElementsTip(data: JsonObject, now: Long): Donation? {
         currency = donation.text("currency")?.takeIf { it.isNotBlank() }?.uppercase() ?: "USD",
         occurredAtEpochMs = data.text("createdAt")?.let(::parseInstant) ?: now,
     )
+}
+
+/**
+ * A tip that arrived but is no request because StreamElements rejected it (the streamer's moderation) or its payment
+ * failed, with who and how much for the Log; null for any other tip.
+ */
+fun skippedStreamElementsTip(data: JsonObject, now: Long): Pair<Donation, IgnoredReason>? {
+    val reason = when {
+        data.text("approved") == "rejected" -> IgnoredReason.ModerationRejected
+        data.text("status")?.let { it != "success" } == true -> IgnoredReason.TipFailed
+        else -> return null
+    }
+    val allowed = JsonObject(data + ("approved" to JsonPrimitive("allowed")) + ("status" to JsonPrimitive("success")))
+    return parseStreamElementsTip(allowed, now)?.let { it to reason }
 }
 
 private val HUNDRED = BigDecimal(100)

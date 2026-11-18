@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.donations.Donation
 import nl.diments.requestify.core.donations.DonationCursor
 import nl.diments.requestify.core.donations.DonationCursorStore
@@ -37,6 +38,8 @@ class StreamElementsSource(
     private val cursors: DonationCursorStore,
     private val scope: CoroutineScope,
     private val clock: () -> Long,
+    /** A tip StreamElements rejected (moderation) or failed: no request, but the Log hears of it. */
+    private val ignore: suspend (Donation, IgnoredReason) -> Unit = { _, _ -> },
 ) : DonationSource {
     private val lock = Any()
     private var job: Job? = null
@@ -75,7 +78,10 @@ class StreamElementsSource(
      * paid tip is never dropped, and StreamElements will not send it again. Later tips wait their turn.
      */
     private suspend fun onTip(data: JsonObject) {
-        val donation = parseStreamElementsTip(data, clock()) ?: return
+        val donation = parseStreamElementsTip(data, clock()) ?: run {
+            skippedStreamElementsTip(data, clock())?.let { (skipped, reason) -> ignore(skipped, reason) }
+            return
+        }
         var attempt = 0
         while (true) {
             try {

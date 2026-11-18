@@ -2,6 +2,8 @@ package nl.diments.requestify.ui.log
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
@@ -55,6 +57,20 @@ class LogScreenTest {
 
     private fun vm(error: String? = null) =
         LogViewModel(MutableStateFlow(rows), MutableStateFlow(error), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+
+    @Test
+    fun positionsAreNeverZero() = runComposeUiTest {
+        val next = foldRows(
+            listOf(
+                LogRecord.RequestReceived("r2", at, RequestSource.CHAT, Requester("Piet"), "despacito"),
+                LogRecord.RequestStep("r2", at, LogStep.Queued(0)), // handed to Spotify before its place was read
+            ),
+        )
+        val vm = LogViewModel(MutableStateFlow(next), MutableStateFlow(null), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
+        onNodeWithText("In queue, up next").assertIsDisplayed()
+        onAllNodesWithText("#0", substring = true).assertCountEquals(0)
+    }
 
     @Test
     fun rowsShowTimeSourceAndState() = runComposeUiTest {

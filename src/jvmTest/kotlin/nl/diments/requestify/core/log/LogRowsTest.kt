@@ -100,7 +100,7 @@ class LogRowsTest {
         assertTrue(problem(LogStep.Queued(1), LogStep.Removed(RemoveReason.WrongSong), LogStep.RefundPending(1)), "refund pending")
         assertFalse(problem(LogStep.Queued(1), LogStep.Removed(RemoveReason.WrongSong), LogStep.RefundPending(1), LogStep.Refunded))
         assertTrue(problem(LogStep.Queued(1), LogStep.Removed(RemoveReason.WrongSong), LogStep.RefundGaveUp), "refund given up")
-        assertFalse(problem(LogStep.Ignored), "a donation without a link is not a problem")
+        assertFalse(problem(LogStep.Ignored()), "a donation without a link is not a problem")
         assertFalse(problem(LogStep.Queued(1), LogStep.Played))
         assertTrue(
             problem(LogStep.Rejected(RejectReason.SpotifyUnavailable, listed = true)),

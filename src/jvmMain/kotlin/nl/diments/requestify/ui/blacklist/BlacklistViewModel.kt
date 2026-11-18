@@ -157,11 +157,8 @@ class BlacklistViewModel(
             is SpotifyInput.TrackId -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 catalog.track(input.id).valueOrNull()?.let { listOf(BlockCandidate.Song(it)) }
             }
-            is SpotifyInput.ShortLink -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
-                followed(input) { target ->
-                    if (target !is SpotifyInput.TrackId) return@followed emptyList()
-                    catalog.track(target.id).valueOrNull()?.let { listOf(BlockCandidate.Song(it)) }
-                }
+            is SpotifyInput.ShortLink -> lookUpShortLink(text, input, wanted = "track") { target ->
+                (target as? SpotifyInput.TrackId)?.let { catalog.track(it.id).valueOrNull()?.let { t -> listOf(BlockCandidate.Song(t)) } }
             }
             is SpotifyInput.SearchText -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 delay(SEARCH_DEBOUNCE_MS)
@@ -178,11 +175,8 @@ class BlacklistViewModel(
             is SpotifyInput.ArtistId -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 catalog.artist(input.id).valueOrNull()?.let { listOf(BlockCandidate.Artist(it)) }
             }
-            is SpotifyInput.ShortLink -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
-                followed(input) { target ->
-                    if (target !is SpotifyInput.ArtistId) return@followed emptyList()
-                    catalog.artist(target.id).valueOrNull()?.let { listOf(BlockCandidate.Artist(it)) }
-                }
+            is SpotifyInput.ShortLink -> lookUpShortLink(text, input, wanted = "artist") { target ->
+                (target as? SpotifyInput.ArtistId)?.let { catalog.artist(it.id).valueOrNull()?.let { a -> listOf(BlockCandidate.Artist(a)) } }
             }
             is SpotifyInput.SearchText -> lookUp(text, BlacklistMessage.SpotifyUnavailable) {
                 delay(SEARCH_DEBOUNCE_MS)
@@ -215,16 +209,42 @@ class BlacklistViewModel(
     }
 
     /**
-     * Follows a short link, then [find]s what it leads to. Null (Spotify unavailable) when it cannot be followed now;
-     * nothing when it leads to no Spotify link.
+     * Follows a short link, then [find]s what it leads to. A link to another kind than [wanted] (an album where a song is
+     * looked for) says so, like a full link does; one that cannot be followed now is "Spotify unavailable".
      */
-    private suspend fun followed(
+    private fun lookUpShortLink(
+        text: String,
         link: SpotifyInput.ShortLink,
+        wanted: String,
         find: suspend (SpotifyInput) -> List<BlockCandidate>?,
-    ): List<BlockCandidate>? = when (val target = intake.followShortLink(link)) {
-        is ShortLinkTarget.Link -> find(target.input)
-        ShortLinkTarget.Unresolvable -> emptyList()
-        ShortLinkTarget.Unreachable -> null
+    ) {
+        add.value = AddState(text, results = add.value.results, lookingUp = true)
+        lookup = scope.launch {
+            val state = when (val target = intake.followShortLink(link)) {
+                is ShortLinkTarget.Link -> {
+                    val kind = when (val linked = target.input) {
+                        is SpotifyInput.TrackId -> "track"
+                        is SpotifyInput.ArtistId -> "artist"
+                        is SpotifyInput.NotATrack -> linked.kind
+                        else -> null
+                    }
+                    if (kind != null && kind != wanted) {
+                        AddState(text, message = BlacklistMessage.WrongLink(kind))
+                    } else {
+                        val found = find(target.input)
+                        when {
+                            found == null -> AddState(text, message = BlacklistMessage.SpotifyUnavailable)
+                            found.isEmpty() -> AddState(text, message = BlacklistMessage.NoResults)
+                            else -> AddState(text, results = found)
+                        }
+                    }
+                }
+                ShortLinkTarget.Unresolvable -> AddState(text, message = BlacklistMessage.NoResults)
+                ShortLinkTarget.Unreachable -> AddState(text, message = BlacklistMessage.SpotifyUnavailable)
+            }
+            ensureActive() // newer input replaced this lookup while it ran
+            add.value = state
+        }
     }
 
     private fun wrongLink(text: String, kind: String) {

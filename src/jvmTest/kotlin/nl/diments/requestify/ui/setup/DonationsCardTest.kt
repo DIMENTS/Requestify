@@ -2,6 +2,8 @@ package nl.diments.requestify.ui.setup
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -106,6 +108,15 @@ class DonationsCardTest {
         setContent { RequestifyTheme(BrandSeed, dark = true) { DonationsCard(vm) } }
 
         onNodeWithText("DonoLink refused this key", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun aRefusedKeySaysRefused() = runComposeUiTest {
+        val vm = vm(expiry = null, health = DonationHealth(DonationSourceKind.DonoLink, DonationStatus.KeyRefused))
+        vm.choose(DonationSourceKind.DonoLink)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { DonationsCard(vm) } }
+        onNodeWithText("Key refused").assertIsDisplayed()
+        onAllNodesWithText("Login expired").assertCountEquals(0)
     }
 
     @Test
