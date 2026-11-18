@@ -158,6 +158,7 @@ class AppGraph(
         scope = scope,
         clock = System::currentTimeMillis,
         onStreamEnded = { controller.removeMatching(RemoveReason.StreamEnded) { it.filter(Request::isFreeViewerRequest) } },
+        context = saveContext,
     )
 
     private val controller = PlaybackController(
@@ -251,6 +252,7 @@ class AppGraph(
         file = JsonFileStore(paths.redemptionsFile, ListSerializer(OutboxEntry.serializer())) { emptyList() },
         api = twitchApi,
         scope = scope,
+        context = saveContext,
     )
 
     private val channelPoints = ChannelPointsSource(

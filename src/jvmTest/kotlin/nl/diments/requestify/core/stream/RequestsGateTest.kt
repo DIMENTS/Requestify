@@ -14,6 +14,13 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Delay
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.Runnable
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.test.StandardTestDispatcher
+import nl.diments.requestify.core.storage.SaveContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -37,6 +44,9 @@ class RequestsGateTest {
     /** How often the end-of-stream clear ran, across every gate of the test. */
     private var cleared = 0
 
+    /** Every dispatch of the gates' background saves. */
+    private var ioDispatches = 0
+
     /** A gate on the file in [dir]; calling it again (a restart) builds a second one on the same file. */
     private fun TestScope.gate(
         twitch: MutableStateFlow<Boolean> = MutableStateFlow(true),
@@ -47,7 +57,44 @@ class RequestsGateTest {
         scope = scope,
         clock = { testScheduler.currentTime },
         onStreamEnded = { cleared++ },
+        context = SaveContext(scope, { testScheduler.currentTime }, countingIo(StandardTestDispatcher(testScheduler))),
     ).also { it.start() }
+
+    /** Counts [inner]'s dispatches; its virtual-time delays stay (the writer's retries wait on the test clock). */
+    @OptIn(InternalCoroutinesApi::class)
+    private fun countingIo(inner: CoroutineDispatcher): CoroutineDispatcher = object : CoroutineDispatcher(), Delay by (inner as Delay) {
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            ioDispatches++
+            inner.dispatch(context, block)
+        }
+    }
+
+    @Test
+    fun aChangeDoesNotWaitForTheFile() = runTest {
+        val gate = gate()
+        runCurrent()
+        val events = mutableListOf<GateEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { gate.events.collect { events += it } }
+
+        gate.onLive(true)
+        assertTrue(gate.open.value)
+        assertEquals<List<GateEvent>>(listOf(GateEvent.WentLive(0, byRead = false)), events, "the change and its event come at once")
+        assertFalse(saved().live, "the file is written in the background")
+        runCurrent()
+        assertTrue(saved().live)
+    }
+
+    @Test
+    fun theHeartbeatWritesOffTheCallerThread() = runTest {
+        val gate = gate()
+        gate.onLive(true)
+        runCurrent()
+        val before = ioDispatches
+
+        wait(minute)
+        assertEquals(minute, saved().lastSeenLiveMs, "the heartbeat saved the time it saw the stream live")
+        assertTrue(ioDispatches > before, "through the background writer")
+    }
 
     /** A scope that ends like the app does when it closes: [cancel] it. */
     private fun TestScope.appScope() = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
@@ -306,33 +353,28 @@ class RequestsGateTest {
     }
 
     @Test
-    fun aFailedSaveStillClosesRequestsWhenTheStreamGoesOffline() = runTest {
+    fun aChangeWhoseFileCannotBeWrittenAppliesAndIsSavedOnceItWorks() = runTest {
         val first = appScope()
         val gate = gate(scope = first)
         gate.onLive(true)
+        runCurrent()
         breakWrites()
 
         gate.onLive(false)
+        runCurrent()
         assertFalse(gate.open.value, "closed although the save failed")
         assertEquals(grace, gate.status.value.clearAtEpochMs)
         assertTrue(saved().live, "the file still has the stream live")
+        assertEquals("stream.json", gate.saveProblem.value?.file)
 
         gate.toggle()
-        assertFalse(gate.open.value, "a toggle that cannot be saved is not applied")
-        gate.onLive(false) // the REST check repeats it: the save is tried again, and fails again
-        assertTrue(saved().live)
+        assertTrue(gate.open.value, "a toggle applies at once; its save is retried")
 
         healWrites()
-        gate.onLive(false)
-        assertEquals(StreamState(live = false, offlineSinceMs = 0, lastSeenLiveMs = 0), saved(), "the next change saves it")
-
-        wait(5 * minute)
-        first.cancel()
-        val after = gate()
-        runCurrent()
-        assertFalse(after.open.value)
-        wait(5 * minute)
-        assertEquals(1, cleared)
+        wait(minute)
+        assertEquals(null, gate.saveProblem.value)
+        assertFalse(saved().live, "saved once the file works again")
+        assertEquals(true, saved().override)
     }
 
     @Test
@@ -340,6 +382,7 @@ class RequestsGateTest {
         val first = appScope()
         val gate = gate(scope = first)
         gate.onLive(true)
+        runCurrent()
         breakWrites()
         gate.onLive(false)
 
@@ -349,8 +392,8 @@ class RequestsGateTest {
         assertEquals(StreamState(live = true, lastSeenLiveMs = 0), saved(), "nothing saved since the stream went live")
 
         healWrites()
-        gate.start()
-        assertEquals(StreamState(live = false, lastSeenLiveMs = 0), saved(), "start saves the stream's end")
+        wait(minute)
+        assertEquals(StreamState(live = false, lastSeenLiveMs = 0), saved(), "the stream's end is saved once the file works")
         first.cancel()
         gate()
         wait(grace)
@@ -371,6 +414,7 @@ class RequestsGateTest {
         file.toFile().delete()
         JsonFileStore(file, StreamState.serializer()) { StreamState() }.write(StreamState(openWithoutTwitch = false))
         gate.onLive(false)
+        runCurrent()
         assertEquals(StreamState(live = false, offlineSinceMs = 0, openWithoutTwitch = false, lastSeenLiveMs = 0), saved())
         assertFalse(gate.open.value)
     }
@@ -393,6 +437,7 @@ class RequestsGateTest {
         assertFalse(gate.open.value)
         gate.onLive(true)
         assertFalse(gate.open.value, "the stream does not move it")
+        runCurrent() // the quit waits for the save
         first.cancel()
 
         val after = gate(twitch)
@@ -436,6 +481,7 @@ class RequestsGateTest {
     fun aSavedLiveStreamKeepsRequestsClosedUntilTwitchConfirmsIt() = runTest {
         val first = appScope()
         gate(scope = first).onLive(true)
+        runCurrent() // the quit waits for the save
         first.cancel() // the app closes (or crashes, or the PC shuts down) while live
 
         val after = gate()
@@ -452,6 +498,7 @@ class RequestsGateTest {
     fun aToggleStillOpensWhileTheSavedLiveIsUnconfirmed() = runTest {
         val first = appScope()
         gate(scope = first).onLive(true)
+        runCurrent() // the quit waits for the save
         first.cancel()
 
         val after = gate()
@@ -511,6 +558,7 @@ class RequestsGateTest {
     fun anOfflineEventAfterARestartStartsTheGraceNow() = runTest {
         val first = appScope()
         gate(scope = first).onLive(true)
+        runCurrent() // the quit waits for the save
         first.cancel()
         wait(30 * minute)
 
@@ -524,11 +572,13 @@ class RequestsGateTest {
     fun theStreamIsRememberedLiveEveryMinuteAndAtStop() = runTest {
         val gate = gate()
         gate.onLive(true)
+        runCurrent()
         assertEquals(0L, saved().lastSeenLiveMs)
         wait(3 * minute)
         assertEquals(3 * minute, saved().lastSeenLiveMs)
         wait(minute / 2)
         gate.stop()
+        runCurrent()
         assertEquals(3 * minute + minute / 2, saved().lastSeenLiveMs)
         wait(5 * minute)
         assertEquals(3 * minute + minute / 2, saved().lastSeenLiveMs, "no heartbeat after stop()")
@@ -597,11 +647,13 @@ class RequestsGateTest {
         first.onLive(true)
         wait(5 * minute)
         first.stop() // the app closes during the stream
+        runCurrent() // the quit waits for the save
 
         val second = gate()
         assertEquals(5 * minute, second.loadedLastSeenLiveMs)
         second.onLive(false)
         second.stop()
+        runCurrent()
 
         assertNull(gate().loadedLastSeenLiveMs, "saved offline: no live moment to report")
     }

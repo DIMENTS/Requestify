@@ -12,7 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import nl.diments.requestify.core.storage.BackgroundWriter
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.SaveContext
+import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.storage.StoreReadException
 
 /** What the gate remembers in stream.json, so a restart carries on where it left off. */
@@ -90,6 +93,7 @@ class RequestsGate(
     private val scope: CoroutineScope,
     private val clock: () -> Long,
     private val onStreamEnded: suspend () -> Unit,
+    context: SaveContext,
     private val graceMs: Long = 600_000,
     private val heartbeatMs: Long = 60_000,
 ) {
@@ -99,6 +103,18 @@ class RequestsGate(
     } catch (_: StoreReadException) {
         null
     }
+
+    /** Saves stream.json in the background. */
+    private val writer = BackgroundWriter(file.fileName, file::write, context)
+
+    /** Set while stream.json cannot be saved. */
+    val saveProblem: StateFlow<SaveProblem?> get() = writer.problem
+
+    /** Returns once every change made before this call is on disk. */
+    suspend fun awaitSaved() = writer.awaitSaved()
+
+    /** [awaitSaved] with a deadline: true when everything was saved in time. */
+    suspend fun flush(timeoutMs: Long): Boolean = writer.flush(timeoutMs)
 
     /** The state that applies; guarded by [lock], like the fields below. */
     private val state = MutableStateFlow(loaded ?: StreamState())
@@ -267,18 +283,18 @@ class RequestsGate(
     }
 
     /**
-     * Applies [f] and saves the result before anything acts on it. A stream [event] applies even when it cannot be
-     * saved ([unsaved]); anything else is then not applied and this returns false.
+     * Applies [f] and hands the result to the background save. While the file could not be read yet, a stream [event]
+     * still applies in memory ([unsaved]) and anything else is not applied (false); nothing is written over that file.
      */
     private fun change(event: Boolean, f: (StreamState) -> StreamState): Boolean = synchronized(lock) {
         val readable = !loadFailed || reload()
         val current = state.value
         val next = f(current)
         if (next != current || unsaved) {
-            val saved = readable && save(next) // never over a file that could not be read
-            if (!saved && !event) return false
+            if (!readable && !event) return false
             state.value = next
-            unsaved = !saved
+            if (readable) writer.save(next)
+            unsaved = !readable
         }
         publish()
         syncTimer()
@@ -301,14 +317,6 @@ class RequestsGate(
         return true
     }
 
-    private fun save(value: StreamState): Boolean = try {
-        file.write(value)
-        true
-    } catch (_: IOException) {
-        false
-    } catch (_: SecurityException) {
-        false
-    }
 
     /** Runs a timer for the grace in the state, if any. Caller holds [lock]. */
     private fun syncTimer() {

@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -106,7 +107,7 @@ class ChannelPointsSourceTest {
         }
         val helix = FakeRedemptionsApi { testScheduler.currentTime }
         helix.unfulfilled += waiting
-        val outbox = RedemptionOutbox(outboxFile(), helix.api, backgroundScope)
+        val outbox = RedemptionOutbox(outboxFile(), helix.api, backgroundScope, context = inCallerSaveContext())
         val freshSessions = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
         val source = ChannelPointsSource(
             events = rig.events,

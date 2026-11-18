@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.auth.TokenResult
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.stream.RequestsGate
@@ -67,6 +68,7 @@ class StreamWatcherTest {
             scope = scope.backgroundScope,
             clock = { scope.currentTime },
             onStreamEnded = { cleared++ },
+            context = inCallerSaveContext(),
         )
 
         private val api = TwitchApi(

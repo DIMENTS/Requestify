@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import nl.diments.requestify.core.storage.BackgroundWriter
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.SaveContext
+import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.twitch.RedemptionStatus
 import nl.diments.requestify.core.twitch.TwitchApi
 import nl.diments.requestify.core.twitch.TwitchResult
@@ -53,9 +56,10 @@ sealed interface OutboxResult {
  * viewer never loses points for a request that never played. Only for Requestify's own reward: Twitch refuses the
  * others.
  *
- * - **Saved first:** an entry is written to redemptions.json before Twitch is called. A write that fails keeps the
- *   entry in memory (it is still sent) and is retried on [backoffMs]. An unreadable file at start is never written
- *   over: its entries are merged in once it can be read (on [start], on the next change, or on that retry).
+ * - **Saved in the background:** an entry is handed to redemptions.json's background save when it is added. A save
+ *   that fails keeps the entry in memory (it is still sent), is retried and shows in [saveProblem]. An unreadable file
+ *   at start is never written over: its entries are merged in once it can be read (on [start], on the next change, or
+ *   on a retry every [backoffMs]).
  * - **In order:** the oldest entry is sent first, the next one when it is done:
  *   - `Ok` or `NotFound` (already settled, e.g. in the dashboard, or the reward is gone) drops it; so does `Forbidden`
  *     (not a reward of this app).
@@ -76,9 +80,22 @@ class RedemptionOutbox(
     private val file: JsonFileStore<List<OutboxEntry>>,
     private val api: TwitchApi,
     private val scope: CoroutineScope,
+    context: SaveContext,
     private val backoffMs: List<Long> = listOf(5_000, 15_000, 60_000, 300_000), // then every 5 min
 ) {
     private val lock = Any()
+
+    /** Saves redemptions.json in the background. */
+    private val writer = BackgroundWriter(file.fileName, file::write, context)
+
+    /** Set while redemptions.json cannot be saved. */
+    val saveProblem: StateFlow<SaveProblem?> get() = writer.problem
+
+    /** Returns once every change made before this call is on disk. */
+    suspend fun awaitSaved() = writer.awaitSaved()
+
+    /** [awaitSaved] with a deadline: true when everything was saved in time. */
+    suspend fun flush(timeoutMs: Long): Boolean = writer.flush(timeoutMs)
 
     /** Null while the saved file could not be read. */
     private val initial: List<OutboxEntry>? = try {
@@ -242,8 +259,8 @@ class RedemptionOutbox(
 
     /**
      * Reads the saved file if it could not be read before (its entries go first: they are older; for a redemption in
-     * both, the one in memory wins, except that a saved refund beats a fulfil), then writes what is unsaved. True when
-     * everything is saved. Caller holds [lock].
+     * both, the one in memory wins, except that a saved refund beats a fulfil), then hands what is unsaved to the
+     * background save. False while the file still cannot be read. Caller holds [lock].
      */
     private fun sync(): Boolean {
         if (!loaded) {
@@ -263,18 +280,12 @@ class RedemptionOutbox(
             if (list.isNotEmpty()) wake.trySend(Unit)
         }
         if (!unsaved) return true
-        return try {
-            file.write(list)
-            unsaved = false
-            true
-        } catch (_: IOException) {
-            false
-        } catch (_: SecurityException) {
-            false
-        }
+        writer.save(list)
+        unsaved = false
+        return true
     }
 
-    /** Retries [sync] on [backoffMs] (then the last value again) until it succeeds. Caller holds [lock]. */
+    /** Retries [sync] (reading the unreadable file) on [backoffMs] (then the last value again) until it succeeds. Caller holds [lock]. */
     private fun saveLater() {
         if (saver?.isActive == true) return
         saver = scope.launch {

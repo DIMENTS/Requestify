@@ -17,6 +17,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
 import nl.diments.requestify.core.auth.TokenResult
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.core.twitch.RedemptionStatus.CANCELED
 import nl.diments.requestify.core.twitch.RedemptionStatus.FULFILLED
 import nl.diments.requestify.core.twitch.chat.awaitUntil
@@ -45,7 +47,7 @@ class RedemptionOutboxTest {
 
     private fun TestScope.helix() = FakeRedemptionsApi { testScheduler.currentTime }
 
-    private fun TestScope.outbox(helix: FakeRedemptionsApi) = RedemptionOutbox(file(), helix.api, backgroundScope)
+    private fun TestScope.outbox(helix: FakeRedemptionsApi) = RedemptionOutbox(file(), helix.api, backgroundScope, context = SaveContext(backgroundScope, { testScheduler.currentTime }, StandardTestDispatcher(testScheduler)))
 
     private fun breakWrites() { dir.resolve("redemptions.json.tmp").resolve("blocker").createDirectories() }
     private fun healWrites() { dir.resolve("redemptions.json.tmp").deleteRecursively() }
@@ -98,6 +100,7 @@ class RedemptionOutboxTest {
         outbox.enqueue("rw1", "red1", CANCELED)
         outbox.enqueue("rw1", "red1", FULFILLED) // e.g. added anyway and played: the viewer was told "refunded"
         assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED)), outbox.entries.value)
+        runCurrent()
         assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED)), saved())
 
         // Also while the refund is on its way, and when that try fails.
@@ -288,11 +291,30 @@ class RedemptionOutboxTest {
 
         val expected = listOf(OutboxEntry("rw1", "red1", CANCELED), OutboxEntry("rw1", "red2", CANCELED))
         assertEquals(expected, outbox.entries.value)
+        runCurrent()
         assertEquals(expected, saved())
 
         outbox.start()
         awaitUntil("sent") { outbox.entries.value.isEmpty() }
         assertEquals(listOf("red1:CANCELED", "red2:CANCELED"), helix.patches.map { "${it.redemptionId}:${it.status}" })
+    }
+
+    @Test
+    fun anEntryIsKeptWhileItsFileCannotBeWritten() = runTest {
+        val helix = helix()
+        breakWrites()
+        val outbox = outbox(helix)
+        outbox.enqueue("rw1", "red1", CANCELED)
+        runCurrent()
+
+        assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED)), outbox.entries.value, "kept in memory")
+        assertEquals("redemptions.json", outbox.saveProblem.value?.file, "the failing save shows")
+
+        healWrites()
+        advanceTimeBy(5_001)
+        runCurrent()
+        assertEquals(null, outbox.saveProblem.value)
+        assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED)), saved(), "written once the file works")
     }
 
     @Test
