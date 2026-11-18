@@ -273,6 +273,19 @@ class TwitchCardTest {
     }
 
     @Test
+    fun aRewardWithoutTextCannotBeLinkedDirectly() = runDesktopComposeUiTest(width = 900, height = 1200) {
+        val p = pointsParts(ChannelPointsSettings())
+        p.helix.rewards += p.helix.reward("rw-2", title = "Hydrate", cost = 100).copy(isUserInputRequired = false)
+        show(p)
+        onNode(hasContentDescription("Channel Points reward")).performClick()
+        awaitText("Made elsewhere")
+        onNodeWithText("Hydrate").assertIsDisplayed()
+        onNode(hasText("Link directly") and hasClickAction()).assertDoesNotExist()
+        onNodeWithText("Asks viewers for no text, so it can’t take a song. Copy it instead.").assertIsDisplayed()
+        onNode(hasText("Copy as Requestify reward") and hasClickAction()).assertIsDisplayed()
+    }
+
+    @Test
     fun aCopyAsksForTheNameAndReportsADuplicate() = runDesktopComposeUiTest(width = 900, height = 1200) {
         val p = pointsParts(ChannelPointsSettings())
         p.helix.rewards += p.helix.reward("rw-2", title = "Hydrate", cost = 100)
@@ -306,7 +319,7 @@ class TwitchCardTest {
         onNodeWithText("Change this in the Twitch dashboard").assertDoesNotExist()
 
         p.requestsOpen.value = false
-        onNodeWithText("Paused: stream is offline").assertIsDisplayed()
+        onNodeWithText("Paused: requests are closed").assertIsDisplayed()
 
         onNode(hasContentDescription("Increase Cost")).performClick()
         waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.cost == 550 }

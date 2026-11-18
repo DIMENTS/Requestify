@@ -331,7 +331,9 @@ class TwitchSetupViewModel(
     }
 
     /** "Link directly": the warning with the limits comes first; [onConfirmLink] does it. */
+    /** Only a reward that asks viewers for text can be linked: without it a redemption carries no song. */
     fun onLinkDirectly(reward: ScannedReward) {
+        if (!reward.reward.isUserInputRequired) return
         _linkWarning.value = reward
     }
 

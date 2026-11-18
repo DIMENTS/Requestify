@@ -1,6 +1,8 @@
 package nl.diments.requestify
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -33,15 +35,20 @@ fun main() {
 
     application {
         val windowState = rememberWindowState(size = DpSize(1180.dp, 760.dp))
+        val shown = remember { ShownWindow() }
         Window(
             onCloseRequest = {
                 // Pauses the Channel Points reward first (at most 3 s), so nobody redeems it while the app is gone.
-                runBlocking { graph.stopGracefully() }
-                exitApplication()
+                closeApp(
+                    hide = { shown.window?.isVisible = false },
+                    stopGracefully = graph::stopGracefully,
+                    exit = { exitApplication() },
+                )
             },
             state = windowState,
             title = stringResource(Res.string.app_name),
         ) {
+            SideEffect { shown.window = window }
             // dp -> device px (Compose's density) -> AWT units (the window's transform); redone when the window
             // moves to a screen with another scale.
             val density = LocalDensity.current.density
@@ -58,6 +65,21 @@ fun main() {
             AppScaffold(graph, window)
         }
     }
+}
+
+/**
+ * The window's close: hidden at once, since the graceful stop can wait up to [EXIT_PAUSE_TIMEOUT_MS] for Twitch and a
+ * closed window that stays on screen looks frozen; then the stop, then the exit.
+ */
+internal fun closeApp(hide: () -> Unit, stopGracefully: suspend () -> Unit, exit: () -> Unit) {
+    hide()
+    runBlocking { stopGracefully() }
+    exit()
+}
+
+/** The app's window once it is shown, so the close can hide it before the exit waits. */
+private class ShownWindow {
+    var window: java.awt.Window? = null
 }
 
 /** The smallest the window gets: Home's narrow layout still shows a whole row of the queue under Now Playing. */

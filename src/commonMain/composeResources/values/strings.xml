@@ -252,7 +252,7 @@
     <string name="twitch_points_hint_off">Viewers spend Channel Points on a song request</string>
     <string name="twitch_points_hint_choose">Create the reward viewers redeem, or pick one you have</string>
     <string name="twitch_points_hint_active">Open while requests are open</string>
-    <string name="twitch_points_paused">Paused: stream is offline</string>
+    <string name="twitch_points_paused">Paused: requests are closed</string>
     <string name="twitch_points_disabled">Off: the reward is hidden on Twitch</string>
     <string name="twitch_points_unmanaged">Linked without management: Requestify cannot refund points</string>
     <string name="twitch_points_removed">The reward was removed on Twitch</string>
@@ -282,6 +282,7 @@
     <string name="twitch_points_copy">Copy as Requestify reward</string>
     <string name="twitch_points_recommended">Recommended</string>
     <string name="twitch_points_link_direct">Link directly</string>
+    <string name="twitch_points_link_needs_text">Asks viewers for no text, so it can’t take a song. Copy it instead.</string>
     <string name="twitch_points_close">Close</string>
     <string name="twitch_points_cancel">Cancel</string>
     <string name="twitch_points_copy_title">Copy as Requestify reward</string>

@@ -38,7 +38,7 @@
     <!-- Request sources -->
     <string name="source_manual">Handmatig</string>
     <string name="source_chat">!sr</string>
-    <string name="source_channel_points">Channel Points</string>
+    <string name="source_channel_points">Kanaalpunten</string>
     <string name="source_bits">%1$d Bits</string>
     <string name="source_streamelements">SE %1$s</string>
     <string name="source_donolink">DonoLink %1$s</string>
@@ -135,7 +135,7 @@
     <string name="connection_all_connected">Alles verbonden</string>
     <string name="connection_twitch_login_needed">Twitch: log opnieuw in</string>
     <string name="connection_twitch_disconnected">Twitch verbroken, opnieuw proberen</string>
-    <string name="connection_reward_removed">Channel Points-beloning verwijderd</string>
+    <string name="connection_reward_removed">Kanaalpunten-beloning verwijderd</string>
     <string name="requests_live_open">Live · verzoeken open</string>
     <string name="requests_live_closed">Live · verzoeken dicht</string>
     <string name="requests_offline_open">Offline · verzoeken open</string>
@@ -184,7 +184,7 @@
 
     <!-- Rules -->
     <string name="nav_rules">Regels</string>
-    <string name="rules_subtitle">Gelden voor elk verzoek uit chat, Channel Points en Bits.</string>
+    <string name="rules_subtitle">Gelden voor elk verzoek uit chat, Kanaalpunten en Bits.</string>
     <string name="rules_note">Betaalde verzoeken slaan de limieten over. Blacklist, lengte en expliciet gelden altijd.</string>
     <string name="rules_group_queue">Wachtrij</string>
     <string name="rules_group_songs">Nummers</string>
@@ -252,7 +252,7 @@
     <string name="twitch_points_hint_off">Kijkers geven kanaalpunten uit aan een nummerverzoek</string>
     <string name="twitch_points_hint_choose">Maak de beloning die kijkers inwisselen, of kies een bestaande</string>
     <string name="twitch_points_hint_active">Open zolang verzoekjes open zijn</string>
-    <string name="twitch_points_paused">Gepauzeerd: stream is offline</string>
+    <string name="twitch_points_paused">Gepauzeerd: verzoeken zijn dicht</string>
     <string name="twitch_points_disabled">Uit: de beloning is verborgen op Twitch</string>
     <string name="twitch_points_unmanaged">Gekoppeld zonder beheer: Requestify kan geen punten terugbetalen</string>
     <string name="twitch_points_removed">De beloning is verwijderd op Twitch</string>
@@ -282,6 +282,7 @@
     <string name="twitch_points_copy">Kopiëren als Requestify-beloning</string>
     <string name="twitch_points_recommended">Aanbevolen</string>
     <string name="twitch_points_link_direct">Direct koppelen</string>
+    <string name="twitch_points_link_needs_text">Vraagt kijkers om geen tekst, dus er past geen nummer bij. Kopieer hem liever.</string>
     <string name="twitch_points_close">Sluiten</string>
     <string name="twitch_points_cancel">Annuleren</string>
     <string name="twitch_points_copy_title">Kopiëren als Requestify-beloning</string>

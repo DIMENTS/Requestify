@@ -71,6 +71,7 @@ import nl.diments.requestify.resources.twitch_points_limit_refunds
 import nl.diments.requestify.resources.twitch_points_link_body
 import nl.diments.requestify.resources.twitch_points_link_confirm
 import nl.diments.requestify.resources.twitch_points_link_direct
+import nl.diments.requestify.resources.twitch_points_link_needs_text
 import nl.diments.requestify.resources.twitch_points_link_title
 import nl.diments.requestify.resources.twitch_points_not_affiliate
 import nl.diments.requestify.resources.twitch_points_out_of_sync
@@ -363,10 +364,14 @@ private fun OwnRewardRow(reward: ScannedReward, vm: TwitchSetupViewModel) {
     }
 }
 
-/** A reward made elsewhere: "Copy as Requestify reward" (recommended) and, behind a warning, "Link directly". */
+/**
+ * A reward made elsewhere: "Copy as Requestify reward" (recommended) and, behind a warning, "Link directly". Only a
+ * reward that asks viewers for text can be linked: without it a redemption carries no song.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ForeignRewardRow(reward: ScannedReward, vm: TwitchSetupViewModel) {
+    val linkable = reward.reward.isUserInputRequired
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         RewardSummary(reward)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
@@ -381,9 +386,18 @@ private fun ForeignRewardRow(reward: ScannedReward, vm: TwitchSetupViewModel) {
                 )
             }
             Box(Modifier.weight(1f))
-            TextButton(onClick = { vm.onLinkDirectly(reward) }, shapes = ButtonDefaults.shapes()) {
-                Text(stringResource(Res.string.twitch_points_link_direct))
+            if (linkable) {
+                TextButton(onClick = { vm.onLinkDirectly(reward) }, shapes = ButtonDefaults.shapes()) {
+                    Text(stringResource(Res.string.twitch_points_link_direct))
+                }
             }
+        }
+        if (!linkable) {
+            Text(
+                stringResource(Res.string.twitch_points_link_needs_text),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
