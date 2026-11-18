@@ -21,6 +21,8 @@ data class Settings(
     val donations: DonationSettings = DonationSettings(),
     /** The DonoLink expiry step last notified, so a restart does not notify it again. */
     val keyExpiryNotified: KeyExpiryNotice? = null,
+    /** Start with Windows, as the streamer chose; null: never chosen (the installed app then turns it on once). */
+    val startWithWindows: Boolean? = null,
 )
 
 /** A DonoLink key that expires at [expiresAtEpochMs] was notified at [stage]: 7 (within a week) or 1 (its last day). */

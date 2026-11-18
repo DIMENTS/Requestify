@@ -212,6 +212,14 @@ class SavedFormatCompatTest {
         assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").keyExpiryNotified, "old settings read")
     }
 
+    /** Whether the streamer chose to start with Windows is kept in settings.json under this name. */
+    @Test
+    fun startWithWindowsIsPinned() {
+        val json = AppJson.instance.encodeToString(Settings.serializer(), Settings(startWithWindows = false))
+        assertTrue(""""startWithWindows":false""" in json, json)
+        assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").startWithWindows, "never chosen")
+    }
+
     /** A file that could not be saved is logged under this service name. */
     @Test
     fun filesServiceNameIsPinned() {
