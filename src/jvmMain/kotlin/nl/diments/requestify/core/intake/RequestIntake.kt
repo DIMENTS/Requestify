@@ -177,17 +177,36 @@ class RequestIntake(
     /** "Add anyway": queues the rejected request past the rules, then takes it off the list. */
     fun addAnyway(entryId: String) {
         val entry = rejected.entries.value.firstOrNull { it.id == entryId } ?: return
-        val request = entry.request ?: return
-        controller.enqueue(request.copy(rulesWaived = true))
+        val request = entry.request?.copy(rulesWaived = true) ?: return
+        controller.enqueue(request)
         rejected.remove(entryId)
-        scope.launch {
-            // For the Log: where it went, once the add is in (a later read of the same lock-guarded state).
-            val position = controller.loadedSnapshot().queue.indexOfFirst { it.id == request.id } + 1
-            val incoming = IncomingRequest(
+        recordAdded(
+            IncomingRequest(
                 id = entry.id, input = entry.input, linkOnly = false, requester = entry.requester, source = entry.source,
                 payment = entry.payment, sourceRef = request.sourceRef, receivedAtEpochMs = entry.atEpochMs,
-            )
-            recorded(incoming, IntakeOutcome.Accepted(request.copy(rulesWaived = true), position, waitMs = 0))
+            ),
+            request,
+        )
+    }
+
+    /** The streamer's own add from Home: queued at the end, past the rules, and reported like any other request. */
+    fun addOwn(request: Request) {
+        controller.enqueue(request)
+        recordAdded(
+            IncomingRequest(
+                id = request.id, input = request.track.uri, linkOnly = false, requester = request.requester,
+                source = request.source, payment = request.payment, sourceRef = request.sourceRef,
+                receivedAtEpochMs = request.createdAtEpochMs,
+            ),
+            request,
+        )
+    }
+
+    /** Reports [request], just enqueued, with where it went (a later read of the same lock-guarded state). */
+    private fun recordAdded(incoming: IncomingRequest, request: Request) {
+        scope.launch {
+            val position = controller.loadedSnapshot().queue.indexOfFirst { it.id == request.id } + 1
+            recorded(incoming, IntakeOutcome.Accepted(request, position, waitMs = 0))
         }
     }
 

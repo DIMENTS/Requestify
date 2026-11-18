@@ -554,4 +554,20 @@ class RequestIntakeTest {
         assertTrue(p.intake.isKnown("pending"))
         assertEquals(false, p.intake.isKnown("never-seen"))
     }
+
+    @Test
+    fun theStreamersOwnAddIsRecorded() = runTest {
+        val p = parts()
+        val records = recordsOf(p)
+        val own = Request("own1", track(idA), Requester(""), RequestSource.MANUAL, null, createdAtEpochMs = 5L)
+
+        p.intake.addOwn(own)
+        runCurrent()
+
+        assertEquals(listOf("own1"), p.controller.queue.value.items.map { it.id })
+        val record = records.single()
+        assertEquals("own1", record.incoming.id)
+        assertEquals(RequestSource.MANUAL, record.incoming.source)
+        assertEquals(IntakeOutcome.Accepted(own, position = 1, waitMs = 0), record.outcome)
+    }
 }

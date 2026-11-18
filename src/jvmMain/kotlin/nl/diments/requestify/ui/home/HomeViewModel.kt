@@ -165,7 +165,7 @@ class HomeViewModel(
     fun onAddTrack(track: Track) {
         lookup?.cancel()
         add.value = AddState()
-        controller.enqueue(
+        intake.addOwn(
             Request(
                 id = newId(),
                 track = track,
