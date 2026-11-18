@@ -407,6 +407,16 @@ class RequestIntakeTest {
     }
 
     @Test
+    fun blockingAnArtistRemovesItsRequestsBeforeItReturns() = runTest {
+        val p = parts()
+        p.controller.enqueue(Request("x", track("t-x", "Bad", "bad"), Requester("V", "v", "u1"), RequestSource.CHAT, null, 1L))
+        runCurrent()
+        assertTrue(p.intake.blockArtist("bad", "Bad", null))
+        // No runCurrent: a skip that follows at once (Block artist on Now Playing) must not hand this request over.
+        assertTrue(p.controller.queue.value.items.isEmpty(), "gone before the block returns")
+    }
+
+    @Test
     fun aSweptRequestLeavesTheQueueOnlyOnceItsEntryIsOnDisk() = runTest {
         val p = parts()
         p.controller.enqueue(Request("paid", track("t-paid", "Bad", "bad"), Requester("V", "v", "u1"), RequestSource.BITS, Payment.Bits(100), 1L))

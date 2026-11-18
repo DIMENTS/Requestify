@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import nl.diments.requestify.core.model.IgnoredReason
 import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.model.ChannelPointsRef
@@ -256,27 +257,33 @@ class RequestIntake(
     }
 
     /**
-     * Moves the queued viewer requests that [matches] to the Rejected list. Own and "added anyway" ones stay. Their
-     * entries are listed at once; they leave the queue in the background once those entries are on disk.
+     * Moves the queued viewer requests that [matches] to the Rejected list, before it returns (a skip right after a
+     * block must not hand one of them over). Own and "added anyway" ones stay.
      */
-    private fun sweep(reason: RejectReason, matches: (Request) -> Boolean) {
-        scope.launch {
-            val listed = controller.loadedSnapshot().queue
-                .filter { it.isViewerRequest && matches(it) }
-                .filter { listedOrNeedNot(it, reason) }
-                .mapTo(HashSet()) { it.id }
-            leaveQueueOnceListed(listed)
-        }
+    private suspend fun sweep(reason: RejectReason, matches: (Request) -> Boolean) {
+        val listed = controller.loadedSnapshot().queue
+            .filter { it.isViewerRequest && matches(it) }
+            .filter { listedOrNeedNot(it, reason) }
+            .mapTo(HashSet()) { it.id }
+        leaveQueueOnceListed(listed)
     }
 
     /**
      * Takes the requests with [ids] out of the queue once their Rejected entries are on disk: a request whose entry
-     * cannot be saved yet stays queued, and a crash in between leaves a duplicate, never a loss.
+     * cannot be saved yet stays queued (and leaves later, in the background, once it is), and a crash in between
+     * leaves a duplicate, never a loss. Waits at most [SWEEP_SAVE_WAIT_MS], so a failing disk never holds a block up.
      */
     private suspend fun leaveQueueOnceListed(ids: Set<String>) {
         if (ids.isEmpty()) return
-        rejected.awaitSaved()
-        controller.removeMatching(RemoveReason.Blacklisted) { queue -> queue.filter { it.id in ids } }
+        suspend fun leave() = controller.removeMatching(RemoveReason.Blacklisted) { queue -> queue.filter { it.id in ids } }
+        if (withTimeoutOrNull(SWEEP_SAVE_WAIT_MS) { rejected.awaitSaved() } != null) {
+            leave()
+        } else {
+            scope.launch {
+                rejected.awaitSaved()
+                leave()
+            }
+        }
     }
 
     /**
@@ -444,3 +451,6 @@ class RequestIntake(
         return true
     }
 }
+
+/** How long a blacklist sweep waits for its Rejected entries to reach disk before the request leaves in the background. */
+private const val SWEEP_SAVE_WAIT_MS = 2_000L
