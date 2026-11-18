@@ -4,7 +4,10 @@ import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -46,6 +49,23 @@ data class GateStatus(
     /** The clear waits until the streamer closes requests (then [clearAtEpochMs] is null). */
     val clearPostponed: Boolean,
 )
+
+/** A change of the gate, for the Log: reported once it applies (saved, or applied unsaved as a stream event). */
+sealed interface GateEvent {
+    val atEpochMs: Long
+
+    /** The stream is live: from stream.online, or from a REST read ([byRead]) such as the first check after a start. */
+    data class WentLive(override val atEpochMs: Long, val byRead: Boolean) : GateEvent
+
+    data class WentOffline(override val atEpochMs: Long) : GateEvent
+
+    data class OpenedByHand(override val atEpochMs: Long) : GateEvent
+
+    data class ClosedByHand(override val atEpochMs: Long) : GateEvent
+
+    /** The stream really ended and the end-of-stream clear of the free requests starts now. */
+    data class StreamEnded(override val atEpochMs: Long) : GateEvent
+}
 
 /**
  * Whether requests are open. With Twitch they follow the stream: open when live, closed at once when it goes
@@ -118,6 +138,17 @@ class RequestsGate(
     /** The stream went offline and the grace runs: a live answer now is a drop. */
     val inGrace: StateFlow<Boolean> = _inGrace.asStateFlow()
 
+    private val _events = MutableSharedFlow<GateEvent>(extraBufferCapacity = Int.MAX_VALUE)
+
+    /** Every change, for the Log. It never drops or waits, and does not replay. */
+    val events: SharedFlow<GateEvent> = _events.asSharedFlow()
+
+    /**
+     * When the last run saw the stream live, if stream.json said live at this start (the app closed during a stream);
+     * null otherwise. For the Log's "possible missed Bits" while the app was off.
+     */
+    val loadedLastSeenLiveMs: Long? = loaded?.takeIf { it.live }?.lastSeenLiveMs
+
     init {
         scope.launch {
             twitchConnected.collect {
@@ -153,20 +184,24 @@ class RequestsGate(
      */
     fun onLive(live: Boolean, read: Boolean = false) {
         var clear = false
+        val happened = mutableListOf<GateEvent>()
         change(event = true) { s ->
             val now = clock()
             // A saved "live" not confirmed in this run: Twitch's read can only say it is offline now, not since when.
             val leftover = s.live && !heard
             heard = true
+            happened.clear() // [change] runs this once; cleared anyway so a list is never reported twice
             when {
-                live && s.live -> s.copy(lastSeenLiveMs = now)
+                live && s.live -> s.copy(lastSeenLiveMs = now).also { if (leftover) happened += GateEvent.WentLive(now, read) }
                 // A drop: as if nothing happened. An open made during it now belongs to the stream it returns to.
                 live && s.offlineSinceMs != null -> s.copy(
                     live = true, offlineSinceMs = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now,
-                )
+                ).also { happened += GateEvent.WentLive(now, read) }
                 live -> s.copy(live = true, override = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now)
+                    .also { happened += GateEvent.WentLive(now, read) }
                 !s.live -> s
                 else -> {
+                    happened += GateEvent.WentOffline(now)
                     val since = if (leftover && read) minOf(now, s.lastSeenLiveMs ?: now) else now
                     val offline = s.copy(live = false, offlineSinceMs = since)
                     // Offline since longer than the grace: the stream ended while the app was closed.
@@ -174,7 +209,15 @@ class RequestsGate(
                 }
             }
         }
-        if (clear) scope.launch { onStreamEnded() }
+        happened.forEach { _events.tryEmit(it) }
+        streamEnded(clear)
+    }
+
+    /** Reports the end of the stream and clears the free requests, when [clear]. Called outside [lock]. */
+    private fun streamEnded(clear: Boolean) {
+        if (!clear) return
+        _events.tryEmit(GateEvent.StreamEnded(clock()))
+        scope.launch { onStreamEnded() }
     }
 
     /** The title-bar button. */
@@ -192,13 +235,15 @@ class RequestsGate(
                 }
             }
         }
-        if (changed) {
-            synchronized(lock) {
-                if (twitchConnected.value && !heard) toggledUnconfirmed = true
-                publish()
-            }
+        if (!changed) return
+        val nowOpen = synchronized(lock) {
+            if (twitchConnected.value && !heard) toggledUnconfirmed = true
+            publish()
+            _open.value
         }
-        if (changed && clear) scope.launch { onStreamEnded() }
+        val now = clock()
+        _events.tryEmit(if (nowOpen) GateEvent.OpenedByHand(now) else GateEvent.ClosedByHand(now))
+        streamEnded(clear)
     }
 
     /** The grace that started at [since] ran out: the stream really ended. */
@@ -208,7 +253,7 @@ class RequestsGate(
             if (s.offlineSinceMs != since) return@change s // the stream came back first
             ended(s).also { clear = it.second }.first
         }
-        if (clear) scope.launch { onStreamEnded() }
+        streamEnded(clear)
     }
 
     /**

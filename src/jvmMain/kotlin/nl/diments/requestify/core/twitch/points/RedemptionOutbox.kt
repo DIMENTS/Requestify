@@ -8,7 +8,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -29,6 +32,21 @@ data class OutboxEntry(
     val status: RedemptionStatus,
     val tries: Int = 0,
 )
+
+/** What became of one try to tell Twitch a redemption's status, for the Log. */
+sealed interface OutboxResult {
+    val redemptionId: String
+    val status: RedemptionStatus
+
+    /** Twitch has it (or had it settled already). */
+    data class Sent(override val redemptionId: String, override val status: RedemptionStatus) : OutboxResult
+
+    /** This try failed; it is tried again ([tries] failed so far). */
+    data class Retrying(override val redemptionId: String, override val status: RedemptionStatus, val tries: Int) : OutboxResult
+
+    /** Twitch will never take it (not this app's reward): dropped. */
+    data class GaveUp(override val redemptionId: String, override val status: RedemptionStatus) : OutboxResult
+}
 
 /**
  * Tells Twitch what became of Channel Points redemptions (fulfilled, or canceled: refunded), also across restarts, so a
@@ -92,6 +110,11 @@ class RedemptionOutbox(
     /** What is still to be sent, oldest first. */
     val entries: StateFlow<List<OutboxEntry>> = _entries.asStateFlow()
 
+    private val _results = MutableSharedFlow<OutboxResult>(extraBufferCapacity = Int.MAX_VALUE)
+
+    /** The answer to every try, for the Log. It never drops or waits, and does not replay. */
+    val results: SharedFlow<OutboxResult> = _results.asSharedFlow()
+
     /** Adds the status change, saved before it is sent. */
     fun enqueue(rewardId: String, redemptionId: String, status: RedemptionStatus) {
         val entry = OutboxEntry(rewardId, redemptionId, status)
@@ -153,7 +176,9 @@ class RedemptionOutbox(
             val waitMs = synchronized(lock) {
                 if (inFlight === head) inFlight = null
                 answered(head, result)
-            } ?: return // until the next start
+            }
+            reportOf(head, result)?.let { _results.tryEmit(it) }
+            if (waitMs == null) return // until the next start
             if (waitMs > 0) delay(waitMs)
         }
     }
@@ -182,6 +207,15 @@ class RedemptionOutbox(
             change { current -> current.map { if (it === head) retried else it } }
             backoffFor(retried.tries)
         }
+    }
+
+    /** The Log's view of an answer; null for one that only waits (logged out, rate limited). */
+    private fun reportOf(head: OutboxEntry, result: TwitchResult<Unit>): OutboxResult? = when (result) {
+        is TwitchResult.Ok, TwitchResult.NotFound -> OutboxResult.Sent(head.redemptionId, head.status)
+        is TwitchResult.Forbidden -> OutboxResult.GaveUp(head.redemptionId, head.status)
+        is TwitchResult.BadRequest, is TwitchResult.Failed, TwitchResult.LoginNeeded ->
+            OutboxResult.Retrying(head.redemptionId, head.status, head.tries + 1)
+        TwitchResult.LoggedOut, is TwitchResult.RateLimited -> null
     }
 
     private fun backoffFor(tries: Int): Long = backoffMs.getOrElse(tries - 1) { backoffMs.lastOrNull() ?: DEFAULT_BACKOFF_MS }

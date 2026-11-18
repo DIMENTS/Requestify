@@ -11,6 +11,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -535,5 +537,72 @@ class RequestsGateTest {
         gate.start()
         wait(5 * minute)
         assertEquals(3 * minute + minute / 2, saved().lastSeenLiveMs, "no heartbeat while offline")
+    }
+
+    /** Collects [RequestsGate.events] from now on. */
+    private fun TestScope.eventsOf(gate: RequestsGate): List<GateEvent> {
+        val seen = mutableListOf<GateEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { gate.events.collect { seen += it } }
+        return seen
+    }
+
+    @Test
+    fun eventsFollowEveryChange() = runTest {
+        val gate = gate()
+        val events = eventsOf(gate)
+        runCurrent()
+
+        gate.onLive(true)
+        wait(minute)
+        gate.toggle() // close by hand
+        gate.toggle() // open by hand
+        gate.onLive(false)
+        wait(grace)
+
+        assertEquals(
+            listOf(
+                GateEvent.WentLive(0, byRead = false),
+                GateEvent.ClosedByHand(minute),
+                GateEvent.OpenedByHand(minute),
+                GateEvent.WentOffline(minute),
+                GateEvent.StreamEnded(minute + grace),
+            ),
+            events,
+        )
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun aLiveReadAndADropSayWhatHappened() = runTest {
+        val gate = gate()
+        val events = eventsOf(gate)
+        runCurrent()
+
+        gate.onLive(true, read = true)
+        gate.onLive(true) // the same again: nothing new
+        gate.onLive(false)
+        wait(minute)
+        gate.onLive(true) // back within the grace
+
+        assertEquals(
+            listOf(GateEvent.WentLive(0, byRead = true), GateEvent.WentOffline(0), GateEvent.WentLive(minute, byRead = false)),
+            events,
+        )
+    }
+
+    @Test
+    fun loadedLastSeenLiveIsKept() = runTest {
+        val first = gate()
+        assertNull(first.loadedLastSeenLiveMs, "nothing saved yet")
+        first.onLive(true)
+        wait(5 * minute)
+        first.stop() // the app closes during the stream
+
+        val second = gate()
+        assertEquals(5 * minute, second.loadedLastSeenLiveMs)
+        second.onLive(false)
+        second.stop()
+
+        assertNull(gate().loadedLastSeenLiveMs, "saved offline: no live moment to report")
     }
 }

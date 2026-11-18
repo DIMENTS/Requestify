@@ -14,6 +14,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -335,5 +337,32 @@ class RedemptionOutboxTest {
         outbox.start()
         awaitUntil("sent") { outbox.entries.value.isEmpty() }
         assertEquals(listOf("red1", "red2"), helix.patches.map { it.redemptionId })
+    }
+
+    @Test
+    fun resultsReportSentRetryingAndGaveUp() = runTest {
+        val helix = helix()
+        helix.patchStatuses += 500 // red1's first try fails
+        val outbox = outbox(helix)
+        val results = CopyOnWriteArrayList<OutboxResult>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { outbox.results.collect { results += it } }
+        outbox.start()
+        outbox.enqueue("rw1", "red1", CANCELED)
+
+        awaitUntil("the failed try") { results.isNotEmpty() }
+        advanceTimeBy(5_000)
+        awaitUntil("sent") { outbox.entries.value.isEmpty() }
+        helix.patchStatuses += 403 // not this app's reward
+        outbox.enqueue("rw1", "red2", CANCELED)
+        awaitUntil("refused") { results.size == 3 }
+
+        assertEquals(
+            listOf<OutboxResult>(
+                OutboxResult.Retrying("red1", CANCELED, tries = 1),
+                OutboxResult.Sent("red1", CANCELED),
+                OutboxResult.GaveUp("red2", CANCELED),
+            ),
+            results.toList(),
+        )
     }
 }
