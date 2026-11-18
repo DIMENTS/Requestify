@@ -460,4 +460,98 @@ class RequestIntakeTest {
         assertEquals(IntakeOutcome.Rejected(RejectReason.NotATrack("album"), null, listed = false), out)
         assertTrue(p.rejected.entries.value.isEmpty())
     }
+
+    /** Collects every [IntakeRecord] the intake reports, from now on. */
+    private fun TestScope.recordsOf(p: Parts): List<IntakeRecord> {
+        val seen = mutableListOf<IntakeRecord>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { p.intake.records.collect { seen += it } }
+        return seen
+    }
+
+    @Test
+    fun everySubmitIsRecorded() = runTest {
+        catalog.tracks[idA] = track(idA)
+        settings.tryUpdate { it.copy(rules = Rules(maxQueueLength = 1)) }
+        val p = parts()
+        val records = recordsOf(p)
+
+        val accepted = p.intake.submit(incoming("r1"))
+        val rejected = p.intake.submit(incoming("r2", viewer = "u2"))
+        val ignored = p.intake.submit(incoming("r3", input = "just a cheer", linkOnly = true, payment = Payment.Bits(100), source = RequestSource.BITS))
+        catalog.failure = SpotifyResult.Failed("boom")
+        val pending = p.intake.submit(incoming("r4", linkOnly = true, payment = Payment.Bits(100), source = RequestSource.BITS))
+        runCurrent()
+
+        assertEquals(listOf("r1", "r2", "r3", "r4"), records.map { it.incoming.id })
+        assertEquals(listOf(accepted, rejected, ignored, pending), records.map { it.outcome })
+        assertIs<IntakeOutcome.Accepted>(accepted)
+        assertIs<IntakeOutcome.Rejected>(rejected)
+        assertEquals(IntakeOutcome.Ignored, ignored)
+        assertEquals(IntakeOutcome.Pending, pending)
+    }
+
+    @Test
+    fun aSettledPendingRequestIsRecordedAgain() = runTest {
+        catalog.tracks[idA] = track(idA)
+        catalog.failure = SpotifyResult.Failed("boom")
+        val p = parts()
+        val records = recordsOf(p)
+        p.intake.submit(incoming("p1", linkOnly = true, payment = Payment.Bits(100), source = RequestSource.BITS))
+
+        catalog.failure = null
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        assertEquals(listOf("p1", "p1"), records.map { it.incoming.id })
+        assertEquals(IntakeOutcome.Pending, records[0].outcome)
+        assertIs<IntakeOutcome.Accepted>(records[1].outcome)
+    }
+
+    @Test
+    fun aRejectionBeforeTheRulesIsRecorded() = runTest {
+        catalog.tracks[idA] = track(idA)
+        val p = parts()
+        val records = recordsOf(p)
+        val out = p.intake.rejectBeforeRules(
+            incoming("b1", linkOnly = true, payment = Payment.Bits(10), source = RequestSource.BITS),
+            RejectReason.BelowMinimum(100),
+        )
+        runCurrent()
+
+        assertEquals(listOf(out), records.map { it.outcome })
+    }
+
+    @Test
+    fun addAnywayIsRecorded() = runTest {
+        catalog.tracks[idA] = track(idA)
+        settings.tryUpdate { it.copy(rules = Rules(maxQueueLength = 0)) }
+        val p = parts()
+        val records = recordsOf(p)
+        p.intake.submit(incoming("r1"))
+
+        p.intake.addAnyway("r1")
+        runCurrent()
+
+        assertEquals(listOf("r1", "r1"), records.map { it.incoming.id })
+        val added = assertIs<IntakeOutcome.Accepted>(records[1].outcome)
+        assertEquals("r1", added.request.id)
+        assertEquals(1, added.position)
+    }
+
+    @Test
+    fun isKnownCoversQueueRejectedAndPending() = runTest {
+        catalog.tracks[idA] = track(idA)
+        settings.tryUpdate { it.copy(rules = Rules(maxQueueLength = 1)) }
+        val p = parts()
+        p.intake.submit(incoming("queued"))
+        p.intake.submit(incoming("rejected", viewer = "u2"))
+        catalog.failure = SpotifyResult.Failed("boom")
+        p.intake.submit(incoming("pending", linkOnly = true, payment = Payment.Bits(100), source = RequestSource.BITS))
+        runCurrent()
+
+        assertTrue(p.intake.isKnown("queued"))
+        assertTrue(p.intake.isKnown("rejected"))
+        assertTrue(p.intake.isKnown("pending"))
+        assertEquals(false, p.intake.isKnown("never-seen"))
+    }
 }

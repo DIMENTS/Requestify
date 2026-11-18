@@ -266,11 +266,13 @@ class ChannelPointsSource(
             val request = when (event) {
                 is RequestEvent.Started -> event.request
                 is RequestEvent.Removed -> event.request
+                is RequestEvent.HandedOver -> return // still refundable until it plays: nothing to settle yet
             }
             val ref = ChannelPointsRef.parse(request.sourceRef)?.takeIf { it.managed } ?: return
             when (event) {
                 is RequestEvent.Started -> fulfil(ref.rewardId, ref.redemptionId)
                 is RequestEvent.Removed -> refund(ref.rewardId, ref.redemptionId)
+                is RequestEvent.HandedOver -> Unit
             }
         } catch (e: CancellationException) {
             throw e

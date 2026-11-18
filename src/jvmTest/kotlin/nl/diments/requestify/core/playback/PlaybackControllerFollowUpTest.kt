@@ -217,6 +217,21 @@ class PlaybackControllerFollowUpTest {
     }
 
     @Test
+    fun handOverEmitsHandedOverAfterTheSave() = runTest {
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 185_000) // 15 s left: the first tick hands R1 over
+        val controller = controller(player)
+        val seen = eventsOf(controller)
+        controller.enqueue(r1)
+        controller.start()
+        runCurrent()
+
+        val handedOver = seen.single { it.event is RequestEvent.HandedOver }
+        assertEquals(RequestEvent.HandedOver(r1), handedOver.event)
+        assertEquals(r1, handedOver.saved.handedOver) // emitted once queue.json shows it
+    }
+
+    @Test
     fun theHandOverTimeIsSavedAndClearedWithTheHandedOverRequest() = runTest {
         val player = fakePlayer()
         player.plays(trackA, progressMs = 185_000) // 15 s left: the first tick hands R1 over

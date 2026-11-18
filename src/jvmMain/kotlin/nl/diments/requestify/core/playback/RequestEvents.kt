@@ -55,4 +55,7 @@ sealed interface RequestEvent {
 
     /** [request] left the queue without playing. Handing a request over to Spotify does not remove it. */
     data class Removed(val request: Request, val why: RemoveReason) : RequestEvent
+
+    /** [request] was handed to Spotify's queue: it can no longer be pulled back, and plays next. */
+    data class HandedOver(val request: Request) : RequestEvent
 }

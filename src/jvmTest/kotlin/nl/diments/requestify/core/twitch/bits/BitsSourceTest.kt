@@ -12,6 +12,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import nl.diments.requestify.core.intake.IntakeOutcome
+import nl.diments.requestify.core.intake.IntakeRecord
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -116,6 +120,21 @@ class BitsSourceTest {
         assertTrue(h.rig.queued.isEmpty())
         assertTrue(h.rig.rejectedEntries.isEmpty())
         assertTrue(h.rig.catalog.calls.isEmpty())
+    }
+
+    @Test
+    fun aCheerWithoutALinkIsRecordedAsIgnored() = runTest {
+        val h = harness()
+        val records = java.util.concurrent.CopyOnWriteArrayList<IntakeRecord>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { h.rig.intake.records.collect { records += it } }
+        h.cheer("c1", "Cheer100 great stream")
+
+        awaitUntil("record") { records.isNotEmpty() }
+        settle()
+        assertEquals(listOf("c1"), records.map { it.incoming.id })
+        assertEquals(IntakeOutcome.Ignored, records.single().outcome)
+        assertTrue(h.sends.isEmpty())
+        assertTrue(h.rig.queued.isEmpty())
     }
 
     @Test

@@ -98,10 +98,9 @@ class BitsSource(
     private suspend fun handle(cheer: EventSubEvent.Cheer) {
         val twitch = settings.settings.value.twitch
         if (!twitch.bitsEnabled) return
-        // Bits are link-only: a cheer without a Spotify link is just a cheer (a spotify.link short link counts).
+        // Bits are link-only: a cheer without a Spotify link is just a cheer (a spotify.link short link counts). It
+        // still goes to the intake, which ignores it and reports that for the Log; nothing is said in chat.
         val input = classifySpotifyInput(cheer.message)
-        if (input is SpotifyInput.SearchText || input is SpotifyInput.Empty) return
-
         val incoming = IncomingRequest(
             id = cheer.messageId,
             input = cheer.message,
@@ -111,6 +110,10 @@ class BitsSource(
             payment = Payment.Bits(cheer.bits),
             receivedAtEpochMs = clock(),
         )
+        if (input is SpotifyInput.SearchText || input is SpotifyInput.Empty) {
+            intake.submit(incoming)
+            return
+        }
         val outcome = if (cheer.bits < twitch.bitsMinimum) {
             // Listed with its track when the link resolves, so the streamer can still "Add anyway".
             intake.rejectBeforeRules(incoming, RejectReason.BelowMinimum(twitch.bitsMinimum))

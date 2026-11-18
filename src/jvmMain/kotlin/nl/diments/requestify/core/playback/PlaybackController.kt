@@ -768,6 +768,7 @@ class PlaybackController(
         _handedOver.value = request
         handedOverAt = clock()
         _queue.value = _queue.value.remove(request.id)
+        unsentEvents += RequestEvent.HandedOver(request)
     }
 
     /**

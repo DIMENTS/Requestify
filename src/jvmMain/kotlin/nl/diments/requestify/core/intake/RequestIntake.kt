@@ -45,6 +45,9 @@ sealed interface IntakeOutcome {
     data object Pending : IntakeOutcome
 }
 
+/** What the intake did with [incoming], reported on [RequestIntake.records] once the outcome is kept. */
+data class IntakeRecord(val incoming: IncomingRequest, val outcome: IntakeOutcome, val atEpochMs: Long)
+
 /**
  * Where every source hands its requests: resolves the track, applies the rules atomically through the controller,
  * records rejections, and keeps paid requests safe while Spotify cannot be reached (they wait in pending.json and
@@ -70,6 +73,18 @@ class RequestIntake(
     /** A pending paid request settled (accepted or rejected): for its reply. */
     val pendingResolved: SharedFlow<Pair<IncomingRequest, IntakeOutcome>> = _pendingResolved.asSharedFlow()
 
+    private val _records = MutableSharedFlow<IntakeRecord>(extraBufferCapacity = Int.MAX_VALUE)
+
+    /**
+     * Every outcome, for the Log: each [submit] and [rejectBeforeRules], each pending request when it settles, and
+     * each "Add anyway". It never drops or waits; it does not replay, so a listener subscribes before [start].
+     */
+    val records: SharedFlow<IntakeRecord> = _records.asSharedFlow()
+
+    private fun recorded(incoming: IncomingRequest, outcome: IntakeOutcome) {
+        _records.tryEmit(IntakeRecord(incoming, outcome, clock()))
+    }
+
     /** Viewer id to when their last request was accepted. In memory only: a cooldown paces a stream, not restarts. */
     private val lastAccepted = ConcurrentHashMap<String, Long>()
     private val retrying = ConcurrentHashMap.newKeySet<String>()
@@ -80,7 +95,9 @@ class RequestIntake(
         pending.pending.value.forEach { retryLater(it) }
     }
 
-    suspend fun submit(incoming: IncomingRequest): IntakeOutcome {
+    suspend fun submit(incoming: IncomingRequest): IntakeOutcome = decide(incoming).also { recorded(incoming, it) }
+
+    private suspend fun decide(incoming: IncomingRequest): IntakeOutcome {
         val track = when (val resolved = resolve(incoming)) {
             is Resolved.Found -> resolved.track
             Resolved.Ignore -> return IntakeOutcome.Ignored
@@ -103,7 +120,18 @@ class RequestIntake(
      * without one (the row then offers "Dismiss").
      */
     suspend fun rejectBeforeRules(incoming: IncomingRequest, reason: RejectReason): IntakeOutcome.Rejected =
-        reject(incoming, reason, (resolve(incoming) as? Resolved.Found)?.track)
+        reject(incoming, reason, (resolve(incoming) as? Resolved.Found)?.track).also { recorded(incoming, it) }
+
+    /**
+     * True when a request with [id] is already here: queued, handed over, playing, played, in the Rejected list or
+     * waiting for Spotify. A source that may see the same item twice (a catch-up after a restart) checks this first.
+     */
+    suspend fun isKnown(id: String): Boolean {
+        if (rejected.entries.value.any { it.id == id } || pending.pending.value.any { it.id == id }) return true
+        val s = controller.loadedSnapshot()
+        return s.queue.any { it.id == id } || s.handedOver?.id == id || s.playing?.id == id ||
+            s.history.any { it.request.id == id }
+    }
 
     /**
      * True when the rejection is in the Rejected list, or is a paid one that will be (it is saved again on the retry
@@ -152,6 +180,15 @@ class RequestIntake(
         val request = entry.request ?: return
         controller.enqueue(request.copy(rulesWaived = true))
         rejected.remove(entryId)
+        scope.launch {
+            // For the Log: where it went, once the add is in (a later read of the same lock-guarded state).
+            val position = controller.loadedSnapshot().queue.indexOfFirst { it.id == request.id } + 1
+            val incoming = IncomingRequest(
+                id = entry.id, input = entry.input, linkOnly = false, requester = entry.requester, source = entry.source,
+                payment = entry.payment, sourceRef = request.sourceRef, receivedAtEpochMs = entry.atEpochMs,
+            )
+            recorded(incoming, IntakeOutcome.Accepted(request.copy(rulesWaived = true), position, waitMs = 0))
+        }
     }
 
     fun dismiss(entryId: String) {
@@ -342,6 +379,7 @@ class RequestIntake(
         val kept = outcome !is IntakeOutcome.Rejected || !outcome.listed || rejected.entries.value.any { it.id == incoming.id }
         if (!kept || !pending.remove(incoming.id)) return false
         _pendingResolved.tryEmit(incoming to outcome)
+        recorded(incoming, outcome)
         return true
     }
 }
