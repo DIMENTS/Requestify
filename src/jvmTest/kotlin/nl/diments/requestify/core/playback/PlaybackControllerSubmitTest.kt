@@ -289,12 +289,12 @@ class PlaybackControllerSubmitTest {
         controller.start()
         runCurrent()
         assertEquals(r1, controller.handedOver.value)
-        assertEquals(emptyList(), seen, "a hand-over is neither a start nor a removal")
+        assertEquals(listOf<RequestEvent>(RequestEvent.HandedOver(r1)), seen.map { it.event }, "a hand-over is neither a start nor a removal")
 
         player.plays(r1.track, progressMs = 1_000)
         advance(1_000)
-        assertEquals(listOf<RequestEvent>(RequestEvent.Started(r1)), seen.map { it.event })
-        assertEquals(r1, seen.single().saved.playing, "emitted after the save")
+        assertEquals(listOf(RequestEvent.HandedOver(r1), RequestEvent.Started(r1)), seen.map { it.event })
+        assertEquals(r1, seen.last().saved.playing, "emitted after the save")
     }
 
     @Test
@@ -420,11 +420,11 @@ class PlaybackControllerSubmitTest {
         runCurrent()
         assertEquals(r1, controller.handedOver.value, "Spotify has it: nothing can be pulled back")
         assertTrue(controller.queue.value.items.isEmpty())
-        assertEquals(emptyList(), seen, "not removed")
+        assertEquals(listOf<RequestEvent>(RequestEvent.HandedOver(r1)), seen.map { it.event }, "not removed")
 
         player.plays(r1.track, progressMs = 1_000)
         advance(1_000)
-        assertEquals(listOf<RequestEvent>(RequestEvent.Started(r1)), seen.map { it.event }, "only started")
+        assertEquals(listOf(RequestEvent.HandedOver(r1), RequestEvent.Started(r1)), seen.map { it.event }, "only started")
     }
 
     @Test
@@ -467,7 +467,10 @@ class PlaybackControllerSubmitTest {
         gate.complete(Unit)
         runCurrent()
         assertEquals(r1, controller.handedOver.value)
-        assertEquals(listOf<RequestEvent>(RequestEvent.Removed(r2, RemoveReason.StreamEnded)), seen.map { it.event })
+        assertEquals(
+            listOf(RequestEvent.Removed(r2, RemoveReason.StreamEnded), RequestEvent.HandedOver(r1)),
+            seen.map { it.event },
+        )
     }
 
     @Test
@@ -489,7 +492,7 @@ class PlaybackControllerSubmitTest {
         runCurrent()
         assertEquals(r1, controller.handedOver.value)
         assertEquals(listOf("addToQueue", "skipNext"), player.calls.map { it.name })
-        assertEquals(emptyList(), seen)
+        assertEquals(listOf<RequestEvent>(RequestEvent.HandedOver(r1)), seen.map { it.event }, "handed over, not removed")
     }
 
     @Test
