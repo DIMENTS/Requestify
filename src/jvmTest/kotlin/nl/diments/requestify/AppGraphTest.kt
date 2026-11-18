@@ -323,6 +323,54 @@ class AppGraphTest {
         }
     }
 
+    @Test
+    fun aStreamSavedLiveKeepsRequestsClosedUntilTwitchConfirmsIt() = runTest {
+        JsonFileStore(AppPaths(dir).settingsFile, Settings.serializer()) { Settings() }
+            .write(Settings(twitch = TwitchSettings(account = TwitchAccount("42", "diments", "DIMENTS", "affiliate"))))
+        // The app closed while live, so stream.offline never came; the login is lost, so nothing confirms the stream.
+        JsonFileStore(AppPaths(dir).streamFile, StreamState.serializer()) { StreamState() }
+            .write(StreamState(live = true, lastSeenLiveMs = 1L))
+        val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), backgroundScope)
+        graph.start()
+        runCurrent()
+        assertFalse(graph.gate.open.value, "a stale live never counts as open")
+        graph.stop()
+    }
+
+    @Test
+    fun aStreamLiveWhenTheAppClosedLongAgoEndsAtStart() = runBlocking {
+        queueRedemption()
+        val secrets = loggedInToBoth()
+        // Live when the app last ran, hours ago; Twitch now says offline.
+        JsonFileStore(AppPaths(dir).streamFile, StreamState.serializer()) { StreamState() }
+            .write(StreamState(live = true, lastSeenLiveMs = 1L))
+        val services = Services().apply { streamLive = false }
+
+        withGraph(services, secrets) { graph ->
+            await("the stream's end refunded the free request") {
+                services.calls.any { it.endsWith("/helix/channel_points/custom_rewards/redemptions") }
+            }
+            assertEquals(emptyList(), graph.home.state.value.queue)
+            assertFalse(graph.gate.open.value)
+            assertEquals(null, graph.gate.status.value.clearAtEpochMs, "no grace: the stream ended long ago")
+        }
+    }
+
+    @Test
+    fun stopRemembersWhenTheStreamWasLastSeenLive() = runBlocking {
+        val services = Services()
+        var stoppedAt = 0L
+        withGraph(services, loggedInToBoth()) { graph ->
+            awaitTwitch(graph, services, sockets = 1)
+            await("requests open: Twitch says the stream is live") { graph.gate.open.value }
+            delay(QUIET_MS)
+            stoppedAt = System.currentTimeMillis() // withGraph stops the graph right after
+        }
+        val saved = JsonFileStore(AppPaths(dir).streamFile, StreamState.serializer()) { StreamState() }.read()
+        assertTrue(saved.live)
+        assertTrue((saved.lastSeenLiveMs ?: 0) >= stoppedAt, "saved ${saved.lastSeenLiveMs}, stopped at $stoppedAt")
+    }
+
     /** Saves a queue holding one request of Requestify's own reward (redemption `red-1`). */
     private fun queueRedemption() {
         val request = Request(
@@ -461,6 +509,9 @@ class AppGraphTest {
 
         /** While set, Spotify's track lookups wait for it. */
         @Volatile var trackHold: CompletableDeferred<Unit>? = null
+
+        /** What `GET /helix/streams` says. */
+        @Volatile var streamLive = true
         private val sentIds = AtomicInteger()
         private val json = headersOf(HttpHeaders.ContentType, "application/json")
 
@@ -512,7 +563,7 @@ class AppGraphTest {
                     json,
                 )
                 host == "api.twitch.tv" && path == "/helix/streams" ->
-                    respond("""{"data":[{"id":"s1","type":"live"}]}""", HttpStatusCode.OK, json)
+                    respond(if (streamLive) """{"data":[{"id":"s1","type":"live"}]}""" else """{"data":[]}""", HttpStatusCode.OK, json)
                 host == "api.twitch.tv" && path == "/helix/chat/messages" -> {
                     val body = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
                     sends += Sent(

@@ -24,6 +24,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -57,12 +58,15 @@ class StreamWatcherTest {
         /** `GET /streams` calls, also those still waiting. */
         var checks = 0
 
+        /** How often the end-of-stream clear ran. */
+        var cleared = 0
+
         val gate = RequestsGate(
             file = JsonFileStore(dir.resolve("stream.json"), StreamState.serializer()) { StreamState() },
             twitchConnected = MutableStateFlow(true),
             scope = scope.backgroundScope,
             clock = { scope.currentTime },
-            onStreamEnded = {},
+            onStreamEnded = { cleared++ },
         )
 
         private val api = TwitchApi(
@@ -91,7 +95,7 @@ class StreamWatcherTest {
             broadcasterId = { "42" },
         )
 
-        val watcher = StreamWatcher(events, freshSessions, api, gate, scope.backgroundScope)
+        val watcher = StreamWatcher(events, freshSessions, api, gate, scope.backgroundScope, clock = { scope.currentTime })
 
         val gateLive: Boolean get() = gate.status.value.live
     }
@@ -195,5 +199,124 @@ class StreamWatcherTest {
         runCurrent()
         assertEquals(2, h.checks)
         assertTrue(h.gateLive)
+    }
+
+    @Test
+    fun aFailedReadIsRetriedWithBackoffUntilTwitchAnswers() = runTest {
+        val h = Harness(this)
+        h.failWith = HttpStatusCode.ServiceUnavailable
+        h.watcher.start()
+        runCurrent()
+        assertEquals(1, h.checks)
+
+        for ((waitMs, checks) in listOf(5_000L to 2, 10_000L to 3, 20_000L to 4, 40_000L to 5, 60_000L to 6, 60_000L to 7)) {
+            advanceTimeBy(waitMs - 1)
+            runCurrent()
+            assertEquals(checks - 1, h.checks, "not before ${waitMs / 1000} s")
+            advanceTimeBy(1)
+            runCurrent()
+            assertEquals(checks, h.checks, "again after ${waitMs / 1000} s")
+        }
+
+        h.failWith = null
+        h.live = true
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue(h.gateLive, "the read that answers applies")
+    }
+
+    @Test
+    fun aStaleOfflineAtStartIsCorrectedByTheConfirmationReads() = runTest {
+        val h = Harness(this)
+        h.watcher.start()
+        runCurrent()
+        assertEquals(1, h.checks)
+        assertFalse(h.gateLive)
+
+        h.live = true // the stream had just started: Helix lagged, and stream.online came before the subscription
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(2, h.checks, "confirmed about a minute later")
+        assertTrue(h.gateLive)
+        assertTrue(h.gate.open.value)
+
+        advanceTimeBy(120_000)
+        runCurrent()
+        assertEquals(3, h.checks, "and again at three minutes")
+        advanceTimeBy(30 * 60_000)
+        runCurrent()
+        assertEquals(3, h.checks, "then the events carry it")
+    }
+
+    @Test
+    fun aStaleOfflineReadMidStreamIsCorrectedBeforeTheClear() = runTest {
+        val h = Harness(this)
+        h.watcher.start()
+        runCurrent()
+        h.events.emit(EventSubEvent.StreamOnline)
+        runCurrent()
+        advanceTimeBy(30 * 60_000) // well into the stream
+        runCurrent()
+        assertTrue(h.gateLive)
+
+        h.live = false // Helix lags (the stream restarted while EventSub reconnected)
+        h.freshSessions.emit(Unit)
+        runCurrent()
+        assertFalse(h.gateLive, "the read is all Twitch says")
+        h.live = true // Helix catches up
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue(h.gateLive, "the next read ends the grace as a drop")
+        advanceTimeBy(20 * 60_000)
+        runCurrent()
+        assertEquals(0, h.cleared, "no end-of-stream clear during a live stream")
+        assertTrue(h.gate.open.value)
+    }
+
+    @Test
+    fun duringTheGraceTheStatusIsReadEveryMinute() = runTest {
+        val h = Harness(this)
+        h.live = true
+        h.watcher.start()
+        runCurrent()
+        advanceTimeBy(10 * 60_000)
+        runCurrent()
+        val before = h.checks
+
+        h.live = false
+        h.events.emit(EventSubEvent.StreamOffline)
+        runCurrent()
+        advanceTimeBy(3 * 60_000)
+        runCurrent()
+        assertEquals(before + 3, h.checks, "a read every minute while in the grace")
+
+        h.live = true // back on air, its stream.online lost
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertFalse(h.gateLive, "four minutes after stream.offline a live answer may still be Helix lagging")
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue(h.gateLive, "five minutes after it, a live answer ends the grace as a drop")
+        advanceTimeBy(20 * 60_000)
+        runCurrent()
+        assertEquals(0, h.cleared)
+        val afterDrop = h.checks
+        advanceTimeBy(10 * 60_000)
+        runCurrent()
+        assertEquals(afterDrop, h.checks, "no reads once live again")
+    }
+
+    @Test
+    fun aReadNeverOverrulesARecentStreamEvent() = runTest {
+        val h = Harness(this)
+        h.watcher.start()
+        runCurrent()
+        h.events.emit(EventSubEvent.StreamOnline) // after the start's read: Helix still says offline
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(2, h.checks)
+        assertTrue(h.gateLive, "the confirmation read lags behind stream.online: the event stands")
+        assertTrue(h.gate.open.value)
     }
 }

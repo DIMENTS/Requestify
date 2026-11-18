@@ -4,10 +4,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.twitch.eventsub.EventSubClient
 import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
@@ -17,9 +22,13 @@ import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
  *
  * - `stream.online` / `stream.offline` apply at once.
  * - The live status is read over Helix ([TwitchApi.isLive]) at [start] and after every fresh EventSub session, whose
- *   events in between are lost. Reads run one at a time; a failed read leaves the gate as it is.
- * - A read that a stream event overtook while it was under way is dropped: the event is newer (and Helix lags behind
- *   the events).
+ *   events in between are lost. A read that fails is tried again ([retryDelaysMs], then every 60 s) until Twitch
+ *   answers; then it is read again [confirmAfterMs] later, so a stale answer (Helix lags behind a stream that just
+ *   started or ended) does not stay in force.
+ * - While the gate is in its offline grace, it is read every [graceReadMs]: a stream that is back (its
+ *   `stream.online` lost) ends the grace as a drop, before the end-of-stream clear.
+ * - Reads run one at a time. A read never overrules a stream event that came in while it was under way, nor one of
+ *   the last [eventTrustMs] that says otherwise: the event is newer, and Helix lags behind the events.
  *
  * The wiring runs it only while the Twitch session is connected, so the gate never hears of the stream without Twitch.
  * After [stop] nothing of it reaches the gate, a read still under way included.
@@ -30,9 +39,14 @@ class StreamWatcher(
     private val api: TwitchApi,
     private val gate: RequestsGate,
     private val scope: CoroutineScope,
+    private val clock: () -> Long,
+    private val retryDelaysMs: List<Long> = listOf(5_000, 10_000, 20_000, 40_000, 60_000), // then every 60 s
+    private val confirmAfterMs: List<Long> = listOf(60_000, 180_000),
+    private val graceReadMs: Long = 60_000,
+    private val eventTrustMs: Long = 300_000,
 ) {
-    constructor(eventSub: EventSubClient, api: TwitchApi, gate: RequestsGate, scope: CoroutineScope) :
-        this(eventSub.events, eventSub.freshSessions, api, gate, scope)
+    constructor(eventSub: EventSubClient, api: TwitchApi, gate: RequestsGate, scope: CoroutineScope, clock: () -> Long) :
+        this(eventSub.events, eventSub.freshSessions, api, gate, scope, clock)
 
     private val lock = Any()
 
@@ -44,6 +58,12 @@ class StreamWatcher(
 
     /** Stream events applied so far: a read applies only when none came in while it was under way. Guarded by [lock]. */
     private var streamEvents = 0L
+
+    /** The last stream event (live or not) and when it came. Guarded by [lock]. */
+    private var lastEvent: Pair<Boolean, Long>? = null
+
+    /** One read at a time. */
+    private val reading = Mutex()
 
     /** Starts watching and reads the live status; does nothing while already running. */
     fun start() {
@@ -65,7 +85,24 @@ class StreamWatcher(
                         }
                     }
                     reads.trySend(Unit)
-                    launch { for (read in reads) readLiveStatus(current) }
+                    // Each start or fresh session: a read now and its confirmations; a newer one starts them over.
+                    launch {
+                        var checks: Job? = null
+                        for (read in reads) {
+                            checks?.cancelAndJoin()
+                            checks = launch { readAndConfirm(current) }
+                        }
+                    }
+                    launch {
+                        gate.inGrace.collectLatest { inGrace ->
+                            if (inGrace) {
+                                while (true) {
+                                    delay(graceReadMs)
+                                    read(current)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -83,21 +120,45 @@ class StreamWatcher(
     private fun streamEvent(current: Long, live: Boolean) = synchronized(lock) {
         if (current != run) return@synchronized
         streamEvents++
+        lastEvent = live to clock()
         gate.onLive(live)
     }
 
-    private suspend fun readLiveStatus(current: Long) {
+    /** Reads until Twitch answers, then again after each of [confirmAfterMs]. */
+    private suspend fun readAndConfirm(current: Long) {
+        readUntilAnswered(current)
+        var waited = 0L
+        for (after in confirmAfterMs) {
+            delay(after - waited)
+            waited = after
+            readUntilAnswered(current)
+        }
+    }
+
+    private suspend fun readUntilAnswered(current: Long) {
+        var attempt = 0
+        while (!read(current)) {
+            delay(retryDelaysMs.getOrElse(attempt) { retryDelaysMs.lastOrNull() ?: 60_000L })
+            attempt++
+        }
+    }
+
+    /** One read of the live status, applied unless a stream event says otherwise; false when Twitch did not answer. */
+    private suspend fun read(current: Long): Boolean = reading.withLock {
         val eventsBefore = synchronized(lock) { streamEvents }
         val result = try {
             api.isLive()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            return // like any failed read: the gate stays as it is
+            return@withLock false
         }
-        val live = (result as? TwitchResult.Ok)?.value ?: return
+        val live = (result as? TwitchResult.Ok)?.value ?: return@withLock false
         synchronized(lock) {
-            if (current == run && streamEvents == eventsBefore) gate.onLive(live)
+            val event = lastEvent
+            val contradictsRecentEvent = event != null && event.first != live && clock() - event.second < eventTrustMs
+            if (current == run && streamEvents == eventsBefore && !contradictsRecentEvent) gate.onLive(live, read = true)
         }
+        true
     }
 }

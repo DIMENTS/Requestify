@@ -26,6 +26,11 @@ data class StreamState(
     val clearPostponed: Boolean = false,
     /** The plain switch used without a Twitch login. */
     val openWithoutTwitch: Boolean = true,
+    /**
+     * When the app last saw the stream live: at every live answer from Twitch, every minute while live, and when the
+     * app stops. After the app was closed while live, the stream counts as offline since then at the latest.
+     */
+    val lastSeenLiveMs: Long? = null,
 )
 
 /** The gate as the title bar shows it. */
@@ -50,6 +55,11 @@ data class GateStatus(
  * (after the grace; inside it the grace's end clears); going live cancels it. Without Twitch it is a plain switch,
  * default open.
  *
+ * A stream that was live when the app closed is not trusted at the next start: requests stay closed until Twitch
+ * says it is live again (a toggle by hand still opens them). When Twitch reads it offline instead, it went offline
+ * at the latest when the app last saw it live ([StreamState.lastSeenLiveMs]), so a restart long after the stream
+ * ended ends it at once, and a quick restart carries on with the grace where it was.
+ *
  * Every change is saved before it applies. A stream event applies even when it cannot be saved, so a failed save
  * never leaves requests open while offline; the file catches up at the next change or [start]. A toggle that
  * cannot be saved is not applied.
@@ -61,6 +71,7 @@ class RequestsGate(
     private val clock: () -> Long,
     private val onStreamEnded: suspend () -> Unit,
     private val graceMs: Long = 600_000,
+    private val heartbeatMs: Long = 60_000,
 ) {
     private val lock = Any()
     private val loaded: StreamState? = try {
@@ -78,18 +89,44 @@ class RequestsGate(
     /** [state] holds a stream event the file does not have yet. */
     private var unsaved = false
 
+    /**
+     * Twitch told the live status in this run. Until then a saved "live" is a leftover of the last run: requests stay
+     * closed unless toggled by hand ([toggledUnconfirmed]).
+     */
+    private var heard = false
+
+    /** Toggled by hand while a saved "live" was not confirmed yet: the toggle decides, as while live. */
+    private var toggledUnconfirmed = false
+
+    /** Between [start] and [stop]: the heartbeat may run. */
+    private var running = false
+
     /** The grace [timer] waits out (its offline moment). */
     private var timerFor: Long? = null
     private var timer: Job? = null
 
+    /** Saves [StreamState.lastSeenLiveMs] every [heartbeatMs] while the stream is live. */
+    private var heartbeat: Job? = null
+
     private val _open = MutableStateFlow(state.value.isOpen(twitchConnected.value))
     private val _status = MutableStateFlow(state.value.status(twitchConnected.value))
+    private val _inGrace = MutableStateFlow(state.value.offlineSinceMs != null)
 
     val open: StateFlow<Boolean> = _open.asStateFlow()
     val status: StateFlow<GateStatus> = _status.asStateFlow()
 
+    /** The stream went offline and the grace runs: a live answer now is a drop. */
+    val inGrace: StateFlow<Boolean> = _inGrace.asStateFlow()
+
     init {
-        scope.launch { twitchConnected.collect { synchronized(lock) { publish() } } }
+        scope.launch {
+            twitchConnected.collect {
+                synchronized(lock) {
+                    publish()
+                    syncHeartbeat()
+                }
+            }
+        }
     }
 
     /**
@@ -97,21 +134,47 @@ class RequestsGate(
      * Saves a stream event that could not be saved before.
      */
     fun start() {
+        synchronized(lock) { running = true }
         change(event = true) { it }
     }
 
-    /** The stream's live status: stream.online/offline and the REST check. A repeated value changes nothing. */
-    fun onLive(live: Boolean) {
+    /** The app stops: remembers that the stream was live until now, and stops the heartbeat. */
+    fun stop() {
+        change(event = true) { s -> if (s.live && heard) s.copy(lastSeenLiveMs = clock()) else s }
+        synchronized(lock) {
+            running = false
+            syncHeartbeat()
+        }
+    }
+
+    /**
+     * The stream's live status: stream.online/offline ([read] false) and the REST check ([read] true). A repeated
+     * value changes nothing but when the stream was last seen live.
+     */
+    fun onLive(live: Boolean, read: Boolean = false) {
+        var clear = false
         change(event = true) { s ->
+            val now = clock()
+            // A saved "live" not confirmed in this run: Twitch's read can only say it is offline now, not since when.
+            val leftover = s.live && !heard
+            heard = true
             when {
-                s.live == live -> s
-                !live -> s.copy(live = false, offlineSinceMs = clock())
+                live && s.live -> s.copy(lastSeenLiveMs = now)
                 // A drop: as if nothing happened. An open made during it now belongs to the stream it returns to.
-                s.offlineSinceMs != null ->
-                    s.copy(live = true, offlineSinceMs = null, overrideAfterStream = false, clearPostponed = false)
-                else -> s.copy(live = true, override = null, overrideAfterStream = false, clearPostponed = false)
+                live && s.offlineSinceMs != null -> s.copy(
+                    live = true, offlineSinceMs = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now,
+                )
+                live -> s.copy(live = true, override = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now)
+                !s.live -> s
+                else -> {
+                    val since = if (leftover && read) minOf(now, s.lastSeenLiveMs ?: now) else now
+                    val offline = s.copy(live = false, offlineSinceMs = since)
+                    // Offline since longer than the grace: the stream ended while the app was closed.
+                    if (since + graceMs > now) offline else ended(offline).also { clear = it.second }.first
+                }
             }
         }
+        if (clear) scope.launch { onStreamEnded() }
     }
 
     /** The title-bar button. */
@@ -129,6 +192,12 @@ class RequestsGate(
                 }
             }
         }
+        if (changed) {
+            synchronized(lock) {
+                if (twitchConnected.value && !heard) toggledUnconfirmed = true
+                publish()
+            }
+        }
         if (changed && clear) scope.launch { onStreamEnded() }
     }
 
@@ -137,11 +206,19 @@ class RequestsGate(
         var clear = false
         change(event = true) { s ->
             if (s.offlineSinceMs != since) return@change s // the stream came back first
-            val ended = s.copy(offlineSinceMs = null, override = if (s.overrideAfterStream) s.override else null)
-            clear = !ended.openWithTwitch()
-            ended.copy(clearPostponed = !clear)
+            ended(s).also { clear = it.second }.first
         }
         if (clear) scope.launch { onStreamEnded() }
+    }
+
+    /**
+     * [s] with its grace over: an override set while live ends; the free requests are cleared (second: true) unless
+     * requests are open by hand, which postpones the clear.
+     */
+    private fun ended(s: StreamState): Pair<StreamState, Boolean> {
+        val ended = s.copy(offlineSinceMs = null, override = if (s.overrideAfterStream) s.override else null)
+        val clear = !ended.openWithTwitch()
+        return ended.copy(clearPostponed = !clear) to clear
     }
 
     /**
@@ -160,6 +237,7 @@ class RequestsGate(
         }
         publish()
         syncTimer()
+        syncHeartbeat()
         true
     }
 
@@ -201,24 +279,51 @@ class RequestsGate(
         }
     }
 
+    /**
+     * Runs the heartbeat while the app runs with Twitch and the stream is live as Twitch confirmed. It never cancels
+     * itself: while it runs, its own saves leave it running. Caller holds [lock].
+     */
+    private fun syncHeartbeat() {
+        val wanted = running && twitchConnected.value && state.value.live && heard
+        if (wanted == (heartbeat?.isActive == true)) return
+        heartbeat?.cancel()
+        heartbeat = if (!wanted) {
+            null
+        } else {
+            scope.launch {
+                while (true) {
+                    delay(heartbeatMs)
+                    change(event = true) { s -> if (s.live && heard) s.copy(lastSeenLiveMs = clock()) else s }
+                }
+            }
+        }
+    }
+
     /** Caller holds [lock]. */
     private fun publish() {
         val s = state.value
         val twitch = twitchConnected.value
         _open.value = s.isOpen(twitch)
         _status.value = s.status(twitch)
+        _inGrace.value = s.offlineSinceMs != null
     }
 
-    private fun StreamState.openWithTwitch(): Boolean =
-        if (offlineSinceMs != null) override == true && overrideAfterStream else override ?: live
+    /** A saved "live" that Twitch has not confirmed in this run (and no toggle decided meanwhile). Caller holds [lock]. */
+    private fun StreamState.liveUnconfirmed(): Boolean = live && !heard && !toggledUnconfirmed
+
+    private fun StreamState.openWithTwitch(): Boolean = when {
+        offlineSinceMs != null -> override == true && overrideAfterStream
+        liveUnconfirmed() -> false
+        else -> override ?: live
+    }
 
     private fun StreamState.isOpen(twitch: Boolean): Boolean = if (twitch) openWithTwitch() else openWithoutTwitch
 
     private fun StreamState.status(twitch: Boolean) = GateStatus(
         open = isOpen(twitch),
         twitch = twitch,
-        live = live,
-        manual = twitch && override != null && (offlineSinceMs == null || overrideAfterStream),
+        live = live && heard, // a saved "live" shows as live only once Twitch confirms it
+        manual = twitch && override != null && (offlineSinceMs == null || overrideAfterStream) && !liveUnconfirmed(),
         clearAtEpochMs = if (clearPostponed) null else offlineSinceMs?.plus(graceMs),
         clearPostponed = clearPostponed,
     )

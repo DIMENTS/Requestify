@@ -233,7 +233,7 @@ class AppGraph(
     )
 
     /** Opens and closes requests with the stream. */
-    private val streamWatcher = StreamWatcher(eventSub, twitchApi, gate, scope)
+    private val streamWatcher = StreamWatcher(eventSub, twitchApi, gate, scope, clock = System::currentTimeMillis)
 
     private val twitchLock = Any()
 
@@ -299,6 +299,7 @@ class AppGraph(
         twitchSession.stop()
         stopFollowingTwitchSession()
         controller.stop()
+        gate.stop() // remembers that the stream was live until now, for the next start
         channelPoints.stopLifecycle() // last: a change the controller still saves is settled too
     }
 

@@ -322,7 +322,7 @@ class RequestsGateTest {
 
         healWrites()
         gate.onLive(false)
-        assertEquals(StreamState(live = false, offlineSinceMs = 0), saved(), "the next change saves it")
+        assertEquals(StreamState(live = false, offlineSinceMs = 0, lastSeenLiveMs = 0), saved(), "the next change saves it")
 
         wait(5 * minute)
         first.cancel()
@@ -344,11 +344,11 @@ class RequestsGateTest {
         wait(grace)
         assertEquals(1, cleared)
         assertNull(gate.status.value.clearAtEpochMs)
-        assertEquals(StreamState(live = true), saved(), "nothing saved since the stream went live")
+        assertEquals(StreamState(live = true, lastSeenLiveMs = 0), saved(), "nothing saved since the stream went live")
 
         healWrites()
         gate.start()
-        assertEquals(StreamState(live = false), saved(), "start saves the stream's end")
+        assertEquals(StreamState(live = false, lastSeenLiveMs = 0), saved(), "start saves the stream's end")
         first.cancel()
         gate()
         wait(grace)
@@ -369,7 +369,7 @@ class RequestsGateTest {
         file.toFile().delete()
         JsonFileStore(file, StreamState.serializer()) { StreamState() }.write(StreamState(openWithoutTwitch = false))
         gate.onLive(false)
-        assertEquals(StreamState(live = false, offlineSinceMs = 0, openWithoutTwitch = false), saved())
+        assertEquals(StreamState(live = false, offlineSinceMs = 0, openWithoutTwitch = false, lastSeenLiveMs = 0), saved())
         assertFalse(gate.open.value)
     }
 
@@ -426,5 +426,114 @@ class RequestsGateTest {
         assertNull(gate.status.value.clearAtEpochMs)
         assertTrue(gate.status.value.live)
         assertTrue(gate.status.value.open)
+    }
+
+    // A stream that was live when the app closed (stream.offline never came).
+
+    @Test
+    fun aSavedLiveStreamKeepsRequestsClosedUntilTwitchConfirmsIt() = runTest {
+        val first = appScope()
+        gate(scope = first).onLive(true)
+        first.cancel() // the app closes (or crashes, or the PC shuts down) while live
+
+        val after = gate()
+        runCurrent()
+        assertFalse(after.open.value, "the saved live is a leftover until Twitch confirms it")
+        assertFalse(after.status.value.live)
+        after.onLive(true, read = true)
+        assertTrue(after.open.value)
+        assertTrue(after.status.value.live)
+        assertEquals(0, cleared)
+    }
+
+    @Test
+    fun aToggleStillOpensWhileTheSavedLiveIsUnconfirmed() = runTest {
+        val first = appScope()
+        gate(scope = first).onLive(true)
+        first.cancel()
+
+        val after = gate()
+        after.toggle()
+        assertTrue(after.open.value, "the streamer's click decides")
+        assertTrue(after.status.value.manual)
+        after.onLive(true, read = true)
+        assertTrue(after.open.value)
+        after.toggle()
+        assertFalse(after.open.value)
+    }
+
+    @Test
+    fun aRestartLongAfterTheStreamEndedEndsItAtOnce() = runTest {
+        val first = appScope()
+        val before = gate(scope = first)
+        before.onLive(true)
+        before.toggle() // closed by hand during that stream
+        wait(5 * minute)
+        first.cancel() // closed while live
+        wait(60 * minute)
+
+        val after = gate()
+        runCurrent()
+        after.onLive(false, read = true) // Twitch: offline, since some time
+        runCurrent()
+        assertEquals(1, cleared, "it ended long ago: its free requests are cleared at once")
+        assertNull(after.status.value.clearAtEpochMs)
+
+        wait(2 * minute)
+        after.onLive(true) // the next stream, within ten minutes of the restart: not a drop
+        assertTrue(after.open.value, "the manual close of the last stream is over")
+        assertFalse(after.status.value.manual)
+        wait(grace)
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun aQuickRestartCarriesOnWithTheGraceFromWhenTheStreamWasLastSeen() = runTest {
+        val first = appScope()
+        val before = gate(scope = first)
+        before.onLive(true)
+        wait(5 * minute) // the heartbeat remembers the stream live until now
+        first.cancel() // a crash: no stop()
+        wait(3 * minute)
+
+        val after = gate()
+        after.onLive(false, read = true)
+        assertEquals(5 * minute + grace, after.status.value.clearAtEpochMs)
+        wait(7 * minute - 1)
+        assertEquals(0, cleared)
+        wait(1)
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun anOfflineEventAfterARestartStartsTheGraceNow() = runTest {
+        val first = appScope()
+        gate(scope = first).onLive(true)
+        first.cancel()
+        wait(30 * minute)
+
+        val after = gate()
+        after.onLive(false) // stream.offline: it went offline just now
+        assertEquals(30 * minute + grace, after.status.value.clearAtEpochMs)
+        assertEquals(0, cleared)
+    }
+
+    @Test
+    fun theStreamIsRememberedLiveEveryMinuteAndAtStop() = runTest {
+        val gate = gate()
+        gate.onLive(true)
+        assertEquals(0L, saved().lastSeenLiveMs)
+        wait(3 * minute)
+        assertEquals(3 * minute, saved().lastSeenLiveMs)
+        wait(minute / 2)
+        gate.stop()
+        assertEquals(3 * minute + minute / 2, saved().lastSeenLiveMs)
+        wait(5 * minute)
+        assertEquals(3 * minute + minute / 2, saved().lastSeenLiveMs, "no heartbeat after stop()")
+
+        gate.onLive(false)
+        gate.start()
+        wait(5 * minute)
+        assertEquals(3 * minute + minute / 2, saved().lastSeenLiveMs, "no heartbeat while offline")
     }
 }
