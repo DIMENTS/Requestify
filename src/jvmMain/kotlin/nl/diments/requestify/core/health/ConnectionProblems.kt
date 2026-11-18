@@ -21,11 +21,16 @@ sealed interface ConnectionProblem {
     data object TwitchDisconnected : ConnectionProblem
     data object RewardRemoved : ConnectionProblem
 
-    /** [keyExpiresAtEpochMs]: when the DonoLink key stops working, for [DonationProblem.KeyExpiring]. */
+    /**
+     * [keyExpiresAtEpochMs]: when the DonoLink key stops working, and [daysLeft] whole days until then, for
+     * [DonationProblem.KeyExpiring]. The days are part of the problem so the list changes (and is shown again) as they
+     * count down.
+     */
     data class Donation(
         val kind: DonationSourceKind,
         val problem: DonationProblem,
         val keyExpiresAtEpochMs: Long? = null,
+        val daysLeft: Int? = null,
     ) : ConnectionProblem
 }
 
@@ -75,7 +80,7 @@ fun connectionProblems(
     if (kind == DonationSourceKind.DonoLink && donations.status != DonationStatus.Off && donations.status != DonationStatus.KeyRefused &&
         expires != null && expires - nowMs <= KEY_WARNING_MS
     ) {
-        add(ConnectionProblem.Donation(kind, DonationProblem.KeyExpiring, expires))
+        add(ConnectionProblem.Donation(kind, DonationProblem.KeyExpiring, expires, ((expires - nowMs).coerceAtLeast(0) / DAY_MS).toInt()))
     }
 }
 
@@ -99,3 +104,5 @@ fun problemsOverTime(
     donations: Flow<DonationHealth>,
     ticks: Flow<Long>,
 ): Flow<List<ConnectionProblem>> = combine(spotify, twitch, donations, ticks) { s, t, d, now -> connectionProblems(s, t, d, now) }
+
+private const val DAY_MS = 24 * 3_600_000L

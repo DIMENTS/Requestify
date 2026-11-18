@@ -30,9 +30,26 @@ class ConnectionProblemsTest {
         val now = 1_000_000L
         val donoLink = DonationHealth(DonationSourceKind.DonoLink, DonationStatus.Connected, keyExpiresAtEpochMs = now + 3 * day)
         assertEquals(
-            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, now + 3 * day)),
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, now + 3 * day, daysLeft = 3)),
             connectionProblems(SpotifyHealth.Ok, TwitchHealth(), donoLink, now),
         )
+    }
+
+    @Test
+    fun theDaysLeftCountDown() = runTest {
+        val base = Instant.parse("2026-11-18T12:00:00Z").toEpochMilli()
+        val expiry = base + 6 * day + 12 * hour
+        val problems = problemsOverTime(
+            spotify = MutableStateFlow(SpotifyHealth.Ok),
+            twitch = MutableStateFlow(TwitchHealth()),
+            donations = MutableStateFlow(DonationHealth(DonationSourceKind.DonoLink, DonationStatus.Connected, keyExpiresAtEpochMs = expiry)),
+            ticks = clockTicks({ base + testScheduler.currentTime }, ZoneOffset.UTC),
+        ).stateIn(backgroundScope, SharingStarted.Eagerly, emptyList())
+        runCurrent()
+        assertEquals(6, (problems.value.single() as ConnectionProblem.Donation).daysLeft)
+        advanceTimeBy(day)
+        runCurrent()
+        assertEquals(5, (problems.value.single() as ConnectionProblem.Donation).daysLeft, "a day later, with no other change, it says 5")
     }
 
     @Test
@@ -66,7 +83,7 @@ class ConnectionProblemsTest {
         advanceTimeBy(day + hour)
         runCurrent()
         assertEquals(
-            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, expiry)),
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, expiry, daysLeft = 6)),
             problems.value,
             "a day later, without any change of health, the key is within its week",
         )

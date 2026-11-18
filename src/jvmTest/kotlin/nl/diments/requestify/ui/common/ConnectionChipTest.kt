@@ -112,7 +112,7 @@ class ConnectionChipTest {
             problems(DonationHealth(DonationSourceKind.StreamElements, DonationStatus.Retrying, retryingSinceMs = now - 1_000)),
         )
         assertEquals(
-            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, now + 6 * day)),
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, now + 6 * day, daysLeft = 6)),
             problems(DonationHealth(DonationSourceKind.DonoLink, DonationStatus.Connected, keyExpiresAtEpochMs = now + 6 * day)),
         )
         assertEquals(

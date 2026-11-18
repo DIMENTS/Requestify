@@ -50,7 +50,7 @@ private fun ConnectionProblem.look(nowMs: Long = System.currentTimeMillis()): St
                 Tone.Problem,
             )
             DonationProblem.KeyExpiring -> {
-                val days = keyExpiresAtEpochMs?.let { ((it - nowMs).coerceAtLeast(0) / DAY_MS).toInt() }
+                val days = daysLeft ?: keyExpiresAtEpochMs?.let { ((it - nowMs).coerceAtLeast(0) / DAY_MS).toInt() }
                 when (days) {
                     null -> StatusLook(Res.string.connection_donolink_key_expiring, AppIcons.Warning, Tone.Problem)
                     0 -> StatusLook(Res.string.connection_donolink_key_expiring_hours, AppIcons.Warning, Tone.Problem)

@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import nl.diments.requestify.core.health.clockTicks
+import java.time.ZoneId
+import kotlinx.coroutines.flow.Flow
 import nl.diments.requestify.core.donations.DonationCursorStore
 import nl.diments.requestify.core.donations.DonationHealth
 import nl.diments.requestify.core.donations.donolink.DonoLinkFeed
@@ -61,13 +64,15 @@ class DonationsSetupViewModel(
     private val openBrowser: (String) -> Boolean,
     /** Starts the running source again, with a key that was just saved. */
     private val restartSource: () -> Unit = {},
+    /** The key's days left count down by themselves: the card is looked at again as time passes. */
+    ticks: Flow<Long> = clockTicks(clock, ZoneId.systemDefault()),
 ) {
     private val test = MutableStateFlow<DonationTest>(DonationTest.Idle)
 
     /** Bumped when a key is saved, so [DonationsCardState.hasKey] is read again. */
     private val keysChanged = MutableStateFlow(0)
 
-    val state: StateFlow<DonationsCardState> = combine(settings.settings, test, health, keysChanged) { s, t, h, _ -> stateOf(s, t, h) }
+    val state: StateFlow<DonationsCardState> = combine(settings.settings, test, health, keysChanged, ticks) { s, t, h, _, _ -> stateOf(s, t, h) }
         .stateIn(scope, SharingStarted.Eagerly, stateOf(settings.settings.value, test.value, health.value))
 
     private fun stateOf(s: Settings, t: DonationTest, h: DonationHealth): DonationsCardState {
