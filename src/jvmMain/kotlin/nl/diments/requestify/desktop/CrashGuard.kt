@@ -63,8 +63,16 @@ class CrashGuard(
     /** Guarded by [lock]: this run's marker. */
     private var marker: RunMarker? = null
 
+    /** Set when the JVM starts ending (Windows shutting down, logoff, Quit): an error after that is no crash. */
+    @Volatile
+    var shuttingDown = false
+        private set
+
     /** Runs on Windows shutdown, logoff and every normal exit: an orderly end (unless a crash is being handled). */
-    val shutdownHook: Thread = Thread({ markOrderlyEnd() }, "requestify-orderly-end")
+    val shutdownHook: Thread = Thread({
+        shuttingDown = true
+        markOrderlyEnd()
+    }, "requestify-orderly-end")
 
     /** The run before this one, when it did not end properly. Read before [markRunning]. */
     fun previousRun(): PreviousRun? {
@@ -100,6 +108,15 @@ class CrashGuard(
     }
 
     fun onUncaught(t: Throwable) {
+        if (shuttingDown) {
+            // The JVM is ending already (Windows shuts down or signs out): keep the error for diagnosis, but no restart
+            // and no message. Exiting here would block until the shutdown hooks are done; the end comes anyway.
+            try {
+                writeCrashFile(t)
+            } catch (_: Throwable) {
+            }
+            return
+        }
         synchronized(lock) {
             if (crashing) {
                 exit(1) // an error while handling one: just end

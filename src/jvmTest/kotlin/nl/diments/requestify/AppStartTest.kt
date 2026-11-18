@@ -52,6 +52,19 @@ class AppStartTest {
     }
 
     @Test
+    fun aFailingGracefulStopStillQuits() {
+        val steps = mutableListOf<String>()
+        quitApp(
+            hideTray = { steps += "tray" },
+            hideWindow = { steps += "window" },
+            stopGracefully = { throw IllegalStateException("Twitch said no") },
+            markOrderlyEnd = { steps += "orderly" },
+            exit = { steps += "exit" },
+        )
+        assertEquals(listOf("tray", "window", "orderly", "exit"), steps, "Quit ends as Quit, not as a crash restart")
+    }
+
+    @Test
     fun aNoticeClickOpensItsTarget() {
         val shell = ShellState(visible = false)
         shell.noticeClicked(NoticeTarget.Connections)

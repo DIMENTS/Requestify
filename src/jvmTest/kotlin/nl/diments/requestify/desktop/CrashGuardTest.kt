@@ -156,6 +156,22 @@ class CrashGuardTest {
     }
 
     @Test
+    fun anErrorDuringShutdownIsNoCrash() {
+        val first = guard()
+        first.markRunning()
+        first.shutdownHook.run() // Windows signs out or shuts down: the hook runs first
+        first.onUncaught(IllegalStateException("while shutting down"))
+        assertEquals(emptyList(), relaunched, "no restart while Windows shuts down")
+        assertEquals(emptyList(), fatal, "and no message")
+        assertEquals(emptyList(), exits, "the JVM is ending already; exiting during the hooks would block")
+        assertNull(guard().previousRun(), "the end stays orderly")
+        assertTrue(
+            dir.resolve("crash").listDirectoryEntries("*.txt").single().readText().contains("while shutting down"),
+            "the error is still kept for diagnosis",
+        )
+    }
+
+    @Test
     fun anExceptionOnTheEventThreadReachesTheGuard() {
         val saved = Thread.getDefaultUncaughtExceptionHandler()
         try {

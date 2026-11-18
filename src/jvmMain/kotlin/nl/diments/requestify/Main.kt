@@ -42,6 +42,7 @@ import nl.diments.requestify.desktop.SingleInstance
 import nl.diments.requestify.desktop.TrayLabels
 import nl.diments.requestify.desktop.applyAutostartAtStart
 import nl.diments.requestify.desktop.closeWindow
+import nl.diments.requestify.desktop.detachedProcess
 import nl.diments.requestify.desktop.launchMode
 import nl.diments.requestify.desktop.noticeText
 import nl.diments.requestify.desktop.trayLook
@@ -89,7 +90,7 @@ fun main(args: Array<String>) {
         mode = mode,
         installation = installation,
         version = APP_VERSION,
-        relaunch = { command -> ProcessBuilder(command).start() },
+        relaunch = { command -> detachedProcess(command).start() },
         showFatal = ::windowsMessageBox,
         exit = { code -> exitProcess(code) },
         fatalText = { runBlocking { getString(Res.string.crash_fatal) } },

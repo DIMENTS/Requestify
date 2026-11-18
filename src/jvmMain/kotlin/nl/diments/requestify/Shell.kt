@@ -73,7 +73,11 @@ fun quitApp(
 ) {
     hideTray()
     hideWindow()
-    runBlocking { stopGracefully() }
+    try {
+        runBlocking { stopGracefully() }
+    } catch (_: Throwable) {
+        // Quit stays Quit: an error while stopping gracefully must not reach the crash guard and restart the app.
+    }
     markOrderlyEnd()
     exit()
 }
