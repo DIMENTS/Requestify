@@ -353,5 +353,6 @@
     <string name="chat_skipped">Skipped: %1$s – %2$s</string>
     <string name="chat_blacklisted">Blocked and skipped: %1$s – %2$s</string>
     <string name="chat_remove_none">No position %1$s.</string>
+    <string name="chat_remove_usage">Usage: %1$s &lt;position&gt;</string>
     <string name="bits_anonymous">Anonymous</string>
 </resources>

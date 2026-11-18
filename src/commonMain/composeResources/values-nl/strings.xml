@@ -353,5 +353,6 @@
     <string name="chat_skipped">Overgeslagen: %1$s – %2$s</string>
     <string name="chat_blacklisted">Geblokkeerd en overgeslagen: %1$s – %2$s</string>
     <string name="chat_remove_none">Geen positie %1$s.</string>
+    <string name="chat_remove_usage">Gebruik: %1$s &lt;positie&gt;</string>
     <string name="bits_anonymous">Anoniem</string>
 </resources>

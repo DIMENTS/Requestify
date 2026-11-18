@@ -12,6 +12,7 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.net.URI
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,11 +47,20 @@ import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
+import nl.diments.requestify.core.twitch.StreamWatcher
 import nl.diments.requestify.core.twitch.TwitchApi
 import nl.diments.requestify.core.twitch.TwitchSession
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
+import nl.diments.requestify.core.twitch.bits.BitsSource
+import nl.diments.requestify.core.twitch.chat.ChatReplies
+import nl.diments.requestify.core.twitch.chat.ChatReplySender
+import nl.diments.requestify.core.twitch.chat.TwitchChat
 import nl.diments.requestify.core.twitch.eventsub.EventSubClient
+import nl.diments.requestify.core.twitch.eventsub.EventSubConnector
 import nl.diments.requestify.core.twitch.eventsub.KtorEventSubConnector
+import nl.diments.requestify.core.twitch.points.ChannelPointsSource
+import nl.diments.requestify.core.twitch.points.OutboxEntry
+import nl.diments.requestify.core.twitch.points.RedemptionOutbox
 import nl.diments.requestify.core.twitch.points.RewardManager
 import nl.diments.requestify.ui.blacklist.BlacklistViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
@@ -62,13 +72,19 @@ internal const val EXIT_PAUSE_TIMEOUT_MS = 3_000L
 
 /**
  * Builds the app's objects once, for the app's whole life, on [scope] (an app-lifetime scope on the UI thread).
- * Building starts nothing: [start] begins polling Spotify, [stop] ends it.
+ * Building starts nothing: [start] begins polling Spotify and following Twitch, [stop] ends it.
+ *
+ * The Twitch sources (chat, Bits, Channel Points redemptions, the stream's live status) with their reply sender and
+ * redemption outbox run only while the Twitch session is connected (logged in with an account). Settling Channel
+ * Points redemptions runs for the app's whole life.
  */
 class AppGraph(
     paths: AppPaths,
     secrets: SecretStore,
     httpEngine: HttpClientEngine = CIO.create(),
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
+    /** Null: Ktor's WebSocket. Tests drive EventSub with a fake one. */
+    eventSubConnector: EventSubConnector? = null,
 ) {
     private val http = HttpClient(httpEngine) {
         install(ContentNegotiation) { json(AppJson.instance) }
@@ -152,7 +168,7 @@ class AppGraph(
 
     /** Built, not started: the Twitch session starts it while logged in. */
     internal val eventSub: EventSubClient = EventSubClient(
-        connector = KtorEventSubConnector(http),
+        connector = eventSubConnector ?: KtorEventSubConnector(http),
         api = twitchApi,
         broadcasterId = { settings.settings.value.twitch.account?.userId },
         rewardId = { settings.settings.value.twitch.channelPoints.rewardId },
@@ -163,6 +179,67 @@ class AppGraph(
 
     /** Keeps EventSub and the login in step, and reports Twitch's health to the connection chip. */
     val twitchSession: TwitchSession = TwitchSession(twitchAuth, twitchApi, eventSub, settings, scope, clock = System::currentTimeMillis)
+
+    // The Twitch sources. Built once; they run while the Twitch session is connected (see [startTwitchSources]).
+
+    private val chatReplies = ChatReplies()
+
+    /** Sends the replies of chat, Bits and Channel Points, one at a time. */
+    private val chatSender = ChatReplySender(twitchApi, scope)
+
+    private val chat = TwitchChat(
+        eventSub = eventSub,
+        intake = intake,
+        controller = controller,
+        api = twitchApi,
+        settings = settings,
+        replies = chatReplies,
+        sender = chatSender,
+        broadcasterId = { settings.settings.value.twitch.account?.userId },
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
+    private val bits = BitsSource(
+        eventSub = eventSub,
+        intake = intake,
+        settings = settings,
+        replies = chatReplies,
+        sender = chatSender,
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
+    /** Tells Twitch what became of each redemption (fulfilled or refunded), also across restarts. */
+    private val redemptionOutbox = RedemptionOutbox(
+        file = JsonFileStore(paths.redemptionsFile, ListSerializer(OutboxEntry.serializer())) { emptyList() },
+        api = twitchApi,
+        scope = scope,
+    )
+
+    private val channelPoints = ChannelPointsSource(
+        eventSub = eventSub,
+        intake = intake,
+        controller = controller,
+        api = twitchApi,
+        outbox = redemptionOutbox,
+        settings = settings,
+        replies = chatReplies,
+        sender = chatSender,
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
+    /** Opens and closes requests with the stream. */
+    private val streamWatcher = StreamWatcher(eventSub, twitchApi, gate, scope)
+
+    private val twitchLock = Any()
+
+    /** Between [start] and [stop]: the sources follow the Twitch session. Guarded by [twitchLock]. */
+    private var followingTwitch = false
+
+    /** Guarded by [twitchLock]. */
+    private var twitchFollower: Job? = null
 
     val blacklistScreen = BlacklistViewModel(
         store = blacklist,
@@ -183,9 +260,6 @@ class AppGraph(
         scope = scope,
     )
 
-    private val appScope = scope
-    private var rewardJob: Job? = null
-
     val twitchSetup = TwitchSetupViewModel(
         auth = twitchAuth,
         api = twitchApi,
@@ -197,30 +271,87 @@ class AppGraph(
     )
 
     /**
-     * Resumes the offline grace (or ends a stream whose grace ran out while the app was off), starts polling Spotify
-     * and resumes the paid requests that waited for it.
+     * Starts settling Channel Points redemptions, resumes the offline grace (or ends a stream whose grace ran out while
+     * the app was off), starts polling Spotify, resumes the paid requests that waited for it, and connects to Twitch
+     * with its sources while logged in.
      */
     fun start() {
+        // For the app's whole life, before anything can change the queue: the controller's request events do not
+        // replay. That includes the gate, whose start can end a stream that ended while the app was closed, and clear
+        // its free requests on the UI thread while this runs on another. A redemption is fulfilled or refunded also
+        // without a Twitch login: the outbox keeps it until it can be sent.
+        channelPoints.startLifecycle()
         gate.start()
         controller.start()
         intake.start()
+        // Before the session: when it is connected already, the sources listen before EventSub connects.
+        followTwitchSession()
         twitchSession.start()
-        // The reward follows Twitch's connection: its pausing and its events need a login.
-        rewardJob = appScope.launch {
-            twitchSession.connected.collect { connected -> if (connected) rewardManager.start() else rewardManager.stop() }
+    }
+
+    /**
+     * Stops everything [start] started, in reverse. A queue save still in flight when the app exits right after can be
+     * cut off; the atomic write then keeps the previous file, so at most the last change is lost.
+     */
+    fun stop() {
+        twitchSession.stop()
+        stopFollowingTwitchSession()
+        controller.stop()
+        channelPoints.stopLifecycle() // last: a change the controller still saves is settled too
+    }
+
+    /** Runs the Twitch sources while the Twitch session is connected, from now until [stop]. */
+    private fun followTwitchSession() {
+        synchronized(twitchLock) {
+            if (followingTwitch) return
+            followingTwitch = true
+            // Undispatched: the current value is acted on before this returns.
+            twitchFollower = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                twitchSession.connected.collect { connected -> onTwitchSession(connected) }
+            }
+        }
+    }
+
+    private fun onTwitchSession(connected: Boolean) {
+        synchronized(twitchLock) {
+            if (!followingTwitch) return // stopped meanwhile: nothing may start again
+            if (connected) startTwitchSources() else stopTwitchSources()
+        }
+    }
+
+    private fun stopFollowingTwitchSession() {
+        synchronized(twitchLock) {
+            followingTwitch = false
+            twitchFollower?.cancel()
+            twitchFollower = null
+            stopTwitchSources()
         }
     }
 
     /**
-     * Stops polling Spotify and disconnects from Twitch. A queue save still in flight when the app exits right after
-     * can be cut off; the atomic write then keeps the previous file, so at most the last change is lost.
+     * The sender first (the sources reply through it), then the outbox, the sources, and the stream watcher last, so
+     * the gate hears of the stream only with Twitch connected. Each start does nothing while it runs, so a repeated
+     * value never starts a second instance. Caller holds [twitchLock].
      */
-    fun stop() {
-        rewardJob?.cancel()
-        rewardJob = null
+    private fun startTwitchSources() {
+        chatSender.start()
+        redemptionOutbox.start()
+        chat.start()
+        bits.start()
+        channelPoints.startSession()
+        rewardManager.start() // its pausing and its events need a login, so it follows the session
+        streamWatcher.start()
+    }
+
+    /** The reverse of [startTwitchSources]; the Channel Points lifecycle keeps running. Caller holds [twitchLock]. */
+    private fun stopTwitchSources() {
+        streamWatcher.stop()
         rewardManager.stop()
-        twitchSession.stop()
-        controller.stop()
+        channelPoints.stopSession()
+        bits.stop()
+        chat.stop()
+        redemptionOutbox.stop()
+        chatSender.stop()
     }
 
     /**
