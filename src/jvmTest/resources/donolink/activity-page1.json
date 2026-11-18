@@ -1,0 +1,1 @@
+{"data":[{"id":"don_aaaaaaaaaaaaaaa","type":"donation","platform":"donolink","occurred_at":"2026-11-18T20:00:00.000Z","recorded_at":"2026-11-18T20:00:01.000Z","actor":{"name":"Jan"},"message":"voor jou https://open.spotify.com/track/AAAAAAAAAAAAAAAAAAAAAA","value":300,"unit":"cents","currency":"EUR","refunded_amount_cents":null}],"pagination":{"has_more":true,"next_cursor":"c2"}}
