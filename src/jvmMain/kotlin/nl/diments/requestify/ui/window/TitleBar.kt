@@ -77,7 +77,7 @@ fun TitleBar(
     }
 }
 
-/** The app's mark: its queue icon on a small primary-container square. */
+/** The app's mark: its "music notes +" glyph on a small primary-container square; both follow the album colours. */
 @Composable
 private fun AppMark() {
     Surface(
@@ -87,7 +87,7 @@ private fun AppMark() {
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(AppIcons.QueueMusic, contentDescription = null, modifier = Modifier.size(16.dp))
+            Icon(AppIcons.RequestifyGlyph, contentDescription = null, modifier = Modifier.size(16.dp))
         }
     }
 }

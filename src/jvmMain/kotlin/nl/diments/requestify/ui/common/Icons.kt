@@ -1,7 +1,8 @@
 /*
  * The icon path data in this file comes from Google's Material Icons
  * (https://github.com/google/material-design-icons), Copyright Google LLC, licensed under the
- * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). See NOTICE.
+ * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0); RequestifyGlyph comes from Phosphor Icons
+ * (MIT licence). See NOTICE.
  */
 package nl.diments.requestify.ui.common
 
@@ -156,6 +157,24 @@ object AppIcons {
         "Info",
         "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-6h2v6zM13,9h-2V7h2v2z",
     )
+
+    /**
+     * Requestify's own mark: "music notes +", the glyph of the app icon without its background, tinted by whoever
+     * draws it (the title bar follows the album colours). Path from Phosphor Icons, MIT licence (see NOTICE).
+     */
+    val RequestifyGlyph: ImageVector by lazy {
+        ImageVector.Builder("RequestifyGlyph", 24.dp, 24.dp, 256f, 256f)
+            .addPath(
+                addPathNodes(
+                    "M232,48a8,8,0,0,1-8,8H208V72a8,8,0,0,1-16,0V56H176a8,8,0,0,1,0-16h16V24a8,8,0,0,1,16,0V40h16A8,8,0,0,1,232,48Z" +
+                        "m-16,64v52a36,36,0,1,1-16-29.92V112a8,8,0,0,1,16,0Zm-16,52a20,20,0,1,0-20,20A20,20,0,0,0,200,164Z" +
+                        "M88,110.25V196a36,36,0,1,1-16-29.92V56a8,8,0,0,1,6.06-7.76l56-14a8,8,0,0,1,3.88,15.52L88,62.25v31.5" +
+                        "l70.06-17.51a8,8,0,0,1,3.88,15.52ZM72,196a20,20,0,1,0-20,20A20,20,0,0,0,72,196Z",
+                ),
+                fill = SolidColor(Color.Black),
+            )
+            .build()
+    }
 
     private fun icon(name: String, path: String) = lazy {
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)

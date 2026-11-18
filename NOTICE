@@ -10,3 +10,10 @@ Material Icons
   Copyright Google LLC.
   Licensed under the Apache License, Version 2.0:
   https://www.apache.org/licenses/LICENSE-2.0
+
+Phosphor Icons
+  The glyph path of the Requestify mark (AppIcons.RequestifyGlyph in
+  src/jvmMain/kotlin/nl/diments/requestify/ui/common/Icons.kt), "music-notes-plus", comes from
+  Phosphor Icons (https://github.com/phosphor-icons/core).
+  Copyright (c) 2023 Phosphor Icons.
+  Licensed under the MIT License: https://opensource.org/licenses/MIT

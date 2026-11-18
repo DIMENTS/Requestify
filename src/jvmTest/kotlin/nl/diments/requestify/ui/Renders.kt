@@ -45,6 +45,48 @@ class Renders {
         try { block() } finally { Locale.setDefault(saved) }
     }
 
+    /** The tray icon at the sizes Windows uses (and the window's 256), with and without the warning mark, 8× larger. */
+    @Test
+    fun trayIcons() {
+        val dir = out ?: return
+        for (size in listOf(16, 20, 24, 32)) for (warning in listOf(false, true)) {
+            val small = nl.diments.requestify.desktop.AppIconImages.awt(size, warning)
+            val big = java.awt.image.BufferedImage(size * 8, size * 8, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            big.createGraphics().apply {
+                setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR)
+                drawImage(small, 0, 0, size * 8, size * 8, null)
+                dispose()
+            }
+            ImageIO.write(big, "png", dir.resolve("tray-$size${if (warning) "-warning" else ""}.png").toFile())
+        }
+    }
+
+    /** The title bar with its glyph under two album colours and a custom colour, dark and light. */
+    @Test
+    fun titleBarGlyph() {
+        if (out == null) return
+        val seeds = mapOf(
+            "album-green" to androidx.compose.ui.graphics.Color(0xFF1DB954),
+            "album-pink" to androidx.compose.ui.graphics.Color(0xFFE91E63),
+            "custom-blue" to androidx.compose.ui.graphics.Color(0xFF3F51B5),
+        )
+        dutch {
+            for ((name, seed) in seeds) for (dark in listOf(true, false)) {
+                runDesktopComposeUiTest(width = 520, height = 56) {
+                    setContent {
+                        nl.diments.requestify.ui.theme.RequestifyTheme(seed, dark) {
+                            androidx.compose.material3.Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.surface) {
+                                nl.diments.requestify.ui.window.TitleBar(problems = emptyList())
+                            }
+                        }
+                    }
+                    waitForIdle()
+                    capture("titlebar-$name-${if (dark) "dark" else "light"}")
+                }
+            }
+        }
+    }
+
     @Test
     fun narrowBanners() {
         if (out == null) return
