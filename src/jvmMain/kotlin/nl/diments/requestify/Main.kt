@@ -126,6 +126,7 @@ fun main(args: Array<String>) {
         autostart = RunKeyAutostart(JnaRegistry, installation),
         runningVersion = AppVersion.current(),
         includePrereleases = System.getenv(PRERELEASES_ENV) == "1",
+        welcomeWizard = true,
     )
     // The language is read once, before anything is composed; a change applies at the next start.
     localeFor(graph.settings.settings.value.language)?.let(Locale::setDefault)

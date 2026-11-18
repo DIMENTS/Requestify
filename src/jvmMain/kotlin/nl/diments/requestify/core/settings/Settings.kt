@@ -27,7 +27,21 @@ data class Settings(
     val closeHintShown: Boolean = false,
     /** The version whose "Bijgewerkt" card the streamer closed: it never shows again for that version. */
     val lastUpdateCardVersion: String? = null,
+    /** The welcome wizard was finished or skipped (or was not needed: Requestify was set up before it existed). */
+    val welcomeDone: Boolean = false,
+    /** The wizard's card when the window closed halfway: it resumes there. Null: not started, or done. */
+    val welcomeStep: WizardStep? = null,
 )
+
+/** The welcome wizard's cards, in order. Names are stable (kept in settings.json). */
+@Serializable
+enum class WizardStep {
+    @SerialName("welcome") Welcome,
+    @SerialName("spotify") Spotify,
+    @SerialName("twitch") Twitch,
+    @SerialName("donations") Donations,
+    @SerialName("done") Done,
+}
 
 /** A DonoLink key that expires at [expiresAtEpochMs] was notified at [stage]: 7 (within a week) or 1 (its last day). */
 @Serializable

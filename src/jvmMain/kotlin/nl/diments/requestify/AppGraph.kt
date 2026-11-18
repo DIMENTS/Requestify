@@ -84,6 +84,10 @@ import nl.diments.requestify.core.spotify.KtorShortLinkResolver
 import nl.diments.requestify.core.spotify.SpotifyApi
 import nl.diments.requestify.core.spotify.auth.LoopbackReceiver
 import nl.diments.requestify.core.spotify.auth.SpotifyAuth
+import nl.diments.requestify.core.spotify.auth.SpotifyAuthStatus
+import nl.diments.requestify.ui.setup.DonationTest
+import nl.diments.requestify.ui.setup.DonationsCardState
+import nl.diments.requestify.ui.welcome.WelcomeWizardViewModel
 import nl.diments.requestify.core.storage.AppJson
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
@@ -144,6 +148,8 @@ class AppGraph(
     runningVersion: AppVersion? = null,
     /** The developer's own testing (`REQUESTIFY_UPDATE_PRERELEASES=1`): pre-releases count as updates too. */
     includePrereleases: Boolean = false,
+    /** Whether the welcome wizard may show (the app: yes; tests of the rest of the app: no). */
+    welcomeWizard: Boolean = false,
 ) {
     private val http = HttpClient(httpEngine) {
         install(ContentNegotiation) { json(AppJson.instance) }
@@ -407,6 +413,24 @@ class AppGraph(
         openBrowser = { url -> browse(url) },
         restartSource = { donationSources.restartCurrent() },
     )
+
+    /**
+     * The welcome wizard over the Connections page's own logic. Someone who set Requestify up before the wizard
+     * existed (a connection saved) never gets it unasked.
+     */
+    val welcome: WelcomeWizardViewModel = run {
+        val spotifyConnected = auth.status.map { it == SpotifyAuthStatus.LoggedIn }
+            .stateIn(scope, SharingStarted.Eagerly, auth.status.value == SpotifyAuthStatus.LoggedIn)
+        fun donationsOk(s: DonationsCardState) =
+            s.kind != DonationSourceKind.None && s.hasKey && s.test != DonationTest.Refused && s.health.status != DonationStatus.KeyRefused
+        val donationsConnected = donationsSetup.state.map(::donationsOk)
+            .stateIn(scope, SharingStarted.Eagerly, donationsOk(donationsSetup.state.value))
+        WelcomeWizardViewModel.markExistingUser(
+            settings,
+            anyConnectionSaved = spotifyConnected.value || twitchConnected.value || donationsConnected.value,
+        )
+        WelcomeWizardViewModel(settings, spotifyConnected, twitchConnected, donationsConnected, scope, enabled = welcomeWizard)
+    }
 
     /**
      * Everything that needs the streamer's attention right now, most important first: the title-bar chip, the tray

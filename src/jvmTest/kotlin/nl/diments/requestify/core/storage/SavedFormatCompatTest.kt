@@ -280,6 +280,24 @@ class SavedFormatCompatTest {
         )
     }
 
+    /** The welcome wizard's progress is kept in settings.json under these names. */
+    @Test
+    fun welcomeProgressIsPinned() {
+        val json = AppJson.instance.encodeToString(
+            Settings.serializer(),
+            Settings(welcomeDone = true, welcomeStep = nl.diments.requestify.core.settings.WizardStep.Donations),
+        )
+        assertTrue(""""welcomeDone":true""" in json, json)
+        assertTrue(""""welcomeStep":"donations"""" in json, json)
+        val names = nl.diments.requestify.core.settings.WizardStep.entries.map {
+            AppJson.instance.encodeToString(nl.diments.requestify.core.settings.WizardStep.serializer(), it)
+        }
+        assertEquals(listOf("\"welcome\"", "\"spotify\"", "\"twitch\"", "\"donations\"", "\"done\""), names)
+        val old = AppJson.instance.decodeFromString(Settings.serializer(), "{}")
+        assertEquals(false, old.welcomeDone)
+        assertEquals(null, old.welcomeStep)
+    }
+
     /** Which version's "Bijgewerkt" card was closed is kept in settings.json under this name. */
     @Test
     fun lastUpdateCardVersionIsPinned() {
