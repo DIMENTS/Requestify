@@ -343,6 +343,8 @@
     <string name="chat_rejected_short_link">Use the open.spotify.com link.</string>
     <string name="chat_rejected_below_minimum_amount">Requests need at least %1$s.</string>
     <string name="chat_rejected_other_currency">A donation in %1$s waits for the streamer.</string>
+    <string name="chat_donation_reply">Donation request from %1$s: %2$s</string>
+    <string name="donation_anonymous">Anonymous</string>
     <string name="chat_usage">Type %1$s followed by a song name or a Spotify link.</string>
     <string name="chat_denied_followers">Requests are for followers only.</string>
     <string name="chat_denied_subscribers">Requests are for subscribers only.</string>

@@ -5,6 +5,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import nl.diments.requestify.core.intake.IntakeOutcome
 import nl.diments.requestify.core.model.RejectReason
@@ -76,6 +79,32 @@ class ChatRepliesTest {
             for (reply in everyReply()) {
                 assertFalse(reply.startsWith("!"), "$locale: \"$reply\" would be read as a command")
             }
+        }
+    }
+
+    @Test
+    fun donorNamesCannotBreakTheReply() = runBlocking {
+        val names = listOf("", "   ", "!skip", "/me hi", "🎵", "a".repeat(300))
+        val outcomes = listOf(
+            IntakeOutcome.Accepted(request, 2, 400_000),
+            IntakeOutcome.Accepted(request, 0, 0),
+            IntakeOutcome.Rejected(RejectReason.BelowMinimumAmount(500, "EUR"), track, listed = true),
+            IntakeOutcome.Rejected(RejectReason.TrackBlocked, track, listed = true),
+        )
+        val prefixes = mapOf(Locale.ENGLISH to "Donation request from ", Locale.forLanguageTag("nl-NL") to "Donatieverzoek van ")
+        for ((locale, prefix) in prefixes) {
+            Locale.setDefault(locale)
+            for (name in names) {
+                for (outcome in outcomes) {
+                    val reply = assertNotNull(ChatReplies().donationOutcome(outcome, name), "$locale $name $outcome")
+                    assertTrue(reply.startsWith(prefix), "$locale: \"$reply\"")
+                    assertFalse(reply.startsWith("!") || reply.startsWith("/"), "$locale: \"$reply\"")
+                    assertTrue(reply.length <= 500, "$locale: ${reply.length} characters")
+                    assertFalse(name.length > 50 && name in reply, "a long name is cut")
+                }
+            }
+            assertNull(ChatReplies().donationOutcome(IntakeOutcome.Ignored, "Jan"))
+            assertNull(ChatReplies().donationOutcome(IntakeOutcome.Pending, "Jan"))
         }
     }
 }

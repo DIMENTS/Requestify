@@ -36,6 +36,7 @@ import nl.diments.requestify.resources.chat_rejected_not_a_track
 import nl.diments.requestify.resources.chat_rejected_not_a_track_generic
 import nl.diments.requestify.resources.chat_rejected_queue_full
 import nl.diments.requestify.resources.chat_rejected_short_link
+import nl.diments.requestify.resources.chat_donation_reply
 import nl.diments.requestify.resources.chat_rejected_below_minimum_amount
 import nl.diments.requestify.resources.chat_rejected_other_currency
 import nl.diments.requestify.ui.common.formatMoney
@@ -80,6 +81,20 @@ class ChatReplies {
             }
         }
         IntakeOutcome.Ignored, IntakeOutcome.Pending -> null
+    }
+
+    /**
+     * The reply to a donation request: always fixed words first ("Donation request from Jan: …"), so a donor named
+     * like a command ("!skip", "/me") can never make the broadcaster post one. The name is cut to [MAX_NAME_CHARS] and
+     * the reply to [MAX_CHARS]. Null when nothing is said: Ignored, Pending, and a rejection that is not listed.
+     */
+    suspend fun donationOutcome(outcome: IntakeOutcome, donorName: String): String? {
+        val text = when (outcome) {
+            is IntakeOutcome.Accepted -> accepted(outcome)
+            is IntakeOutcome.Rejected -> if (outcome.listed) reason(outcome.reason) else return null
+            IntakeOutcome.Ignored, IntakeOutcome.Pending -> return null
+        }
+        return getString(Res.string.chat_donation_reply, donorName.take(MAX_NAME_CHARS), text).take(MAX_CHARS)
     }
 
     suspend fun usage(commandName: String, mention: String?): String =
@@ -232,5 +247,6 @@ class ChatReplies {
     private companion object {
         const val QUEUE_ITEMS = 5
         const val MAX_CHARS = 500
+        const val MAX_NAME_CHARS = 50
     }
 }

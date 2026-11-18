@@ -343,6 +343,8 @@
     <string name="chat_rejected_short_link">Gebruik de open.spotify.com-link.</string>
     <string name="chat_rejected_below_minimum_amount">Verzoekjes kosten minimaal %1$s.</string>
     <string name="chat_rejected_other_currency">Een donatie in %1$s wacht op de streamer.</string>
+    <string name="chat_donation_reply">Donatieverzoek van %1$s: %2$s</string>
+    <string name="donation_anonymous">Anoniem</string>
     <string name="chat_usage">Typ %1$s gevolgd door een nummer of een Spotify-link.</string>
     <string name="chat_denied_followers">Verzoekjes zijn alleen voor volgers.</string>
     <string name="chat_denied_subscribers">Verzoekjes zijn alleen voor abonnees.</string>
