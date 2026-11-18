@@ -10,7 +10,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import nl.diments.requestify.core.donations.DonationHealth
+import nl.diments.requestify.core.donations.DonationStatus
 import nl.diments.requestify.core.playback.SpotifyHealth
+import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.ui.theme.BrandSeed
 import nl.diments.requestify.ui.theme.RequestifyTheme
 
@@ -86,5 +89,39 @@ class ConnectionChipTest {
         }
         onNodeWithText("Twitch: log in again").assertIsDisplayed().performClick()
         assertEquals(1, clicks)
+    }
+
+    @Test
+    fun donationProblemsShowInTheChip() = runComposeUiTest {
+        val now = 1_000_000_000_000L
+        val day = 24 * 3_600_000L
+        fun problems(health: DonationHealth) = connectionProblems(SpotifyHealth.Ok, TwitchHealth(), health, now)
+
+        assertEquals(emptyList(), problems(DonationHealth()))
+        assertEquals(emptyList(), problems(DonationHealth(DonationSourceKind.DonoLink, DonationStatus.Connected, keyExpiresAtEpochMs = now + 30 * day)))
+        assertEquals(
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyRefused)),
+            problems(DonationHealth(DonationSourceKind.DonoLink, DonationStatus.KeyRefused)),
+        )
+        assertEquals(
+            listOf(ConnectionProblem.Donation(DonationSourceKind.StreamElements, DonationProblem.Disconnected)),
+            problems(DonationHealth(DonationSourceKind.StreamElements, DonationStatus.Retrying, retryingSinceMs = now - 1_000)),
+        )
+        assertEquals(
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring)),
+            problems(DonationHealth(DonationSourceKind.DonoLink, DonationStatus.Connected, keyExpiresAtEpochMs = now + 6 * day)),
+        )
+        assertEquals(
+            listOf(ConnectionProblem.TwitchLoginNeeded, ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyRefused)),
+            connectionProblems(SpotifyHealth.Ok, TwitchHealth(loginNeeded = true), DonationHealth(DonationSourceKind.DonoLink, DonationStatus.KeyRefused), now),
+            "logins first",
+        )
+
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                ConnectionChip(listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyRefused)), onClick = {})
+            }
+        }
+        onNodeWithText("DonoLink: new key needed").assertIsDisplayed()
     }
 }

@@ -129,6 +129,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
         .collectAsState(graph.home.state.value.health)
     val gate by graph.gate.status.collectAsState()
     val twitchHealth by graph.twitchSession.health.collectAsState()
+    val donationHealth by graph.donationSources.health.collectAsState()
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
     val caption = rememberWindowCaption(window, dark)
@@ -142,7 +143,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column {
                 TitleBar(
-                    problems = connectionProblems(health, twitchHealth),
+                    problems = connectionProblems(health, twitchHealth, donationHealth),
                     captionInset = caption?.buttonsInset ?: 0.dp,
                     onHitTest = caption?.hitTest,
                     onConnectionsClick = { destination = Destination.Connections },
@@ -189,7 +190,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                                             }
                                         }
                                     }
-                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup, graph.twitchSetup)
+                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup, graph.twitchSetup, graph.donationsSetup)
                                     Destination.Rules -> RulesScreen(graph.settings)
                                     Destination.Blacklist -> BlacklistScreen(graph.blacklistScreen)
                                     Destination.Log -> LogScreen(graph.logScreen)

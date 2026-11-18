@@ -420,4 +420,32 @@
     <string name="log_details_viewer">Kijker</string>
     <string name="log_details_message">Bericht</string>
     <string name="log_details_close">Sluiten</string>
+    <!-- Donaties (plan 3) -->
+    <string name="connection_donolink_key_refused">DonoLink: nieuwe sleutel nodig</string>
+    <string name="connection_streamelements_refused">StreamElements: nieuwe token nodig</string>
+    <string name="connection_donolink_disconnected">DonoLink niet verbonden</string>
+    <string name="connection_streamelements_disconnected">StreamElements niet verbonden</string>
+    <string name="connection_donolink_key_expiring">DonoLink-sleutel verloopt binnenkort</string>
+    <string name="donations_title">Donaties</string>
+    <string name="donations_none">Geen</string>
+    <string name="donations_intro">Een donatie met een Spotify-link in het bericht wordt een betaald verzoek. Je gebruikt één donatieplatform.</string>
+    <string name="donations_donolink_help">Maak in je DonoLink-dashboard een API-sleutel met het recht activity:read en plak die hier.</string>
+    <string name="donations_streamelements_help">Kopieer je JWT-token uit het StreamElements-dashboard (je kanaal, Geheimen tonen) en plak die hier.</string>
+    <string name="donations_open_dashboard">Open het dashboard</string>
+    <string name="donations_key_label">API-sleutel</string>
+    <string name="donations_jwt_label">JWT-token</string>
+    <string name="donations_save_test">Opslaan en testen</string>
+    <string name="donations_testing">Testen…</string>
+    <string name="donations_key_saved">Er is een sleutel opgeslagen.</string>
+    <string name="donations_linked">Gekoppeld aan %1$s</string>
+    <string name="donations_key_valid_until">Sleutel geldig tot %1$s</string>
+    <string name="donations_key_expires_in">Sleutel verloopt over %1$d dagen: maak op tijd een nieuwe.</string>
+    <string name="donations_key_refused_donolink">DonoLink weigerde deze sleutel. Maak een nieuwe en plak die hier.</string>
+    <string name="donations_key_refused_streamelements">StreamElements weigerde deze token. Kopieer hem opnieuw en plak hem hier.</string>
+    <string name="donations_test_failed">Kon %1$s niet bereiken: %2$s</string>
+    <string name="donations_minimum">Minimum per verzoek</string>
+    <string name="donations_minimum_hint_donolink">In euro</string>
+    <string name="donations_minimum_hint_streamelements">In de valuta van je tips</string>
+    <string name="donations_minimum_invalid">Minstens 0,01</string>
+    <string name="donations_no_catch_up">Tips gedaan terwijl Requestify uit staat, worden niet opgehaald.</string>
 </resources>

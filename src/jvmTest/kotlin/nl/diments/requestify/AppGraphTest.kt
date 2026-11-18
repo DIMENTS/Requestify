@@ -49,6 +49,11 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.donations.DonationCursor
+import nl.diments.requestify.core.donations.DonationCursors
+import nl.diments.requestify.core.settings.DonationSettings
+import nl.diments.requestify.core.settings.DonationSourceKind
+import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.log.LogKind
 import nl.diments.requestify.core.log.LogRecord
 import nl.diments.requestify.core.log.LogStep
@@ -313,6 +318,55 @@ class AppGraphTest {
             await("the stream's start in the Log") {
                 graph.logbook.rows.value.any { r -> r.records.any { it is LogRecord.StreamChanged && it.change == LogStreamChange.Live } }
             }
+        }
+    }
+
+    /** Spotify logged in, DonoLink chosen with a key, no Twitch; DonoLink read up to 19:00 last time. */
+    private fun donoLinkWithoutTwitch(): SecretStore {
+        JsonFileStore(AppPaths(dir).settingsFile, Settings.serializer()) { Settings() }.write(
+            Settings(spotifyClientId = "0123456789abcdef0123456789abcdef", donations = DonationSettings(source = DonationSourceKind.DonoLink)),
+        )
+        JsonFileStore(AppPaths(dir).donationsFile, DonationCursors.serializer()) { DonationCursors() }
+            .write(DonationCursors(donoLink = DonationCursor("2026-11-18T19:00:00.000Z")))
+        return InMemorySecretStore().apply {
+            put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "s1")
+            put(SecretKeys.DONOLINK_KEY, "dl_live_key")
+        }
+    }
+
+    private fun donoLinkDonation(id: String) =
+        """{"data":[{"id":"$id","type":"donation","platform":"donolink","occurred_at":"2026-11-18T20:00:00.000Z",""" +
+            """"recorded_at":"2026-11-18T20:00:01.000Z","actor":{"name":"Jan"},""" +
+            """"message":"voor jou https://open.spotify.com/track/$TRACK_A","value":300,"unit":"cents","currency":"EUR"}],""" +
+            """"pagination":{"has_more":false,"next_cursor":null}}"""
+
+    @Test
+    fun aDonoLinkDonationIsQueuedAndLogged() = runBlocking {
+        val services = Services()
+        services.donoLinkActivity = donoLinkDonation("don_aaaaaaaaaaaaaaa")
+        withGraph(services, donoLinkWithoutTwitch()) { graph ->
+            await("the donation in the queue") { graph.home.state.value.queue.isNotEmpty() }
+            val request = graph.home.state.value.queue.single()
+            assertEquals("dl-don_aaaaaaaaaaaaaaa", request.id)
+            assertEquals(RequestSource.DONOLINK, request.source)
+            assertEquals(Payment.Money(300, "EUR"), request.payment)
+            await("the donation in the Log") { graph.logbook.rows.value.any { it.latestStep is LogStep.Queued } }
+            delay(QUIET_MS)
+            assertEquals(1, graph.home.state.value.queue.size, "polled again, queued once")
+            assertTrue(services.sends.isEmpty(), "no chat reply without Twitch")
+        }
+    }
+
+    @Test
+    fun donationsRunWithoutTwitchAndStopWhenSwitchedOff() = runBlocking {
+        val services = Services()
+        withGraph(services, donoLinkWithoutTwitch()) { graph ->
+            await("DonoLink polled") { services.calls.any { it == "donolink.nl/api/v1/activity" } }
+            graph.settings.tryUpdate { it.copy(donations = it.donations.copy(source = DonationSourceKind.None)) }
+            delay(QUIET_MS)
+            val polls = services.calls.count { it == "donolink.nl/api/v1/activity" }
+            delay(6_000) // longer than one poll interval
+            assertEquals(polls, services.calls.count { it == "donolink.nl/api/v1/activity" }, "switched off: no more polling")
         }
     }
 
@@ -600,9 +654,18 @@ class AppGraphTest {
                         json,
                     )
                 }
+                host == "donolink.nl" && path == "/api/v1/me" -> respond(
+                    """{"data":{"id":"u1","username":"diments","display_name":"DIMENTS","scopes":["activity:read"],"key":{"prefix":"dl","expires_at":"2026-12-06 12:00:00.000Z"}}}""",
+                    HttpStatusCode.OK,
+                    json,
+                )
+                host == "donolink.nl" && path == "/api/v1/activity" -> respond(donoLinkActivity, HttpStatusCode.OK, json)
                 else -> respondError(HttpStatusCode.NotFound)
             }
         }
+
+        /** What DonoLink's activity feed answers. */
+        @Volatile var donoLinkActivity = """{"data":[],"pagination":{"has_more":false,"next_cursor":null}}"""
     }
 
     private companion object {

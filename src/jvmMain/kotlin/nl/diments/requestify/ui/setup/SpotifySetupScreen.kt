@@ -121,11 +121,12 @@ private val StepBadgeSize = 36.dp
  * Twitch card.
  */
 @Composable
-fun SpotifySetupScreen(vm: SpotifySetupViewModel, twitch: TwitchSetupViewModel) {
+fun SpotifySetupScreen(vm: SpotifySetupViewModel, twitch: TwitchSetupViewModel, donations: DonationsSetupViewModel? = null) {
     val state by vm.state.collectAsState()
     PageScaffold(stringResource(Res.string.nav_connections), subtitle = stringResource(Res.string.connections_intro)) {
         SpotifyCard(state, vm)
         TwitchCard(twitch)
+        donations?.let { DonationsCard(it) }
     }
 }
 

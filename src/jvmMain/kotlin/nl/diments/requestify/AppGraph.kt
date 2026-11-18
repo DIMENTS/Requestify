@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -33,6 +34,20 @@ import nl.diments.requestify.core.intake.RejectedStore
 import nl.diments.requestify.core.intake.RequestIntake
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.isFreeViewerRequest
+import nl.diments.requestify.core.donations.DonationCursorStore
+import nl.diments.requestify.core.donations.DonationCursors
+import nl.diments.requestify.core.donations.DonationHandler
+import nl.diments.requestify.core.donations.DonationHealth
+import nl.diments.requestify.core.donations.DonationSources
+import nl.diments.requestify.core.donations.DonationStatus
+import nl.diments.requestify.core.donations.donolink.DonoLinkApi
+import nl.diments.requestify.core.donations.donolink.DonoLinkSource
+import nl.diments.requestify.core.donations.streamelements.AstroClient
+import nl.diments.requestify.core.donations.streamelements.KtorAstroConnector
+import nl.diments.requestify.core.donations.streamelements.SeResult
+import nl.diments.requestify.core.donations.streamelements.StreamElementsApi
+import nl.diments.requestify.core.donations.streamelements.StreamElementsSource
+import nl.diments.requestify.core.donations.streamelements.channelIdFromJwt
 import nl.diments.requestify.core.log.BitsGapWatcher
 import nl.diments.requestify.core.log.ConnectionSnapshot
 import nl.diments.requestify.core.log.LogInputs
@@ -43,10 +58,13 @@ import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.playback.SpotifyHealth
 import nl.diments.requestify.ui.common.TwitchHealth
 import nl.diments.requestify.ui.log.LogViewModel
+import nl.diments.requestify.ui.setup.DonationsSetupViewModel
 import nl.diments.requestify.core.playback.RemoveReason
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
+import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.secrets.SecretStore
+import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.KtorShortLinkResolver
@@ -294,6 +312,63 @@ class AppGraph(
         clock = System::currentTimeMillis,
     )
 
+    private val donationCursors =
+        DonationCursorStore(JsonFileStore(paths.donationsFile, DonationCursors.serializer()) { DonationCursors() })
+    private val donoLinkApi = DonoLinkApi(http, key = { secrets.get(SecretKeys.DONOLINK_KEY) })
+    private val streamElementsApi = StreamElementsApi(http, jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) })
+
+    /** Donations with a Spotify link become paid requests; replies only while Twitch is connected. */
+    private val donationHandler = DonationHandler(
+        intake = intake,
+        settings = settings,
+        replies = chatReplies,
+        sender = chatSender,
+        twitchConnected = twitchSession.connected,
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
+    private val streamElementsSource = StreamElementsSource(
+        feed = AstroClient(
+            connector = KtorAstroConnector(http),
+            jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) },
+            room = {
+                when (val channel = streamElementsApi.channel()) {
+                    is SeResult.Ok -> channel.value.id
+                    else -> secrets.get(SecretKeys.STREAMELEMENTS_JWT)?.let(::channelIdFromJwt)
+                }
+            },
+            scope = scope,
+            clock = System::currentTimeMillis,
+        ),
+        handle = { donationHandler.handle(it) },
+        cursors = donationCursors,
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
+    /** The one donation source the streamer chose, for the app's whole life (with or without Twitch). */
+    val donationSources = DonationSources(
+        settings = settings,
+        donoLink = {
+            DonoLinkSource(donoLinkApi, { donationHandler.handle(it) }, donationCursors, scope, clock = System::currentTimeMillis)
+        },
+        streamElements = { streamElementsSource },
+        scope = scope,
+    )
+
+    val donationsSetup = DonationsSetupViewModel(
+        settings = settings,
+        secrets = secrets,
+        cursors = donationCursors,
+        donoLink = donoLinkApi,
+        streamElements = streamElementsApi,
+        health = donationSources.health,
+        scope = scope,
+        clock = System::currentTimeMillis,
+        openBrowser = { url -> browse(url) },
+    )
+
     /** The Log: it listens to what the app already reports. */
     val logbook = Logbook(
         store = logStore,
@@ -307,8 +382,9 @@ class AppGraph(
             connections = merge(
                 controller.health.map { LogService.Spotify to it.toSnapshot() },
                 twitchSession.health.map { LogService.Twitch to it.toSnapshot() },
+                donationSources.health.mapNotNull { h -> h.service()?.let { it to h.toSnapshot(System.currentTimeMillis()) } },
             ),
-            gaps = bitsGaps.gaps,
+            gaps = merge(bitsGaps.gaps, streamElementsSource.gaps),
         ),
     )
 
@@ -330,6 +406,8 @@ class AppGraph(
         gate.start()
         controller.start()
         intake.start()
+        donationHandler.start()
+        donationSources.start()
         // Before the session: when it is connected already, the sources listen before EventSub connects.
         followTwitchSession()
         twitchSession.start()
@@ -342,6 +420,8 @@ class AppGraph(
     fun stop() {
         twitchSession.stop()
         stopFollowingTwitchSession()
+        donationSources.stop()
+        donationHandler.stop()
         controller.stop()
         gate.stop() // remembers that the stream was live until now, for the next start
         channelPoints.stopLifecycle() // a change the controller still saves is settled too
@@ -446,5 +526,19 @@ private fun SpotifyHealth.toSnapshot(): ConnectionSnapshot = when (this) {
 private fun TwitchHealth.toSnapshot(): ConnectionSnapshot = when {
     loginNeeded -> ConnectionSnapshot.LoginExpired
     disconnected -> ConnectionSnapshot.Down
+    else -> ConnectionSnapshot.Up
+}
+
+private fun DonationHealth.service(): LogService? = when (kind) {
+    DonationSourceKind.DonoLink -> LogService.DonoLink
+    DonationSourceKind.StreamElements -> LogService.StreamElements
+    DonationSourceKind.None -> null
+}
+
+/** The donation source as the Log sees it: a key about to expire is news once, like a lost connection. */
+private fun DonationHealth.toSnapshot(nowMs: Long): ConnectionSnapshot = when {
+    status == DonationStatus.KeyRefused -> ConnectionSnapshot.KeyRefused
+    status == DonationStatus.Retrying -> ConnectionSnapshot.Down
+    keyExpiresAtEpochMs?.let { it - nowMs <= 7 * 24 * 3_600_000L } == true -> ConnectionSnapshot.KeyExpiring
     else -> ConnectionSnapshot.Up
 }

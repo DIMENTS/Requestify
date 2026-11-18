@@ -420,4 +420,32 @@
     <string name="log_details_viewer">Viewer</string>
     <string name="log_details_message">Message</string>
     <string name="log_details_close">Close</string>
+    <!-- Donations (plan 3) -->
+    <string name="connection_donolink_key_refused">DonoLink: new key needed</string>
+    <string name="connection_streamelements_refused">StreamElements: new token needed</string>
+    <string name="connection_donolink_disconnected">DonoLink not connected</string>
+    <string name="connection_streamelements_disconnected">StreamElements not connected</string>
+    <string name="connection_donolink_key_expiring">DonoLink key expires soon</string>
+    <string name="donations_title">Donations</string>
+    <string name="donations_none">None</string>
+    <string name="donations_intro">A donation with a Spotify link in its message becomes a paid request. You use one donation platform.</string>
+    <string name="donations_donolink_help">Create an API key with the right activity:read in your DonoLink dashboard, and paste it here.</string>
+    <string name="donations_streamelements_help">Copy your JWT token from the StreamElements dashboard (your channel, Show secrets), and paste it here.</string>
+    <string name="donations_open_dashboard">Open the dashboard</string>
+    <string name="donations_key_label">API key</string>
+    <string name="donations_jwt_label">JWT token</string>
+    <string name="donations_save_test">Save and test</string>
+    <string name="donations_testing">Testing…</string>
+    <string name="donations_key_saved">A key is saved.</string>
+    <string name="donations_linked">Linked to %1$s</string>
+    <string name="donations_key_valid_until">Key valid until %1$s</string>
+    <string name="donations_key_expires_in">Key expires in %1$d days: make a new one in time.</string>
+    <string name="donations_key_refused_donolink">DonoLink refused this key. Make a new one and paste it here.</string>
+    <string name="donations_key_refused_streamelements">StreamElements refused this token. Copy it again and paste it here.</string>
+    <string name="donations_test_failed">Couldn’t reach %1$s: %2$s</string>
+    <string name="donations_minimum">Minimum per request</string>
+    <string name="donations_minimum_hint_donolink">In euros</string>
+    <string name="donations_minimum_hint_streamelements">In your tips’ currency</string>
+    <string name="donations_minimum_invalid">At least 0.01</string>
+    <string name="donations_no_catch_up">Tips made while Requestify is off are not picked up.</string>
 </resources>
