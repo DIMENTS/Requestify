@@ -292,6 +292,23 @@ class SavedFormatCompatTest {
         )
     }
 
+    /**
+     * The updater's notes in %LOCALAPPDATA%\Requestify-updates: a new version reads what the old one left (the
+     * pending update it installs, and the "updated" card after it).
+     */
+    @Test
+    fun updateNotesArePinned() {
+        val pending = """{"version":"0.2.0","msiFile":"Requestify-0.2.0.msi","sha256":"ab","notes":"n","pageUrl":"u","attempts":1}"""
+        assertEquals(
+            nl.diments.requestify.core.update.PendingUpdate("0.2.0", "Requestify-0.2.0.msi", "ab", "n", "u", attempts = 1),
+            AppJson.instance.decodeFromString(nl.diments.requestify.core.update.PendingUpdate.serializer(), pending),
+        )
+        assertEquals(
+            nl.diments.requestify.core.update.JustUpdated("0.1.0", "0.2.0", "n"),
+            AppJson.instance.decodeFromString(nl.diments.requestify.core.update.JustUpdated.serializer(), """{"from":"0.1.0","to":"0.2.0","notes":"n"}"""),
+        )
+    }
+
     /** A file that could not be saved is logged under this service name. */
     @Test
     fun filesServiceNameIsPinned() {
