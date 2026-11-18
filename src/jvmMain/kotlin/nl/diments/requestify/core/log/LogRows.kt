@@ -33,13 +33,18 @@ data class LogRow(
 /** How long after a stream ended its clear's removals and refunds count for it. */
 private const val CLEAR_WINDOW_MS = 2 * 60_000L
 
-/** Groups [records] into rows: newest row first, each row's records in time order. */
+/**
+ * Groups [records] into rows: newest row first (of rows begun in the same millisecond, the one known last first), each
+ * row's records in time order.
+ */
 fun foldRows(records: List<LogRecord>): List<LogRow> {
     val grouped = LinkedHashMap<String, MutableList<LogRecord>>()
     for (record in records) grouped.getOrPut(record.rowId) { mutableListOf() } += record
     val rows = grouped.map { (id, list) -> rowOf(id, list.sortedBy { it.atEpochMs }) }
     val counted = rows.map { if (it.kind == LogKind.Stream && it.endsStream()) it.withClearCounts(rows) else it }
-    return counted.sortedByDescending { it.atEpochMs }
+    return counted.withIndex()
+        .sortedWith(compareByDescending<IndexedValue<LogRow>> { it.value.atEpochMs }.thenByDescending { it.index })
+        .map { it.value }
 }
 
 private fun rowOf(id: String, records: List<LogRecord>): LogRow {
