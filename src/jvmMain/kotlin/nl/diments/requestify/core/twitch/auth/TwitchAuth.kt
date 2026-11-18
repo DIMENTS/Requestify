@@ -315,13 +315,14 @@ class TwitchAuth(
             pendingRefresh?.also { if (trySave(it)) pendingRefresh = null }
         } ?: secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN)
         if (refreshToken == null) {
-            synchronized(stateLock) {
-                if (generation == startGeneration) {
-                    cached = null
-                    if (_status.value == TwitchAuthStatus.LoggedIn) _status.value = TwitchAuthStatus.LoggedOut
-                }
-            }
-            return Obtained.Missing(TokenResult.LoggedOut)
+            // Logged in, yet the saved login cannot be read (the secrets file held by another program, or not
+            // decryptable for now): a read failure, not a logout. The status stays; only logout(), forget() and the
+            // roll-back of a login change it. The next call reads it again.
+            return Obtained.Missing(
+                synchronized(stateLock) {
+                    if (_status.value == TwitchAuthStatus.LoggedIn) TokenResult.Unavailable else TokenResult.LoggedOut
+                },
+            )
         }
         val (code, body) = post("/oauth2/token") {
             append("client_id", TWITCH_CLIENT_ID)

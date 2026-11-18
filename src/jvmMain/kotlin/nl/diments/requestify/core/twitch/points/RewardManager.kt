@@ -100,7 +100,7 @@ class RewardManager(
     /** True while Twitch's enabled or paused flag is not what the app wants (a change was refused or not reached). */
     val outOfSync: StateFlow<Boolean> = _outOfSync.asStateFlow()
 
-    private enum class Synced { Yes, Retry, LoginNeeded }
+    private enum class Synced { Yes, Retry, LoggedOut }
 
     private fun points() = settings.settings.value.twitch.channelPoints
 
@@ -244,8 +244,9 @@ class RewardManager(
                 markRemoved(id)
                 Synced.Yes
             }
-            // Without a login nothing can be sent: the session starting again syncs.
-            is TwitchResult.LoginNeeded, is TwitchResult.LoggedOut -> Synced.LoginNeeded
+            // Logged out: nothing can be sent; the session starting again syncs. A 401 that a refresh did not cure is
+            // retried like any failure (a login that is really dead ends the session, which stops this anyway).
+            is TwitchResult.LoggedOut -> Synced.LoggedOut
             else -> Synced.Retry
         }
     }
@@ -256,7 +257,7 @@ class RewardManager(
         _outOfSync.value = result != Synced.Yes
         when (result) {
             Synced.Yes -> retryDelayMs = retryFirstMs
-            Synced.LoginNeeded -> Unit
+            Synced.LoggedOut -> Unit
             Synced.Retry -> {
                 val wait = retryDelayMs
                 retryDelayMs = (retryDelayMs * 2).coerceAtMost(retryMaxMs)

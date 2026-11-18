@@ -162,7 +162,9 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
                 Box(Modifier.weight(1f))
                 ConnectionBadge(
                     when {
-                        status is TwitchAuthStatus.LoginNeeded -> LoginStatus.LoginExpired
+                        // With an account set up, any login that is not working needs a new one (as in the status chip).
+                        status is TwitchAuthStatus.LoginNeeded || (account != null && status != TwitchAuthStatus.LoggedIn) ->
+                            LoginStatus.LoginExpired
                         phase == Phase.LoggedIn -> LoginStatus.Connected
                         else -> LoginStatus.NotConnected
                     },

@@ -18,17 +18,28 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonPrimitive
 import nl.diments.requestify.core.secrets.SecretKeys
+import nl.diments.requestify.core.settings.ChannelPointsSettings
 import nl.diments.requestify.core.settings.ChatPermission
 import nl.diments.requestify.core.settings.TwitchAccount
 import nl.diments.requestify.core.twitch.FakeTwitch
 import nl.diments.requestify.core.twitch.auth.TwitchAuthStatus
+import nl.diments.requestify.core.twitch.points.FakeRewardsHelix
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalPathApi::class)
 class TwitchSetupViewModelTest {
@@ -132,6 +143,7 @@ class TwitchSetupViewModelTest {
     fun logoutClearsAccount() = runTest {
         val p = parts(loggedIn = true, account = account)
         p.vm.onLogout()
+        runCurrent()
         assertNull(p.settings.settings.value.twitch.account)
         assertEquals(TwitchAuthStatus.LoggedOut, p.auth.status.value)
         assertNull(p.secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
@@ -226,9 +238,31 @@ class TwitchSetupViewModelTest {
         file.resolve("keep").writeText("x")
 
         p.vm.onLogout()
+        runCurrent()
         assertTrue(p.vm.saveFailed.value)
         assertEquals(TwitchAuthStatus.LoggedIn, p.auth.status.value, "still logged in")
         assertEquals("r0", p.secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
         assertEquals(account, p.settings.settings.value.twitch.account)
+    }
+
+    @Test
+    fun logoutPausesTheOwnRewardFirst() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val helix = FakeRewardsHelix().apply {
+                rewards += reward("rw-1")
+                manageable += "rw-1"
+            }
+            val points = ChannelPointsSettings(enabled = true, rewardId = "rw-1", managed = true, title = "Song request", cost = 500)
+            val p = TwitchSetupParts(dir, scope, FakeTwitch(), loggedIn = true, account = account, points = points, helix = helix)
+            p.vm.onLogout()
+            withTimeout(10.seconds) { while (p.auth.status.value != TwitchAuthStatus.LoggedOut) delay(10) }
+            val pause = helix.patches.single()
+            assertEquals("rw-1", pause.query["id"])
+            assertEquals(true, pause.body!!["is_paused"]?.jsonPrimitive?.boolean, "paused, so nobody redeems it unheard")
+            assertNull(p.settings.settings.value.twitch.account)
+        } finally {
+            scope.cancel()
+        }
     }
 }

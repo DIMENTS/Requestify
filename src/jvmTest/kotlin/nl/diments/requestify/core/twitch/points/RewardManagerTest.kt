@@ -321,15 +321,17 @@ class RewardManagerTest {
     }
 
     @Test
-    fun aDeadLoginStopsTheRetries() = runBlocking {
+    fun aRefusedLoginIsRetriedLikeAnyFailure() = runBlocking {
         val h = harness(points = managedPoints).withOwnReward()
-        h.helix.updateStatus = 401
+        h.helix.updateStatus = 401 // a 401 that the forced refresh does not cure
         h.manager.start()
+        h.open.value = false
         eventually("the refusal shows") { h.manager.outOfSync.value }
-        Thread.sleep(100)
         val sent = h.helix.patches.size
-        Thread.sleep(300)
-        assertEquals(sent, h.helix.patches.size, "no retries without a login")
+        eventually("tried again, without a new start") { h.helix.patches.size > sent }
+
+        h.helix.updateStatus = 200
+        eventually("the pause lands") { h.helix.rewards.single().isPaused && !h.manager.outOfSync.value }
         h.manager.stop()
         assertFalse(h.manager.outOfSync.value)
     }

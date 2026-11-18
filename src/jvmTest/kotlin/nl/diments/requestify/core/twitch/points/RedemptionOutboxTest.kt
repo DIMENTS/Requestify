@@ -188,9 +188,45 @@ class RedemptionOutboxTest {
     }
 
     @Test
-    fun loginNeededWaitsWithoutDropping() = runTest {
+    fun aRefusedLoginIsRetriedWithBackoffNotParked() = runTest {
         val helix = helix()
-        helix.token = TokenResult.LoginNeeded
+        repeat(4) { helix.patchStatuses += 401 } // two tries, each a 401, a forced refresh and a 401 again
+        val outbox = outbox(helix)
+        outbox.start()
+        outbox.enqueue("rw1", "red1", CANCELED)
+
+        awaitUntil("the first try") { outbox.entries.value.singleOrNull()?.tries == 1 }
+        assertEquals(listOf(OutboxEntry("rw1", "red1", CANCELED, tries = 1)), saved(), "kept, and counted as a try")
+        advanceTimeBy(5_000)
+        awaitUntil("the second try, 5 s later") { outbox.entries.value.singleOrNull()?.tries == 2 }
+        advanceTimeBy(15_000)
+        awaitUntil("sent on the third try, without a new start") { outbox.entries.value.isEmpty() }
+        assertEquals(List(5) { "red1:CANCELED" }, helix.patches.map { "${it.redemptionId}:${it.status}" })
+        assertEquals(emptyList(), saved())
+    }
+
+    @Test
+    fun aSavedRefundWinsOverAFulfilMadeWhileTheFileWasUnreadable() = runTest {
+        val helix = helix()
+        path.resolve("blocker").createDirectories() // the file cannot be read at start
+        val outbox = outbox(helix)
+        outbox.enqueue("rw1", "red1", FULFILLED) // it started playing; the refund of an earlier run is not known yet
+        outbox.enqueue("rw1", "red2", FULFILLED)
+
+        path.toFile().deleteRecursively()
+        path.writeText("""[{"rewardId":"rw1","redemptionId":"red1","status":"CANCELED","tries":1}]""")
+        advanceTimeBy(5_001)
+        runCurrent()
+
+        val merged = listOf(OutboxEntry("rw1", "red1", CANCELED, tries = 1), OutboxEntry("rw1", "red2", FULFILLED))
+        assertEquals(merged, outbox.entries.value, "a refund is final")
+        assertEquals(merged, saved())
+    }
+
+    @Test
+    fun loggedOutWaitsWithoutDropping() = runTest {
+        val helix = helix()
+        helix.token = TokenResult.LoggedOut
         val outbox = outbox(helix)
         outbox.start()
         outbox.enqueue("rw1", "red1", CANCELED)

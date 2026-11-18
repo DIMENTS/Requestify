@@ -41,7 +41,8 @@ data class OutboxEntry(
  * - **In order:** the oldest entry is sent first, the next one when it is done:
  *   - `Ok` or `NotFound` (already settled, e.g. in the dashboard, or the reward is gone) drops it; so does `Forbidden`
  *     (not a reward of this app).
- *   - `LoginNeeded` / `LoggedOut` stop sending until the next [start], keeping every entry.
+ *   - `LoggedOut` stops sending until the next [start], keeping every entry. `LoginNeeded` (a 401 that a refresh did
+ *     not cure) is retried like a failure: a login that is really dead ends the session, which stops this anyway.
  *   - `RateLimited` waits as long as Twitch asks, then everything goes on; it is not counted as a try.
  *   - `BadRequest` is about that entry alone: it counts a try and moves behind the others, which go on at once; it is
  *     tried again after its own backoff.
@@ -164,7 +165,8 @@ class RedemptionOutbox(
             change { current -> current.filterNot { it === head } }
             0
         }
-        TwitchResult.LoginNeeded, TwitchResult.LoggedOut -> null
+        // Logged out: nothing can be sent until the session starts this again.
+        TwitchResult.LoggedOut -> null
         is TwitchResult.RateLimited -> maxOf(result.retryAfterMs, MIN_WAIT_MS)
         is TwitchResult.BadRequest -> {
             // Something about this entry alone: the others go first, it waits its own backoff.
@@ -173,7 +175,9 @@ class RedemptionOutbox(
             hold(retried, backoffFor(retried.tries))
             0
         }
-        is TwitchResult.Failed -> {
+        // A 401 that a refresh did not cure is retried like any failure: while the login itself still works, nothing
+        // else would ever start this again. A login that is really dead ends the session, which stops this anyway.
+        is TwitchResult.Failed, TwitchResult.LoginNeeded -> {
             val retried = head.copy(tries = head.tries + 1)
             change { current -> current.map { if (it === head) retried else it } }
             backoffFor(retried.tries)
@@ -204,7 +208,8 @@ class RedemptionOutbox(
 
     /**
      * Reads the saved file if it could not be read before (its entries go first: they are older; for a redemption in
-     * both, the one in memory wins), then writes what is unsaved. True when everything is saved. Caller holds [lock].
+     * both, the one in memory wins, except that a saved refund beats a fulfil), then writes what is unsaved. True when
+     * everything is saved. Caller holds [lock].
      */
     private fun sync(): Boolean {
         if (!loaded) {
@@ -213,8 +218,11 @@ class RedemptionOutbox(
             } catch (_: IOException) {
                 return false
             }
-            val ourIds = list.mapTo(HashSet()) { it.redemptionId }
-            list = saved.filter { it.redemptionId !in ourIds } + list
+            // A refund is final: a saved CANCELED wins over a FULFILLED made meanwhile (unless that is on its way).
+            val refunds = saved.filter { it.status == RedemptionStatus.CANCELED }.mapTo(HashSet()) { it.redemptionId }
+            val ours = list.filterNot { it.status == RedemptionStatus.FULFILLED && it.redemptionId in refunds && it !== inFlight }
+            val ourIds = ours.mapTo(HashSet()) { it.redemptionId }
+            list = saved.filter { it.redemptionId !in ourIds } + ours
             _entries.value = list
             loaded = true
             if (list != saved) unsaved = true

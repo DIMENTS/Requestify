@@ -37,6 +37,9 @@ class FakeRedemptionsApi(private val clock: () -> Long = { 0L }) {
     val lists = CopyOnWriteArrayList<String>()
     val patches = CopyOnWriteArrayList<Patch>()
 
+    /** The HTTP status the redemptions list answers (404: the reward is gone). */
+    @Volatile var listStatus = 200
+
     /** HTTP statuses for the next status updates, in order; 200 once used up. */
     val patchStatuses = ConcurrentLinkedQueue<Int>()
 
@@ -57,6 +60,7 @@ class FakeRedemptionsApi(private val clock: () -> Long = { 0L }) {
                     request.method == HttpMethod.Get && path.endsWith("/custom_rewards/redemptions") -> {
                         val reward = request.url.parameters["reward_id"].orEmpty()
                         lists += reward
+                        if (listStatus != 200) return@MockEngine respond("{}", HttpStatusCode.fromValue(listStatus), json)
                         val data = buildJsonArray {
                             unfulfilled.filter { it.rewardId == reward }.forEach { add(redemptionJson(it)) }
                         }

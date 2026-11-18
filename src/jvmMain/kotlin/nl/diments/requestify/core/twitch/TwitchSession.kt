@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import nl.diments.requestify.core.auth.TokenResult
+import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.settings.TwitchAccount
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
@@ -57,19 +58,23 @@ class TwitchSession(
 
     /** What the connection chip shows; see [TwitchHealth]. */
     val health: StateFlow<TwitchHealth> = combine(auth.status, disconnectedForLong, settings.settings) { status, disconnected, s ->
-        TwitchHealth(
-            loginNeeded = status is TwitchAuthStatus.LoginNeeded,
+        healthOf(status, disconnected, s)
+    }.stateIn(scope, SharingStarted.Eagerly, healthOf(auth.status.value, disconnected = false, settings.settings.value))
+
+    /**
+     * With an account set up, any login that is not working needs a new one (also a login that is gone without Twitch
+     * refusing it, e.g. a saved login that could not be read). A removed reward matters only while Channel Points are
+     * switched on and Twitch is set up.
+     */
+    private fun healthOf(status: TwitchAuthStatus, disconnected: Boolean, s: Settings): TwitchHealth {
+        val hasAccount = s.twitch.account != null
+        val points = s.twitch.channelPoints
+        return TwitchHealth(
+            loginNeeded = hasAccount && status != TwitchAuthStatus.LoggedIn,
             disconnected = disconnected,
-            rewardRemoved = s.twitch.channelPoints.rewardRemoved,
+            rewardRemoved = points.rewardRemoved && points.enabled && hasAccount,
         )
-    }.stateIn(
-        scope,
-        SharingStarted.Eagerly,
-        TwitchHealth(
-            loginNeeded = auth.status.value is TwitchAuthStatus.LoginNeeded,
-            rewardRemoved = settings.settings.value.twitch.channelPoints.rewardRemoved,
-        ),
-    )
+    }
 
     private var jobs: List<Job> = emptyList()
 

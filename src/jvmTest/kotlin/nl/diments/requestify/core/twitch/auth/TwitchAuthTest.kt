@@ -330,6 +330,26 @@ class TwitchAuthTest {
     }
 
     @Test
+    fun aSavedLoginThatCannotBeReadForAMomentIsNoLogout() = runBlocking {
+        val stored = secretsWith()
+        var unreadable = false
+        // Like the DPAPI store while another program holds the file, or it cannot be decrypted: get() finds nothing.
+        val secrets = object : SecretStore by stored {
+            override fun get(key: String): String? = if (unreadable) null else stored.get(key)
+        }
+        val a = auth(secrets) { tokens("a1", "r2") }
+        assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
+
+        unreadable = true
+        assertEquals(TokenResult.Unavailable, a.token(), "a read failure: try again later")
+        assertEquals(TwitchAuthStatus.LoggedIn, a.status.value, "the login stays")
+
+        unreadable = false
+        assertEquals(TokenResult.Ok("a1"), a.token())
+        assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
+    }
+
+    @Test
     fun logoutRemovesSecretFirst() = runBlocking {
         val stored = secretsWith()
         lateinit var a: TwitchAuth

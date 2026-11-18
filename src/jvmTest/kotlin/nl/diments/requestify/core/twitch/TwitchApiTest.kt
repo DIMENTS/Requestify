@@ -342,6 +342,11 @@ class TwitchApiTest {
             respond("", HttpStatusCode.TooManyRequests, headersOf("Ratelimit-Reset", "1"))
         }.isLive()
         assertEquals(TwitchResult.RateLimited(0), past)
+        // A reset far off (a wrong clock, or a broken header) waits a minute at most, then asks again.
+        val farOff = api(nowMs = { 1_000_000L }) {
+            respond("", HttpStatusCode.TooManyRequests, headersOf("Ratelimit-Reset", "999999999"))
+        }.isLive()
+        assertEquals(TwitchResult.RateLimited(60_000), farOff)
     }
 
     @Test

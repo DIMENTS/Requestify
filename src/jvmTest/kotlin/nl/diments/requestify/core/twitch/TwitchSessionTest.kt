@@ -215,12 +215,37 @@ class TwitchSessionTest {
     }
 
     @Test
-    fun aRemovedRewardShowsInTheHealth() = runTest {
+    fun aRemovedRewardShowsInTheHealthOnlyWhileChannelPointsAreUsed() = runTest {
         val h = Harness(this)
         assertFalse(h.session.health.value.rewardRemoved)
-        h.settings.update { s -> s.copy(twitch = s.twitch.copy(channelPoints = s.twitch.channelPoints.copy(rewardRemoved = true))) }
+        fun points(enabled: Boolean, removed: Boolean) = h.settings.update { s ->
+            s.copy(twitch = s.twitch.copy(channelPoints = s.twitch.channelPoints.copy(enabled = enabled, rewardRemoved = removed)))
+        }
+        points(enabled = true, removed = true)
         runCurrent()
         assertTrue(h.session.health.value.rewardRemoved)
+
+        points(enabled = false, removed = true) // Channel Points switched off: nothing to fix
+        runCurrent()
+        assertFalse(h.session.health.value.rewardRemoved)
+
+        points(enabled = true, removed = true)
+        h.settings.update { s -> s.copy(twitch = s.twitch.copy(account = null)) } // logged out of Twitch
+        runCurrent()
+        assertFalse(h.session.health.value.rewardRemoved)
+    }
+
+    @Test
+    fun anAccountWithoutAWorkingLoginNeedsALogin() = runTest {
+        // The account is set up, but the saved login is gone (unreadable, or never saved): not "all connected".
+        val h = Harness(this, loggedIn = false)
+        assertTrue(h.session.health.value.loginNeeded)
+        h.session.start()
+        runCurrent()
+        assertTrue(h.session.health.value.loginNeeded)
+
+        val noAccount = Harness(this, loggedIn = false, account = null)
+        assertFalse(noAccount.session.health.value.loginNeeded, "Twitch is not set up: nothing to log in to")
     }
 
     @Test

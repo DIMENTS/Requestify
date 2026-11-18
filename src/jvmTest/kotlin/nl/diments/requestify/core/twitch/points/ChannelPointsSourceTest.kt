@@ -227,6 +227,17 @@ class ChannelPointsSourceTest {
     }
 
     @Test
+    fun catchUpMarksARewardTwitchNoLongerKnowsAsRemoved() = runTest {
+        val h = harness(start = false)
+        h.helix.listStatus = 404 // deleted in the Twitch dashboard while Requestify was off
+        h.source.startSession()
+        awaitUntil("the catch-up asked") { h.helix.lists.isNotEmpty() }
+        settle()
+        assertTrue(h.rig.settings.settings.value.twitch.channelPoints.rewardRemoved)
+        assertEquals(REWARD, h.rig.settings.settings.value.twitch.channelPoints.rewardId, "not recreated by itself")
+    }
+
+    @Test
     fun blockedViewerIsRefundedWithoutReply() = runTest {
         val h = harness()
         h.rig.blacklist.addViewer("u1", "login_u1", null, 0)

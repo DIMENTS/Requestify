@@ -170,6 +170,7 @@ class ChannelPointsSource(
         turn.withLock {
             val waiting = when (val result = api.unfulfilledRedemptions(rewardId)) {
                 is TwitchResult.Ok -> result.value
+                TwitchResult.NotFound -> return markRemoved(rewardId) // deleted on Twitch while nobody listened
                 else -> return // the next session start or fresh session tries again
             }
             for (redemption in waiting) caughtUp(redemption)
@@ -214,6 +215,18 @@ class ChannelPointsSource(
                 known.add(id)
                 submit(id, redemption.rewardId, redemption.userId, redemption.userLogin, redemption.userName,
                     redemption.userInput, managed = true)
+            }
+        }
+    }
+
+    /** Twitch no longer knows the reward: the card offers "Create again" (the reward is not recreated by itself). */
+    private fun markRemoved(rewardId: String) {
+        settings.tryUpdate { s ->
+            val points = s.twitch.channelPoints
+            if (points.rewardId != rewardId || points.rewardRemoved) {
+                s
+            } else {
+                s.copy(twitch = s.twitch.copy(channelPoints = points.copy(rewardRemoved = true)))
             }
         }
     }

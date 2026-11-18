@@ -343,8 +343,9 @@ class TwitchApi(
         else -> TwitchResult.Failed("HTTP ${raw.status}")
     }
 
+    /** Until Twitch's `Ratelimit-Reset`, but never longer than [MAX_RETRY_AFTER_MS] (a wrong clock or a bad header). */
     private fun retryAfterMs(reset: String?): Long =
-        reset?.trim()?.toLongOrNull()?.let { (it * 1000 - nowMs()).coerceAtLeast(0) } ?: DEFAULT_RETRY_AFTER_MS
+        reset?.trim()?.toLongOrNull()?.let { (it * 1000 - nowMs()).coerceIn(0, MAX_RETRY_AFTER_MS) } ?: DEFAULT_RETRY_AFTER_MS
 
     private fun errorMessage(raw: Raw): String =
         runCatching { json.decodeFromString<ErrorDto>(raw.body).message }.getOrNull()?.takeIf { it.isNotBlank() }
@@ -355,6 +356,7 @@ class TwitchApi(
         const val PAGE_SIZE = 50
         const val MAX_PAGES = 100
         const val DEFAULT_RETRY_AFTER_MS = 5_000L
+        const val MAX_RETRY_AFTER_MS = 60_000L
         const val TOKEN_UNAVAILABLE = "token unavailable"
     }
 

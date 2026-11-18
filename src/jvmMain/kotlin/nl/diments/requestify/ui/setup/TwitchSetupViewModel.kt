@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,6 +76,9 @@ fun commandNameErrors(names: ChatCommandNames): Map<CommandField, CommandError> 
     }.toMap()
 }
 
+/** The most a logout waits for Twitch to pause Requestify's own reward. */
+const val LOGOUT_PAUSE_TIMEOUT_MS = 3_000L
+
 const val BITS_MINIMUM_MIN = 1
 const val BITS_MINIMUM_MAX = 10_000
 
@@ -126,6 +130,7 @@ class TwitchSetupViewModel(
     private val _commandErrors = MutableStateFlow<Map<CommandField, CommandError>>(emptyMap())
     private val _saveFailed = MutableStateFlow(false)
     private var loginJob: Job? = null
+    private var logoutJob: Job? = null
     private val _sheet = MutableStateFlow<RewardSheet?>(null)
     private val _copyDraft = MutableStateFlow<CopyDraft?>(null)
     private val _linkWarning = MutableStateFlow<ScannedReward?>(null)
@@ -207,8 +212,26 @@ class TwitchSetupViewModel(
         (_login.value as? TwitchLoginState.ShowingCode)?.let { copyToClipboard(it.code.userCode) }
     }
 
-    /** Forgets the login and the account. When the saved login cannot be removed, nothing changes and [saveFailed] is set. */
+    /**
+     * Pauses Requestify's own reward while the login still works (at most [LOGOUT_PAUSE_TIMEOUT_MS]; nothing would
+     * answer its redemptions after the logout), then forgets the login and the account. When the saved login cannot
+     * be removed, nothing changes and [saveFailed] is set.
+     */
     fun onLogout() {
+        if (logoutJob?.isActive == true) return
+        logoutJob = scope.launch {
+            try {
+                withTimeoutOrNull(LOGOUT_PAUSE_TIMEOUT_MS) { rewards.pauseForExit() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Best effort: the logout goes on.
+            }
+            logOut()
+        }
+    }
+
+    private fun logOut() {
         val account = store.settings.value.twitch.account
         // The account goes first: when that cannot be saved nothing has changed, and the login is not half undone.
         if (!save { it.copy(twitch = it.twitch.copy(account = null)) }) return

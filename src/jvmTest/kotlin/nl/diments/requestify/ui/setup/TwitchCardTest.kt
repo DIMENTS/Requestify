@@ -183,6 +183,15 @@ class TwitchCardTest {
         assertEquals(null, p.settings.settings.value.twitch.account)
     }
 
+    @Test
+    fun anAccountWhoseLoginIsGoneIsNotConnected() = runDesktopComposeUiTest(width = 900, height = 900) {
+        // The account is set up, but there is no working login (the saved one could not be read, or was rolled back).
+        show(parts(loggedIn = false, account = affiliate))
+        onNodeWithText("Login expired").assertIsDisplayed()
+        onNodeWithText("Connected").assertDoesNotExist()
+        onNode(hasText("Log in again as DIMENTS") and hasClickAction()).assertIsDisplayed()
+    }
+
     private val own = ChannelPointsSettings(
         enabled = true,
         rewardId = "rw-1",
