@@ -13,7 +13,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.log.LogConnectionState
+import nl.diments.requestify.core.log.LogRecord
+import nl.diments.requestify.core.log.LogService
+import nl.diments.requestify.core.log.LogStep
+import nl.diments.requestify.core.log.LogStreamChange
 import nl.diments.requestify.core.model.Payment
+import nl.diments.requestify.core.playback.RemoveReason
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -145,6 +151,46 @@ class SavedFormatCompatTest {
         val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value
         assertEquals(Settings(themeMode = ThemeMode.Album), loaded)
         assertNothingMovedAside()
+    }
+
+    /** The Log's day files keep 30 days of these: each record, step and enum keeps its saved name. */
+    @Test
+    fun logRecordNamesArePinned() {
+        fun typeOf(json: String) = AppJson.instance.parseToJsonElement(json).jsonObject.getValue("type").jsonPrimitive.content
+        val records = mapOf(
+            LogRecord.RequestReceived("r", 1, RequestSource.CHAT, Requester("Jan"), "x") to "request_received",
+            LogRecord.RequestStep("r", 1, LogStep.Played) to "request_step",
+            LogRecord.ConnectionChanged("c", 1, LogService.Twitch, LogConnectionState.Lost) to "connection",
+            LogRecord.StreamChanged("s", 1, LogStreamChange.Live) to "stream",
+            LogRecord.GapNoticed("g", 1, RequestSource.BITS, null, 2) to "gap",
+        )
+        for ((record, name) in records) {
+            val json = AppJson.instance.encodeToString(LogRecord.serializer(), record)
+            assertEquals(name, typeOf(json))
+            assertEquals(record, AppJson.instance.decodeFromString(LogRecord.serializer(), json))
+        }
+        val steps = mapOf(
+            LogStep.Queued(1) to "queued",
+            LogStep.Rejected(RejectReason.Duplicate, listed = true) to "rejected",
+            LogStep.Pending to "pending",
+            LogStep.Ignored to "ignored",
+            LogStep.HandedOver to "handed_over",
+            LogStep.Played to "played",
+            LogStep.Removed(RemoveReason.WrongSong) to "removed",
+            LogStep.RefundPending(1) to "refund_pending",
+            LogStep.Refunded to "refunded",
+            LogStep.RefundGaveUp to "refund_gave_up",
+            LogStep.Fulfilled to "fulfilled",
+            LogStep.Resolved(track("t1", "Song", listOf("A"), 1)) to "track",
+        )
+        for ((step, name) in steps) assertEquals(name, typeOf(AppJson.instance.encodeToString(LogStep.serializer(), step)))
+        val enums = listOf(
+            AppJson.instance.encodeToString(LogService.serializer(), LogService.StreamElements) to "\"streamelements\"",
+            AppJson.instance.encodeToString(LogConnectionState.serializer(), LogConnectionState.KeyExpiring) to "\"key_expiring\"",
+            AppJson.instance.encodeToString(LogStreamChange.serializer(), LogStreamChange.OpenedByHand) to "\"opened_by_hand\"",
+            AppJson.instance.encodeToString(RemoveReason.serializer(), RemoveReason.StreamEnded) to "\"stream_ended\"",
+        )
+        for ((json, expected) in enums) assertEquals(expected, json)
     }
 
     /** Settings saved before donations existed read with the donation defaults. */

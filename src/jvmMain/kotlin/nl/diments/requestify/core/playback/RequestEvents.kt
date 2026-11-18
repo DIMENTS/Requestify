@@ -1,5 +1,7 @@
 package nl.diments.requestify.core.playback
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.queue.PlayedEntry
@@ -27,22 +29,23 @@ sealed interface SubmitOutcome {
     data class Rejected(val reason: RejectReason) : SubmitOutcome
 }
 
-/** Who or what took a request out of the queue before it played. */
+/** Who or what took a request out of the queue before it played. Saved in the Log under these names: never change them. */
+@Serializable
 enum class RemoveReason {
     /** The streamer's X. */
-    Streamer,
+    @SerialName("streamer") Streamer,
 
     /** The viewer's own `!wrongsong`. */
-    WrongSong,
+    @SerialName("wrong_song") WrongSong,
 
     /** A moderator's `!remove`. */
-    ModRemove,
+    @SerialName("mod_remove") ModRemove,
 
     /** The end-of-stream clear. */
-    StreamEnded,
+    @SerialName("stream_ended") StreamEnded,
 
     /** A blacklist sweep moved it to the Rejected list. */
-    Blacklisted,
+    @SerialName("blacklisted") Blacklisted,
 }
 
 /** What happened to a request, emitted by [PlaybackController.events] once the change is saved. */
