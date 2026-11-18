@@ -85,6 +85,8 @@ class Notifier(
     private val clock: () -> Long,
     private val send: (Notice) -> Unit,
     private val savingNoticeAfterMs: Long = 120_000,
+    /** A problem gone for less than this that comes back is the same one: no second notification. */
+    private val rearmAfterMs: Long = 600_000,
     /** When to look at a key's expiry again although nothing else changed (its days count down by themselves). */
     private val ticks: Flow<Long> = clockTicks(clock, ZoneId.systemDefault()),
 ) {
@@ -98,9 +100,18 @@ class Notifier(
         scope.launch { ticks.collect { checkKeyExpiry(problems.value) } }
     }
 
+    /** When each notified problem went away: it is notified again only after a real absence ([rearmAfterMs]). */
+    private val goneSince = HashMap<Notice, Long>()
+
     private fun onProblems(list: List<ConnectionProblem>) {
         val now = list.mapNotNull { it.notice() }.toSet()
-        (now - present).forEach(send)
+        val at = clock()
+        (present - now).forEach { goneSince[it] = at }
+        for (notice in now - present) {
+            val gone = goneSince.remove(notice)
+            // A problem that flaps (Premium shows on each failed hand-over and clears at the next tick) is no new one.
+            if (gone == null || at - gone >= rearmAfterMs) send(notice)
+        }
         present = now
         checkKeyExpiry(list)
     }

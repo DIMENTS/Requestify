@@ -68,9 +68,28 @@ class NotifierTest {
         runCurrent()
         problems.value = emptyList()
         runCurrent()
+        advanceTimeBy(11 * 60_000) // gone for longer than a flap
         problems.value = listOf(ConnectionProblem.Spotify(SpotifyHealth.LoginNeeded))
         runCurrent()
         assertEquals(listOf(Notice.SpotifyLoginNeeded, Notice.RewardRemoved, Notice.SpotifyLoginNeeded), sent)
+    }
+
+    @Test
+    fun aFlappingProblemIsNotifiedOnce() = runTest {
+        notifier()
+        repeat(5) { // Premium shows on every failed hand-over and clears on the next tick
+            problems.value = listOf(ConnectionProblem.Spotify(SpotifyHealth.PremiumRequired))
+            runCurrent()
+            advanceTimeBy(60_000)
+            problems.value = emptyList()
+            runCurrent()
+            advanceTimeBy(3 * 60_000)
+        }
+        assertEquals(listOf<Notice>(Notice.SpotifyPremiumMissing), sent, "not at every track end")
+        advanceTimeBy(11 * 60_000) // really gone for a while
+        problems.value = listOf(ConnectionProblem.Spotify(SpotifyHealth.PremiumRequired))
+        runCurrent()
+        assertEquals(2, sent.size, "back after a long absence: notified again")
     }
 
     @Test
