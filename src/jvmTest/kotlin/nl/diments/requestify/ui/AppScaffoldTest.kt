@@ -1,6 +1,9 @@
 package nl.diments.requestify.ui
 
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
@@ -69,6 +72,21 @@ class AppScaffoldTest {
     /** A graph that is never started and never reaches the network. */
     private fun graph(dataDir: Path = dir) =
         AppGraph(AppPaths(dataDir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+
+    @Test
+    fun openOnShowsThatScreen() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        val graph = graph()
+        var openOn by mutableStateOf<Destination?>(null)
+        var opened = 0
+        setContent { AppScaffold(graph, openOn = openOn, onOpened = { opened++; openOn = null }) }
+        onNode(hasText("Settings") and hasClickAction()).performClick() // the streamer is elsewhere
+        waitForIdle()
+
+        openOn = Destination.Log // a click on a notification
+        waitForIdle()
+        onNodeWithText("All", substring = false).assertIsDisplayed() // the Log's filter chips
+        assertEquals(1, opened)
+    }
 
     @Test
     fun aSettingThatCannotBeSavedYetIsApplied() = runDesktopComposeUiTest(width = 1180, height = 760) {

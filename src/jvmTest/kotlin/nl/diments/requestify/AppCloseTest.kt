@@ -5,13 +5,19 @@ import kotlin.test.assertEquals
 
 class AppCloseTest {
     @Test
-    fun theWindowIsHiddenBeforeTheGracefulStopWaits() {
+    fun quitHidesStopsMarksAndExitsInOrder() {
         val steps = mutableListOf<String>()
-        closeApp(
-            hide = { steps += "hide" },
+        quitApp(
+            hideTray = { steps += "hide tray" },
+            hideWindow = { steps += "hide window" },
             stopGracefully = { steps += "stop" },
+            markOrderlyEnd = { steps += "orderly end" },
             exit = { steps += "exit" },
         )
-        assertEquals(listOf("hide", "stop", "exit"), steps, "a closing window must not hang on screen while Twitch answers")
+        assertEquals(
+            listOf("hide tray", "hide window", "stop", "orderly end", "exit"),
+            steps,
+            "nothing hangs on screen while Twitch answers, and the next start knows this was no crash",
+        )
     }
 }

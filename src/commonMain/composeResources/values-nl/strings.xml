@@ -436,6 +436,7 @@
     <string name="tray_cannot_save">Kan %1$s niet opslaan</string>
     <string name="tray_open">Openen</string>
     <string name="tray_quit">Afsluiten</string>
+    <string name="crash_fatal">Requestify is gestopt door een fout. Start het opnieuw.</string>
     <string name="log_stream_live">Live · verzoeken open</string>
     <string name="log_stream_offline">Offline · verzoeken dicht</string>
     <string name="log_stream_opened">Verzoeken met de hand geopend</string>

@@ -436,6 +436,7 @@
     <string name="tray_cannot_save">Can’t save %1$s</string>
     <string name="tray_open">Open</string>
     <string name="tray_quit">Quit</string>
+    <string name="crash_fatal">Requestify stopped after an error. Start it again.</string>
     <string name="log_stream_live">Live · requests open</string>
     <string name="log_stream_offline">Offline · requests closed</string>
     <string name="log_stream_opened">Requests opened by hand</string>

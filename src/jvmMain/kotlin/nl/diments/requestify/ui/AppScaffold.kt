@@ -125,7 +125,7 @@ private const val SEED_ART_SIZE_PX = 128
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun AppScaffold(graph: AppGraph, window: Frame? = null) {
+fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = null, onOpened: () -> Unit = {}) {
     val settings by graph.settings.settings.collectAsState()
     val settingsUnreadable by graph.settings.loadFailed.collectAsState()
     var contentWidthPx by remember { mutableIntStateOf(0) }
@@ -143,6 +143,13 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     val caption = rememberWindowCaption(window, dark)
 
     var destination by remember { mutableStateOf(startDestination(settings, graph.auth.status.value)) }
+    // A notification click asks for a screen once; after that the streamer navigates freely.
+    LaunchedEffect(openOn) {
+        if (openOn != null) {
+            destination = openOn
+            onOpened()
+        }
+    }
     val addFieldFocus = remember { FocusRequester() }
     var focusAddField by remember { mutableStateOf(false) }
     val screens = rememberSaveableStateHolder()
