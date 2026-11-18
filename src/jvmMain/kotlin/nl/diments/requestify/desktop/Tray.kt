@@ -59,6 +59,9 @@ class AwtTray(
     private val onOpen: () -> Unit,
     onQuit: () -> Unit,
     onMessageClick: () -> Unit,
+    /** Windows' tray; it refuses an icon that is already in it. */
+    private val addIcon: (TrayIcon) -> Unit = { SystemTray.getSystemTray().add(it) },
+    private val removeIcon: (TrayIcon) -> Unit = { SystemTray.getSystemTray().remove(it) },
 ) : TrayPort {
     private val status = MenuItem("Requestify").apply { isEnabled = false }
     private val icon = TrayIcon(images(warning = false), "Requestify", PopupMenu().apply {
@@ -81,6 +84,8 @@ class AwtTray(
     private val clicks = NoticeClicks()
     private var warning: Boolean? = null
 
+    /** Called from the main thread at start and from the UI thread after: one at a time, so the icon is added once. */
+    @Synchronized
     override fun show(look: TrayLook) {
         if (look.warning != warning) {
             icon.image = images(look.warning)
@@ -90,7 +95,7 @@ class AwtTray(
         status.label = look.statusLine
         if (!added && SystemTray.isSupported()) {
             try {
-                SystemTray.getSystemTray().add(icon)
+                addIcon(icon)
                 added = true
                 pending.ready(::display)
             } catch (_: AWTException) {
@@ -106,8 +111,9 @@ class AwtTray(
         icon.displayMessage(title, text, TrayIcon.MessageType.INFO)
     }
 
+    @Synchronized
     override fun remove() {
-        if (added) SystemTray.getSystemTray().remove(icon)
+        if (added) removeIcon(icon)
         added = false
     }
 

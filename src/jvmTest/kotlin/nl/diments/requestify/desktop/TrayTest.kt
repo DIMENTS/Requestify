@@ -2,6 +2,11 @@ package nl.diments.requestify.desktop
 
 import java.nio.file.Path
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -77,6 +82,35 @@ class TrayTest {
         assertTrue(clicks.isNoticeClick())
         now += 60_000
         assertFalse(clicks.isNoticeClick(), "long after: a double-click on the icon again")
+    }
+
+    @Test
+    fun showingTheIconFromTwoThreadsAtOnceAddsItOnce() {
+        // At start, Main shows the icon itself while the problem collector does the same on the UI thread.
+        val adds = AtomicInteger()
+        val insideAdd = CountDownLatch(1)
+        val tray = AwtTray(
+            TrayLabels(open = "Open", quit = "Quit"),
+            onOpen = {},
+            onQuit = {},
+            onMessageClick = {},
+            addIcon = {
+                // Like Windows' tray: an icon that is already in it is refused.
+                if (adds.incrementAndGet() > 1) throw IllegalArgumentException("adding TrayIcon that is already added")
+                insideAdd.countDown()
+                Thread.sleep(300) // the real add is a native call that takes a while
+            },
+            removeIcon = {},
+        )
+        val look = TrayLook(warning = false, tooltip = "Requestify — All connected", statusLine = "All connected")
+        val failures = ConcurrentLinkedQueue<Throwable>()
+        val first = thread { runCatching { tray.show(look) }.onFailure { failures += it } }
+        assertTrue(insideAdd.await(5, TimeUnit.SECONDS))
+        val second = thread { runCatching { tray.show(look) }.onFailure { failures += it } }
+        first.join()
+        second.join()
+        assertEquals(emptyList(), failures.map { it.toString() }, "the second show must not crash the app")
+        assertEquals(1, adds.get(), "the icon is added once")
     }
 
     @Test
