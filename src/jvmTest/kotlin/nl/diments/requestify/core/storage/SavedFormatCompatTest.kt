@@ -11,8 +11,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.settings.KeyExpiryNotice
 import nl.diments.requestify.core.log.LogConnectionState
 import nl.diments.requestify.core.log.LogRecord
 import nl.diments.requestify.core.log.LogService
@@ -200,6 +202,14 @@ class SavedFormatCompatTest {
         val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext()).settings.value
         assertEquals(DonationSettings(), loaded.donations)
         assertNothingMovedAside()
+    }
+
+    /** Which DonoLink expiry step was notified is kept in settings.json under these names. */
+    @Test
+    fun keyExpiryNoticeIsPinned() {
+        val json = AppJson.instance.encodeToString(Settings.serializer(), Settings(keyExpiryNotified = KeyExpiryNotice(1_000, 7)))
+        assertTrue(""""keyExpiryNotified":{"expiresAtEpochMs":1000,"stage":7}""" in json, json)
+        assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").keyExpiryNotified, "old settings read")
     }
 
     /** A file that could not be saved is logged under this service name. */

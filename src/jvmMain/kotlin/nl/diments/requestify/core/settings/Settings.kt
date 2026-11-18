@@ -19,7 +19,13 @@ data class Settings(
     val rules: Rules = Rules(),
     val twitch: TwitchSettings = TwitchSettings(),
     val donations: DonationSettings = DonationSettings(),
+    /** The DonoLink expiry step last notified, so a restart does not notify it again. */
+    val keyExpiryNotified: KeyExpiryNotice? = null,
 )
+
+/** A DonoLink key that expires at [expiresAtEpochMs] was notified at [stage]: 7 (within a week) or 1 (its last day). */
+@Serializable
+data class KeyExpiryNotice(val expiresAtEpochMs: Long, val stage: Int)
 
 /** Saved in settings.json under the stable names below: never change them, or saved settings are lost. */
 @Serializable
