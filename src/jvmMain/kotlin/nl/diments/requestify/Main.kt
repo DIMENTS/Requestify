@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import nl.diments.requestify.core.secrets.DpapiSecretStore
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.storage.AppPaths
+import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.app_name
 import nl.diments.requestify.ui.AppScaffold
@@ -28,7 +29,9 @@ fun main() {
     // One scope and one graph for the app's whole life, on the UI thread; switching screens recreates nothing.
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     val paths = AppPaths.default()
-    val graph = AppGraph(paths, DpapiSecretStore(paths.secretsFile), scope = appScope)
+    // Secrets are read and decrypted here, before the window; later changes are saved in the background.
+    val secrets = DpapiSecretStore(paths.secretsFile, SaveContext(appScope, System::currentTimeMillis))
+    val graph = AppGraph(paths, secrets, scope = appScope)
     // The language is read once, before anything is composed; a change applies at the next start.
     localeFor(graph.settings.settings.value.language)?.let(Locale::setDefault)
     graph.start()

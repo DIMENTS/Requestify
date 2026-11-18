@@ -23,7 +23,7 @@ class StoreReadException(path: Path, cause: IOException) : IOException("Couldn't
  * another reason than a missing or corrupt file is tried again after each of [retryDelaysMs] ([sleep] waits).
  */
 class JsonFileStore<T>(
-    private val path: Path,
+    val path: Path,
     private val serializer: KSerializer<T>,
     private val retryDelaysMs: List<Long> = listOf(50, 100, 200),
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
