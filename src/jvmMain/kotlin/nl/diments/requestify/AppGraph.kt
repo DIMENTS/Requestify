@@ -176,6 +176,7 @@ class AppGraph(
         clock = System::currentTimeMillis,
         onStreamEnded = { controller.removeMatching(RemoveReason.StreamEnded) { it.filter(Request::isFreeViewerRequest) } },
         context = saveContext,
+        sessionConnected = { twitchSession.connected.value },
     )
 
     private val controller = PlaybackController(

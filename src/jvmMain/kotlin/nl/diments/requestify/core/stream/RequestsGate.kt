@@ -37,6 +37,8 @@ data class StreamState(
      * app stops. After the app was closed while live, the stream counts as offline since then at the latest.
      */
     val lastSeenLiveMs: Long? = null,
+    /** When the stream the gate follows started (Helix's `started_at`, or when it went live): a restart can tell a new one. */
+    val streamStartedAtEpochMs: Long? = null,
 )
 
 /** The gate as the title bar shows it. */
@@ -94,6 +96,8 @@ class RequestsGate(
     private val clock: () -> Long,
     private val onStreamEnded: suspend () -> Unit,
     context: SaveContext,
+    /** Whether the Twitch session is connected now: only then does the heartbeat know the stream is still live. */
+    private val sessionConnected: () -> Boolean = { twitchConnected.value },
     private val graceMs: Long = 600_000,
     private val heartbeatMs: Long = 60_000,
 ) {
@@ -198,8 +202,9 @@ class RequestsGate(
      * The stream's live status: stream.online/offline ([read] false) and the REST check ([read] true). A repeated
      * value changes nothing but when the stream was last seen live.
      */
-    fun onLive(live: Boolean, read: Boolean = false) {
+    fun onLive(live: Boolean, read: Boolean = false, startedAtMs: Long? = null) {
         var clear = false
+        var endedFirst = false
         val happened = mutableListOf<GateEvent>()
         change(event = true) { s ->
             val now = clock()
@@ -207,14 +212,27 @@ class RequestsGate(
             val leftover = s.live && !heard
             heard = true
             happened.clear() // [change] runs this once; cleared anyway so a list is never reported twice
+            val savedStart = s.streamStartedAtEpochMs
+            // The saved stream is not the one live now (it started later): that one ended while the app was closed.
+            val newStream = leftover && live && startedAtMs != null && savedStart != null && startedAtMs > savedStart + SAME_STREAM_MS
             when {
-                live && s.live -> s.copy(lastSeenLiveMs = now).also { if (leftover) happened += GateEvent.WentLive(now, read) }
+                newStream -> {
+                    val (afterEnd, clearOld) = ended(s.copy(live = false))
+                    clear = clearOld
+                    endedFirst = true
+                    happened += GateEvent.WentLive(now, read)
+                    afterEnd.copy(live = true, offlineSinceMs = null, clearPostponed = false, lastSeenLiveMs = now, streamStartedAtEpochMs = startedAtMs)
+                }
+                live && s.live -> s.copy(lastSeenLiveMs = now, streamStartedAtEpochMs = savedStart ?: startedAtMs ?: now)
+                    .also { if (leftover) happened += GateEvent.WentLive(now, read) }
                 // A drop: as if nothing happened. An open made during it now belongs to the stream it returns to.
                 live && s.offlineSinceMs != null -> s.copy(
                     live = true, offlineSinceMs = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now,
                 ).also { happened += GateEvent.WentLive(now, read) }
-                live -> s.copy(live = true, override = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now)
-                    .also { happened += GateEvent.WentLive(now, read) }
+                live -> s.copy(
+                    live = true, override = null, overrideAfterStream = false, clearPostponed = false, lastSeenLiveMs = now,
+                    streamStartedAtEpochMs = startedAtMs ?: now,
+                ).also { happened += GateEvent.WentLive(now, read) }
                 !s.live -> s
                 else -> {
                     happened += GateEvent.WentOffline(now)
@@ -225,8 +243,9 @@ class RequestsGate(
                 }
             }
         }
+        if (endedFirst) streamEnded(clear) // the old stream ends before the new one goes live
         happened.forEach { _events.tryEmit(it) }
-        streamEnded(clear)
+        if (!endedFirst) streamEnded(clear)
     }
 
     /** Reports the end of the stream and clears the free requests, when [clear]. Called outside [lock]. */
@@ -346,7 +365,7 @@ class RequestsGate(
             scope.launch {
                 while (true) {
                     delay(heartbeatMs)
-                    change(event = true) { s -> if (s.live && heard) s.copy(lastSeenLiveMs = clock()) else s }
+                    if (sessionConnected()) change(event = true) { s -> if (s.live && heard) s.copy(lastSeenLiveMs = clock()) else s }
                 }
             }
         }
@@ -381,3 +400,6 @@ class RequestsGate(
         clearPostponed = clearPostponed,
     )
 }
+
+/** Helix's `started_at` and the moment the app saw `stream.online` differ by seconds: within this, the same stream. */
+private const val SAME_STREAM_MS = 120_000L

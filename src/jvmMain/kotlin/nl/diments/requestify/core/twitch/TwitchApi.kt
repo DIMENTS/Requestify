@@ -111,9 +111,16 @@ class TwitchApi(
             json.decodeFromString<UsersDto>(body).data.firstOrNull()?.let { TwitchUserRef(it.id, it.login, it.displayName) }
         }
 
-    suspend fun isLive(): TwitchResult<Boolean> = withBroadcaster { id ->
+    suspend fun isLive(): TwitchResult<Boolean> = when (val status = liveStatus()) {
+        is TwitchResult.Ok -> TwitchResult.Ok(status.value.live)
+        else -> @Suppress("UNCHECKED_CAST") (status as TwitchResult<Boolean>)
+    }
+
+    /** Whether the channel is live, and since when (Helix's `started_at`; null when Twitch does not say). */
+    suspend fun liveStatus(): TwitchResult<LiveStatus> = withBroadcaster { id ->
         execute(HttpMethod.Get, "streams", params = listOf("user_id" to id)) { body ->
-            json.decodeFromString<StreamsDto>(body).data.any { it.type == "live" }
+            val stream = json.decodeFromString<StreamsDto>(body).data.firstOrNull { it.type == "live" }
+            LiveStatus(live = stream != null, startedAtEpochMs = stream?.startedAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() })
         }
     }
 
@@ -378,7 +385,7 @@ class TwitchApi(
     private class StreamsDto(val data: List<StreamDto> = emptyList())
 
     @Serializable
-    private class StreamDto(val type: String? = null)
+    private class StreamDto(val type: String? = null, @kotlinx.serialization.SerialName("started_at") val startedAt: String? = null)
 
     @Serializable
     private class FollowersDto(val data: List<FollowerDto> = emptyList())
@@ -442,3 +449,6 @@ class TwitchApi(
     @Serializable
     private class RedemptionRewardDto(val id: String)
 }
+
+/** The channel's live status as Helix reads it. */
+data class LiveStatus(val live: Boolean, val startedAtEpochMs: Long?)

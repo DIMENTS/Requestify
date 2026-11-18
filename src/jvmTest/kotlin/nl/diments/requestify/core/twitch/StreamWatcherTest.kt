@@ -50,6 +50,9 @@ class StreamWatcherTest {
         /** What `GET /streams` says, when it answers. */
         var live = false
 
+        /** The live stream's `started_at`, when set. */
+        var startedAt: String? = null
+
         /** Answers `GET /streams` with this error instead. */
         var failWith: HttpStatusCode? = null
 
@@ -83,7 +86,13 @@ class StreamWatcherTest {
                             val json = headersOf(HttpHeaders.ContentType, "application/json")
                             when (val status = failWith) {
                                 null -> respond(
-                                    if (live) """{"data":[{"id":"s1","type":"live"}]}""" else """{"data":[]}""",
+                                    if (!live) {
+                                        """{"data":[]}"""
+                                    } else if (startedAt == null) {
+                                        """{"data":[{"id":"s1","type":"live"}]}"""
+                                    } else {
+                                        """{"data":[{"id":"s1","type":"live","started_at":"$startedAt"}]}"""
+                                    },
                                     HttpStatusCode.OK,
                                     json,
                                 )
@@ -100,6 +109,50 @@ class StreamWatcherTest {
         val watcher = StreamWatcher(events, freshSessions, api, gate, scope.backgroundScope, clock = { scope.currentTime })
 
         val gateLive: Boolean get() = gate.status.value.live
+    }
+
+    @Test
+    fun aRestartDuringANewStreamEndsTheOldOne() = runTest {
+        val oldStart = java.time.Instant.parse("2026-11-18T18:00:00Z").toEpochMilli()
+        JsonFileStore(dir.resolve("stream.json"), StreamState.serializer()) { StreamState() }
+            .write(StreamState(live = true, lastSeenLiveMs = 0, streamStartedAtEpochMs = oldStart)) // the app closed mid-stream
+        val h = Harness(this)
+        h.live = true
+        h.startedAt = "2026-11-18T21:00:00Z" // a new stream
+        h.watcher.start()
+        runCurrent()
+        assertEquals(1, h.cleared, "the old stream ended while the app was off: its free requests are cleared")
+        assertTrue(h.gateLive, "and the new one is live")
+    }
+
+    @Test
+    fun aRestartDuringTheSameStreamContinuesIt() = runTest {
+        val start = java.time.Instant.parse("2026-11-18T18:00:00Z").toEpochMilli()
+        JsonFileStore(dir.resolve("stream.json"), StreamState.serializer()) { StreamState() }
+            .write(StreamState(live = true, lastSeenLiveMs = 0, streamStartedAtEpochMs = start))
+        val h = Harness(this)
+        h.live = true
+        h.startedAt = "2026-11-18T18:00:30Z" // Helix and the event differ by seconds
+        h.watcher.start()
+        runCurrent()
+        assertEquals(0, h.cleared)
+        assertTrue(h.gateLive)
+    }
+
+    @Test
+    fun aContradictingReadIsReadAgainAfterTheWindow() = runTest {
+        val h = Harness(this)
+        h.watcher.start()
+        runCurrent()
+        h.events.emit(EventSubEvent.StreamOnline)
+        runCurrent()
+        h.live = false // Helix still says offline (it lags), and keeps saying so: the stream really is gone
+        h.freshSessions.emit(Unit) // a read that contradicts the 0-minute-old event: not applied
+        runCurrent()
+        assertTrue(h.gateLive)
+        advanceTimeBy(5 * 60_000 + 1)
+        runCurrent()
+        assertFalse(h.gateLive, "read again once the event is old enough to doubt")
     }
 
     @Test
@@ -256,6 +309,7 @@ class StreamWatcherTest {
         h.watcher.start()
         runCurrent()
         h.events.emit(EventSubEvent.StreamOnline)
+        h.live = true // Helix catches up with the stream soon after
         runCurrent()
         advanceTimeBy(30 * 60_000) // well into the stream
         runCurrent()

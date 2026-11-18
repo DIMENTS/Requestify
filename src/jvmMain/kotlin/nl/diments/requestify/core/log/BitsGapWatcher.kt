@@ -74,7 +74,13 @@ class BitsGapWatcher(
                 }
                 is GateEvent.WentOffline -> {
                     live = false
-                    null
+                    // The stream the last run saw live ended while the app was off: from then until now it went unheard.
+                    if (!firstLiveSeen && loadedLastSeenLiveMs != null) {
+                        firstLiveSeen = true
+                        gap(loadedLastSeenLiveMs, event.atEpochMs)
+                    } else {
+                        null
+                    }
                 }
                 else -> null
             }

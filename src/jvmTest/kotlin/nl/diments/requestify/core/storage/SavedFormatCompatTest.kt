@@ -246,6 +246,13 @@ class SavedFormatCompatTest {
         assertEquals("\"tip_failed\"", AppJson.instance.encodeToString(IgnoredReason.serializer(), IgnoredReason.TipFailed))
     }
 
+    /** The start of the stream the gate follows is kept in stream.json under this name. */
+    @Test
+    fun streamStartedAtIsPinned() {
+        val json = AppJson.instance.encodeToString(nl.diments.requestify.core.stream.StreamState.serializer(), nl.diments.requestify.core.stream.StreamState(streamStartedAtEpochMs = 5))
+        assertTrue(""""streamStartedAtEpochMs":5""" in json, json)
+    }
+
     /** A file that could not be saved is logged under this service name. */
     @Test
     fun filesServiceNameIsPinned() {

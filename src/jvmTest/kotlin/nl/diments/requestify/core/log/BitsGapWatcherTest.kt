@@ -46,6 +46,16 @@ class BitsGapWatcherTest {
     private fun gap(from: Long?, to: Long) = LogRecord.GapNoticed("gap:BITS:$to", to, RequestSource.BITS, from, to)
 
     @Test
+    fun aStreamThatEndedWhileOffLeavesAGap() = runTest {
+        val gaps = watch(loadedLastSeenLiveMs = base - 600_000) // the last run saw the stream live 10 minutes before
+        gate.emit(GateEvent.WentOffline(base + 5_000)) // this run finds it offline: it ended while the app was off
+        runCurrent()
+        val gap = gaps.single()
+        assertEquals(base - 600_000, gap.fromEpochMs)
+        assertEquals(base + 5_000, gap.toEpochMs)
+    }
+
+    @Test
     fun aDisconnectDuringALiveStreamIsAGap() = runTest {
         eventSub.value = EventSubState.Connected
         val gaps = watch()

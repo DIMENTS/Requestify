@@ -143,21 +143,41 @@ class StreamWatcher(
         }
     }
 
+    /** Reads again at [atMs] (one pending re-read at a time), unless a stream event came meanwhile. Caller holds [lock]. */
+    private fun readAgainAt(current: Long, atMs: Long) {
+        if (reReadPending) return
+        reReadPending = true
+        val eventsNow = streamEvents
+        scope.launch {
+            delay((atMs - clock()).coerceAtLeast(0) + 1)
+            val stillDoubtful = synchronized(lock) { reReadPending = false; current == run && streamEvents == eventsNow }
+            if (stillDoubtful) readUntilAnswered(current)
+        }
+    }
+
+    /** Guarded by [lock]: a re-read after a contradicting answer is waiting. */
+    private var reReadPending = false
+
     /** One read of the live status, applied unless a stream event says otherwise; false when Twitch did not answer. */
     private suspend fun read(current: Long): Boolean = reading.withLock {
         val eventsBefore = synchronized(lock) { streamEvents }
         val result = try {
-            api.isLive()
+            api.liveStatus()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             return@withLock false
         }
-        val live = (result as? TwitchResult.Ok)?.value ?: return@withLock false
+        val status = (result as? TwitchResult.Ok)?.value ?: return@withLock false
+        val live = status.live
         synchronized(lock) {
             val event = lastEvent
             val contradictsRecentEvent = event != null && event.first != live && clock() - event.second < eventTrustMs
-            if (current == run && streamEvents == eventsBefore && !contradictsRecentEvent) gate.onLive(live, read = true)
+            if (current == run && streamEvents == eventsBefore && !contradictsRecentEvent) {
+                gate.onLive(live, read = true, startedAtMs = status.startedAtEpochMs)
+            }
+            // Not dropped for good: once the event is old enough to doubt, Twitch is asked again.
+            if (contradictsRecentEvent && current == run) readAgainAt(current, event!!.second + eventTrustMs)
         }
         true
     }

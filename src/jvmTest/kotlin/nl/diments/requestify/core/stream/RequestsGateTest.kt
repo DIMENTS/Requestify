@@ -51,12 +51,14 @@ class RequestsGateTest {
     private fun TestScope.gate(
         twitch: MutableStateFlow<Boolean> = MutableStateFlow(true),
         scope: CoroutineScope = backgroundScope,
+        session: () -> Boolean = { true },
     ) = RequestsGate(
         file = JsonFileStore(dir.resolve("stream.json"), StreamState.serializer(), retryDelaysMs = emptyList()) { StreamState() },
         twitchConnected = twitch,
         scope = scope,
         clock = { testScheduler.currentTime },
         onStreamEnded = { cleared++ },
+        sessionConnected = session,
         context = SaveContext(scope, { testScheduler.currentTime }, countingIo(StandardTestDispatcher(testScheduler))),
     ).also { it.start() }
 
@@ -67,6 +69,19 @@ class RequestsGateTest {
             ioDispatches++
             inner.dispatch(context, block)
         }
+    }
+
+    @Test
+    fun theHeartbeatTicksOnlyWhileTheSessionIsConnected() = runTest {
+        var connected = true
+        val gate = gate(session = { connected })
+        gate.onLive(true)
+        runCurrent()
+        wait(minute)
+        assertEquals(minute, saved().lastSeenLiveMs)
+        connected = false // EventSub lost: nothing tells the app the stream is still live
+        wait(3 * minute)
+        assertEquals(minute, saved().lastSeenLiveMs, "no heartbeat while the session is down")
     }
 
     @Test
@@ -389,11 +404,11 @@ class RequestsGateTest {
         wait(grace)
         assertEquals(1, cleared)
         assertNull(gate.status.value.clearAtEpochMs)
-        assertEquals(StreamState(live = true, lastSeenLiveMs = 0), saved(), "nothing saved since the stream went live")
+        assertEquals(StreamState(live = true, lastSeenLiveMs = 0, streamStartedAtEpochMs = 0), saved(), "nothing saved since the stream went live")
 
         healWrites()
         wait(minute)
-        assertEquals(StreamState(live = false, lastSeenLiveMs = 0), saved(), "the stream's end is saved once the file works")
+        assertEquals(StreamState(live = false, lastSeenLiveMs = 0, streamStartedAtEpochMs = 0), saved(), "the stream's end is saved once the file works")
         first.cancel()
         gate()
         wait(grace)
@@ -415,7 +430,7 @@ class RequestsGateTest {
         JsonFileStore(file, StreamState.serializer()) { StreamState() }.write(StreamState(openWithoutTwitch = false))
         gate.onLive(false)
         runCurrent()
-        assertEquals(StreamState(live = false, offlineSinceMs = 0, openWithoutTwitch = false, lastSeenLiveMs = 0), saved())
+        assertEquals(StreamState(live = false, offlineSinceMs = 0, openWithoutTwitch = false, lastSeenLiveMs = 0, streamStartedAtEpochMs = 0), saved())
         assertFalse(gate.open.value)
     }
 
