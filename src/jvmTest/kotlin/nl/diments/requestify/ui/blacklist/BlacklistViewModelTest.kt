@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
@@ -108,7 +109,7 @@ class BlacklistViewModelTest {
             clock = { testScheduler.currentTime },
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val parts = intakeParts(dir, controller, catalog, settings, backgroundScope) { testScheduler.currentTime }
         val connected = MutableStateFlow(twitch)
         val lookups = mutableListOf<String>()
@@ -337,38 +338,23 @@ class BlacklistViewModelTest {
     }
 
     @Test
-    fun aFailedAddOrRemoveShowsBlockFailingUntilTheNextSaveWorks() = runTest {
+    fun anAddOrRemoveWhoseFileCannotBeWrittenYetIsApplied() = runTest {
         val s = setup()
         val saved = track("t1")
         assertTrue(s.parts.intake.blockTrack(saved, by = null))
         runCurrent()
-        val blocker = dir.resolve("blacklist.json.tmp").also { it.toFile().mkdirs() } // the store cannot write
+        dir.resolve("blacklist.json.tmp").toFile().mkdirs() // the store cannot write yet
 
         s.vm.onRemove("t1")
         runCurrent()
-        assertTrue(s.vm.state.value.blockFailing)
-        assertEquals(1, s.vm.state.value.blacklist.tracks.size, "a remove that could not be saved is not applied")
+        assertEquals(false, s.vm.state.value.blockFailing, "only an unreadable blacklist refuses a change")
+        assertTrue(s.vm.state.value.blacklist.tracks.isEmpty(), "applied at once, saving retried")
 
         s.vm.onAdd(BlockCandidate.Song(track("t2")))
         runCurrent()
-        assertTrue(s.vm.state.value.blockFailing)
-        assertEquals(1, s.vm.state.value.blacklist.tracks.size)
-
-        blocker.toFile().deleteRecursively()
-        s.vm.onRemove("t1")
-        runCurrent()
         assertEquals(false, s.vm.state.value.blockFailing)
-        assertTrue(s.vm.state.value.blacklist.tracks.isEmpty())
-
-        blocker.toFile().mkdirs()
-        s.vm.onAdd(BlockCandidate.Song(track("t3")))
-        runCurrent()
-        assertTrue(s.vm.state.value.blockFailing)
-        blocker.toFile().deleteRecursively()
-        s.vm.onAdd(BlockCandidate.Song(track("t3")))
-        runCurrent()
-        assertEquals(false, s.vm.state.value.blockFailing)
-        assertEquals("t3", s.vm.state.value.blacklist.tracks.single().track.id)
+        assertEquals("t2", s.vm.state.value.blacklist.tracks.single().track.id)
+        assertEquals("blacklist.json", s.parts.blacklist.saveProblem.value?.file)
     }
 
     @Test

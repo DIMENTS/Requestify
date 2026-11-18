@@ -13,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -109,22 +110,19 @@ class QueueStoreTest {
 
     @Test fun settingsStoreUpdatePersistsAndEmits() {
         val file = JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }
-        val store = SettingsStore(file)
+        val store = SettingsStore(file, inCallerSaveContext())
         store.update { it.copy(themeMode = ThemeMode.Custom(0xFF112233.toInt()), darkMode = DarkMode.Dark) }
         val expected = Settings(themeMode = ThemeMode.Custom(0xFF112233.toInt()), darkMode = DarkMode.Dark)
         assertEquals(expected, store.settings.value)
-        assertEquals(expected, SettingsStore(file).settings.value)
+        assertEquals(expected, SettingsStore(file, inCallerSaveContext()).settings.value)
     }
 
-    @Test fun settingsStoreTryUpdateReportsAFailedSaveAndChangesNothing() {
+    @Test fun settingsStoreTryUpdateAppliesAndReportsAFailedSave() {
         // A file where the settings folder should be: every write fails, like a file held by another program.
         val blocker = dir.resolve("blocker").createFile()
-        val store = SettingsStore(JsonFileStore(blocker.resolve("settings.json"), Settings.serializer()) { Settings() })
-        assertFalse(store.tryUpdate { it.copy(darkMode = DarkMode.Dark) })
-        assertEquals(Settings(), store.settings.value)
-
-        blocker.deleteExisting()
+        val store = SettingsStore(JsonFileStore(blocker.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         assertTrue(store.tryUpdate { it.copy(darkMode = DarkMode.Dark) })
-        assertEquals(DarkMode.Dark, store.settings.value.darkMode)
+        assertEquals(DarkMode.Dark, store.settings.value.darkMode, "applied at once")
+        assertEquals("settings.json", store.saveProblem.value?.file)
     }
 }

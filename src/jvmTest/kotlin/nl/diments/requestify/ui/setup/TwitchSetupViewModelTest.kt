@@ -239,7 +239,7 @@ class TwitchSetupViewModelTest {
     }
 
     @Test
-    fun logoutThatCannotClearTheAccountChangesNothing() = runTest {
+    fun aLogoutWhoseSettingsCannotBeSavedYetStillLogsOut() = runTest {
         val p = parts(loggedIn = true, account = account)
         // Writing the settings fails while a non-empty directory sits where the file goes.
         val file = dir.resolve("twitch-settings.json")
@@ -249,10 +249,9 @@ class TwitchSetupViewModelTest {
 
         p.vm.onLogout()
         runCurrent()
-        assertTrue(p.vm.saveFailed.value)
-        assertEquals(TwitchAuthStatus.LoggedIn, p.auth.status.value, "still logged in")
-        assertEquals("r0", p.secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
-        assertEquals(account, p.settings.settings.value.twitch.account)
+        assertEquals(false, p.vm.saveFailed.value)
+        assertEquals(null, p.settings.settings.value.twitch.account, "applied at once, saving retried")
+        assertEquals(null, p.secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
     }
 
     @Test

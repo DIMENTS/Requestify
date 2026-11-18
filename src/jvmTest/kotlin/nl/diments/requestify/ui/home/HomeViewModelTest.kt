@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.intake.FakeShortLinks
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -97,7 +98,7 @@ class HomeViewModelTest {
             clock = { testScheduler.currentTime },
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val parts = intakeParts(dir, controller, catalog, settings, backgroundScope, shortLinks) { testScheduler.currentTime }
         var ids = 0
         val vm = HomeViewModel(
@@ -522,25 +523,18 @@ class HomeViewModelTest {
     private fun blacklistBlocked(home: Home) = java.nio.file.Files.createDirectory(dir.resolve("blacklist.json.tmp"))
 
     @Test
-    fun aBlockThatCannotBeSavedDoesNotSkipAndSaysSoUntilABlockSucceeds() = runTest {
+    fun aBlockWhoseFileCannotBeWrittenYetStillBlocksAndSkips() = runTest {
         val home = home()
         home.player.plays(track("now"))
         home.controller.start()
         settle()
-        blacklistBlocked(home) // the blacklist cannot write its temp file
+        blacklistBlocked(home) // the blacklist cannot write its temp file yet
 
-        home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
-        settle()
-
-        assertEquals(0, home.player.callsTo("skipNext").size)
-        assertEquals(emptyList(), home.parts.blacklist.blacklist.value.tracks)
-        assertEquals(true, home.vm.state.value.blockFailing)
-
-        dir.resolve("blacklist.json.tmp").toFile().delete()
         home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
         settle()
 
         assertEquals(1, home.player.callsTo("skipNext").size)
+        assertEquals(listOf("now"), home.parts.blacklist.blacklist.value.tracks.map { it.track.id }, "applied at once, saving retried")
         assertEquals(false, home.vm.state.value.blockFailing)
     }
 

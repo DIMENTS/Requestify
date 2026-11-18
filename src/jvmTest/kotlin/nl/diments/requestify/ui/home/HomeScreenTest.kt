@@ -37,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.MinimumWindowSize
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
@@ -93,7 +94,7 @@ class HomeScreenTest {
     )
 
     private fun viewModelWith(controller: PlaybackController): HomeViewModel {
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val parts = intakeParts(dir, controller, NoCatalog, settings, scope, clock = { 0L })
         return HomeViewModel(controller, NoCatalog, settings, parts.intake, parts.rejected, scope, clock = { 0L })
     }

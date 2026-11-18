@@ -9,6 +9,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
@@ -23,6 +24,7 @@ class PendingResolveStoreTest {
 
     private fun store() = PendingResolveStore(
         JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer()), retryDelaysMs = emptyList()) { emptyList() },
+        inCallerSaveContext(),
     )
 
     private fun incoming(id: String) = IncomingRequest(

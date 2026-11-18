@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.donations.DonationCursorStore
 import nl.diments.requestify.core.donations.DonationCursors
 import nl.diments.requestify.core.donations.DonationHealth
@@ -63,9 +64,9 @@ class DonationsCardTest {
     private val day = 24 * 3_600_000L
 
     private fun vm(expiry: Long?, health: DonationHealth = DonationHealth()) = DonationsSetupViewModel(
-        settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }),
+        settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext()),
         secrets = InMemorySecretStore(),
-        cursors = DonationCursorStore(JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer()) { DonationCursors() }),
+        cursors = DonationCursorStore(JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer()) { DonationCursors() }, inCallerSaveContext()),
         donoLink = object : DonoLinkFeed {
             override suspend fun me(): DonoLinkResult<DonoLinkMe> = DonoLinkResult.Ok(DonoLinkMe("DIMENTS", expiry))
             override suspend fun activity(since: String, cursor: String?): DonoLinkResult<DonoLinkPage> = error("not used")

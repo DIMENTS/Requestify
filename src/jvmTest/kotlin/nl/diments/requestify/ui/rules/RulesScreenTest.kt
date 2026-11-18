@@ -21,6 +21,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.rules.Rules
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
@@ -44,7 +45,7 @@ class RulesScreenTest {
     }
 
     private fun store(file: Path = dir.resolve("settings.json")) =
-        SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() })
+        SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext())
 
     private fun ComposeUiTest.show(settings: SettingsStore) {
         setContent { RequestifyTheme(BrandSeed, dark = true) { RulesScreen(settings) } }
@@ -129,15 +130,14 @@ class RulesScreenTest {
     }
 
     @Test
-    fun aFailedSaveSaysSoAndKeepsTheValue() = runDesktopComposeUiTest(width = 900, height = 1100) {
+    fun aChangeThatCannotBeSavedYetIsApplied() = runDesktopComposeUiTest(width = 900, height = 1100) {
         // A file where the data folder should be: every save fails.
         val settings = store(dir.resolve("blocker").createFile().resolve("settings.json"))
         show(settings)
 
         onNodeWithContentDescription("Increase Maximum in the queue").performClick()
         waitForIdle()
-        onNodeWithText("Couldn’t save the change. Try again.").assertIsDisplayed()
-        onNodeWithText("25").assertIsDisplayed()
-        assertEquals(25, settings.settings.value.rules.maxQueueLength)
+        onNodeWithText("26").assertIsDisplayed()
+        assertEquals(26, settings.settings.value.rules.maxQueueLength, "applied at once, saving retried")
     }
 }

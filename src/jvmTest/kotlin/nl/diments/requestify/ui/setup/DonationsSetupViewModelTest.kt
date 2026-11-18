@@ -21,6 +21,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.donations.DonationCursor
 import nl.diments.requestify.core.donations.DonationCursorStore
 import nl.diments.requestify.core.donations.DonationCursors
@@ -62,8 +63,8 @@ class DonationsSetupViewModelTest {
         jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) },
     )
 
-    private fun settings() = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
-    private fun cursors() = DonationCursorStore(JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer()) { DonationCursors() })
+    private fun settings() = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
+    private fun cursors() = DonationCursorStore(JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer()) { DonationCursors() }, inCallerSaveContext())
 
     private fun TestScope.vm(settings: SettingsStore = settings(), cursors: DonationCursorStore = cursors()) = DonationsSetupViewModel(
         settings = settings,

@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.intake.FakeShortLinks
@@ -107,7 +108,7 @@ class TwitchChatTest {
             tracks[idB] = track(idB, "Bravo")
             tracks[idC] = track(idC, "Charlie")
         }
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val open = MutableStateFlow(true)
         val player = FakeSpotifyPlayer { testScheduler.currentTime }
         val controller = PlaybackController(
@@ -119,12 +120,14 @@ class TwitchChatTest {
             clock = { testScheduler.currentTime },
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
-        val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() })
+        val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() }, inCallerSaveContext())
         val rejected = RejectedStore(
             JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() },
+            inCallerSaveContext(),
         )
         val pending = PendingResolveStore(
             JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer())) { emptyList() },
+            inCallerSaveContext(),
         )
         val shortLinks = FakeShortLinks()
         val intake = RequestIntake(

@@ -15,9 +15,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.SaveContext
+import nl.diments.requestify.core.storage.inCallerSaveContext
 
-@OptIn(ExperimentalPathApi::class)
+@OptIn(ExperimentalPathApi::class, ExperimentalCoroutinesApi::class)
 class SettingsStoreTest {
     private lateinit var dir: Path
     private lateinit var file: Path
@@ -40,7 +47,7 @@ class SettingsStoreTest {
     @Test
     fun readableSettingsAreLoaded() {
         jsonStore().write(saved)
-        val store = SettingsStore(jsonStore())
+        val store = SettingsStore(jsonStore(), inCallerSaveContext())
         assertEquals(saved, store.settings.value)
         assertFalse(store.loadFailed.value)
     }
@@ -50,7 +57,7 @@ class SettingsStoreTest {
         jsonStore().write(saved)
         val text = file.readText()
         lockedForReading().use {
-            val store = SettingsStore(jsonStore())
+            val store = SettingsStore(jsonStore(), inCallerSaveContext())
             assertEquals(Settings(), store.settings.value, "the app still starts")
             assertTrue(store.loadFailed.value)
             assertFalse(store.tryUpdate { it.copy(darkMode = DarkMode.Light) }, "a change cannot be saved yet")
@@ -60,15 +67,23 @@ class SettingsStoreTest {
     }
 
     @Test
-    fun aChangeOnceTheFileIsReadableKeepsTheSavedSettings() {
+    fun tryUpdateIsFalseOnlyWhileUnreadable() = runTest {
         jsonStore().write(saved)
-        val store = lockedForReading().use { SettingsStore(jsonStore()) }
+        val lock = lockedForReading()
+        val store = SettingsStore(jsonStore(), SaveContext(backgroundScope, { testScheduler.currentTime }, StandardTestDispatcher(testScheduler)))
         assertTrue(store.loadFailed.value)
+        assertFalse(store.tryUpdate { it.copy(language = AppLanguage.Dutch) }, "refused while unreadable")
+
+        lock.close()
+        advanceTimeBy(5_001)
+        runCurrent()
+        assertFalse(store.loadFailed.value, "read again in the background")
+        assertEquals(saved, store.settings.value)
 
         assertTrue(store.tryUpdate { it.copy(language = AppLanguage.Dutch) })
         val expected = saved.copy(language = AppLanguage.Dutch)
-        assertEquals(expected, store.settings.value)
-        assertFalse(store.loadFailed.value)
+        assertEquals(expected, store.settings.value, "applied at once")
+        runCurrent()
         assertEquals(expected, jsonStore().read())
     }
 }

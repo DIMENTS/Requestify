@@ -122,6 +122,17 @@ class JsonFileStoreTest {
         assertEquals(text, dir.listDirectoryEntries("settings.json.corrupt-*").single().readText())
     }
 
+    @Test fun aHeldCorruptFileIsCopiedOnlyOnce() {
+        val path = dir.resolve("settings.json")
+        path.writeText("{\"spotifyClientId\":")
+        Files.newByteChannel(path, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_DELETE).use {
+            assertEquals(Settings(), store(path).read())
+            Thread.sleep(5) // a later read gets another time in its name
+            assertEquals(Settings(), store(path).read())
+        }
+        assertEquals(1, dir.listDirectoryEntries("settings.json.corrupt-*").size, "the same corrupt file is kept once")
+    }
+
     /** Opens [path] the way a program that denies others reading does (a Windows sharing violation for them). */
     private fun lockedForReading(path: Path): SeekableByteChannel =
         Files.newByteChannel(path, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ)

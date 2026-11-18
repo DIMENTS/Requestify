@@ -184,16 +184,15 @@ class TwitchChatModTest {
     }
 
     @Test
-    fun aBlacklistThatCannotBeSavedSaysSoAndSkipsNothing() = runTest {
+    fun aBlacklistWhoseFileCannotBeWrittenStillBlocksAndSkips() = runTest {
         val h = harness(playing = true)
-        java.nio.file.Files.createDirectory(dir.resolve("blacklist.json.tmp")) // the blacklist cannot be written
+        java.nio.file.Files.createDirectory(dir.resolve("blacklist.json.tmp")) // the blacklist cannot be written yet
         h.message("m1", "!blacklist", viewer = "mod1", badges = setOf("moderator"))
 
         awaitUntil("reply") { h.sends.isNotEmpty() }
-        assertEquals("Couldn’t block that song right now.", h.sends.single().message)
-        assertEquals("m1", h.sends.single().replyTo)
-        assertTrue(h.rig.blacklist.blacklist.value.tracks.isEmpty())
-        assertTrue(h.rig.player.callsTo("skipNext").isEmpty())
+        assertEquals(idA, h.rig.blacklist.blacklist.value.tracks.single().track.id, "applied at once, saving retried")
+        assertEquals(1, h.rig.player.callsTo("skipNext").size)
+        assertTrue("Alpha" in h.sends.single().message, h.sends.single().message)
     }
 
     @Test

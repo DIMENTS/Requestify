@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.settings.Settings
@@ -76,7 +77,7 @@ class TwitchSessionTest {
         )
         val secrets = InMemorySecretStore().apply { if (loggedIn) put(SecretKeys.TWITCH_REFRESH_TOKEN, "r0") }
         val auth = TwitchAuth(twitch.http, secrets, clock = { scope.currentTime })
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings-${UUID.randomUUID()}.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings-${UUID.randomUUID()}.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
             .apply { update { it.copy(twitch = TwitchSettings(account = account)) } }
         val connector = FakeConnector()
         private lateinit var created: TwitchSession

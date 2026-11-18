@@ -4,6 +4,7 @@ import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.intake.FakeShortLinks
@@ -30,10 +31,11 @@ internal fun intakeParts(
     shortLinks: ShortLinkResolver = FakeShortLinks(),
     clock: () -> Long,
 ): IntakeParts {
-    val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() })
-    val rejected = RejectedStore(JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() })
+    val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() }, inCallerSaveContext())
+    val rejected = RejectedStore(JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() }, inCallerSaveContext())
     val pending = PendingResolveStore(
         JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer())) { emptyList() },
+        inCallerSaveContext(),
     )
     val intake = RequestIntake(
         controller = controller,

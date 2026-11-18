@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
 import nl.diments.requestify.core.playback.PlaybackController
@@ -74,7 +75,7 @@ class BlacklistScreenTest {
             clock = { 0L },
             ioDispatcher = Dispatchers.Unconfined,
         )
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         return intakeParts(dir, controller, NoCatalog, settings, scope) { 0L }
     }
 

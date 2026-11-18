@@ -29,6 +29,9 @@ class JsonFileStore<T>(
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
     private val default: () -> T,
 ) {
+    /** The file's name, for the "can't save" banner and the Log. */
+    val fileName: String get() = path.fileName.toString()
+
     /**
      * The saved value, or the default when there is no file yet. A corrupt file (not UTF-8, or not the expected
      * JSON) is moved aside and the default is returned. Throws [StoreReadException] when the file cannot be read
@@ -84,7 +87,8 @@ class JsonFileStore<T>(
 
     /**
      * Keeps a corrupt file as `<name>.corrupt-<time>` and returns the default. When it cannot be moved (e.g. held
-     * open by another program) it is copied instead; when that fails too, the read fails, so nothing replaces it.
+     * open by another program) it is copied instead, unless an identical copy is kept already (the file stays in
+     * place, so every read would otherwise add one); when copying fails too, the read fails, so nothing replaces it.
      */
     private fun quarantined(): T {
         val target = path.resolveSibling("${path.fileName}.corrupt-${System.currentTimeMillis()}")
@@ -92,12 +96,21 @@ class JsonFileStore<T>(
             Files.move(path, target, StandardCopyOption.REPLACE_EXISTING)
         } catch (moveFailed: IOException) {
             try {
-                Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING)
+                if (!copyKeptAlready()) Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING)
             } catch (copyFailed: IOException) {
                 moveFailed.addSuppressed(copyFailed)
                 throw StoreReadException(path, moveFailed)
             }
         }
         return default()
+    }
+
+    /** True when a `<name>.corrupt-*` sibling holds exactly the bytes of the file. */
+    private fun copyKeptAlready(): Boolean {
+        val bytes = Files.readAllBytes(path)
+        val parent = path.parent ?: return false
+        return Files.newDirectoryStream(parent, "${path.fileName}.corrupt-*").use { copies ->
+            copies.any { copy -> Files.size(copy) == bytes.size.toLong() && Files.readAllBytes(copy).contentEquals(bytes) }
+        }
     }
 }

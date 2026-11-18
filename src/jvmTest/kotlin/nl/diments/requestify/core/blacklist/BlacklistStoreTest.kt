@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.storage.JsonFileStore
 
@@ -29,7 +30,7 @@ class BlacklistStoreTest {
 
     @AfterTest fun tearDown() { dir.deleteRecursively() }
 
-    private fun store() = BlacklistStore(JsonFileStore(file, Blacklist.serializer(), retryDelaysMs = emptyList()) { Blacklist() })
+    private fun store() = BlacklistStore(JsonFileStore(file, Blacklist.serializer(), retryDelaysMs = emptyList()) { Blacklist() }, inCallerSaveContext())
     private val track = Track("t1", "spotify:track:t1", "Song", listOf("A"), 200_000, false, null, listOf("a1"))
 
     @Test
@@ -73,12 +74,11 @@ class BlacklistStoreTest {
     }
 
     @Test
-    fun failedWriteLeavesTheStateAlone() {
+    fun aFailedWriteKeepsTheChangeAndReportsIt() {
         val store = store()
-        val blocker = Files.createDirectory(dir.resolve("blacklist.json.tmp")) // the temp file cannot be written
-        assertFalse(store.addTrack(track, null, 1))
-        assertEquals(Blacklist(), store.blacklist.value)
-        Files.delete(blocker)
+        Files.createDirectory(dir.resolve("blacklist.json.tmp")) // the temp file cannot be written
         assertTrue(store.addTrack(track, null, 1))
+        assertEquals(listOf(track.id), store.blacklist.value.tracks.map { it.track.id }, "applied at once")
+        assertEquals("blacklist.json", store.saveProblem.value?.file, "the failing save shows")
     }
 }

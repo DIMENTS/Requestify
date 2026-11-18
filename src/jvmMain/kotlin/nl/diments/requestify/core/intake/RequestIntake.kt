@@ -232,11 +232,28 @@ class RequestIntake(
         return true
     }
 
-    /** Moves the queued viewer requests that [matches] to the Rejected list. Own and "added anyway" ones stay. */
-    private suspend fun sweep(reason: RejectReason, matches: (Request) -> Boolean) {
-        controller.removeMatching(RemoveReason.Blacklisted) { queue ->
-            queue.filter { it.isViewerRequest && matches(it) }.filter { listedOrNeedNot(it, reason) }
+    /**
+     * Moves the queued viewer requests that [matches] to the Rejected list. Own and "added anyway" ones stay. Their
+     * entries are listed at once; they leave the queue in the background once those entries are on disk.
+     */
+    private fun sweep(reason: RejectReason, matches: (Request) -> Boolean) {
+        scope.launch {
+            val listed = controller.loadedSnapshot().queue
+                .filter { it.isViewerRequest && matches(it) }
+                .filter { listedOrNeedNot(it, reason) }
+                .mapTo(HashSet()) { it.id }
+            leaveQueueOnceListed(listed)
         }
+    }
+
+    /**
+     * Takes the requests with [ids] out of the queue once their Rejected entries are on disk: a request whose entry
+     * cannot be saved yet stays queued, and a crash in between leaves a duplicate, never a loss.
+     */
+    private suspend fun leaveQueueOnceListed(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        rejected.awaitSaved()
+        controller.removeMatching(RemoveReason.Blacklisted) { queue -> queue.filter { it.id in ids } }
     }
 
     /**
@@ -245,15 +262,17 @@ class RequestIntake(
      * one: a paid request is never just dropped).
      */
     suspend fun removeBlocked(id: String, reason: RejectReason) {
-        controller.removeMatching(RemoveReason.Blacklisted) { queue ->
-            queue.filter { it.id == id }.filter { it.source == RequestSource.MANUAL || listedOrNeedNot(it, reason) }
+        val request = controller.loadedSnapshot().queue.firstOrNull { it.id == id } ?: return
+        if (request.source == RequestSource.MANUAL) {
+            controller.removeMatching(RemoveReason.Blacklisted) { queue -> queue.filter { it.id == id } }
+        } else if (listedOrNeedNot(request, reason)) {
+            leaveQueueOnceListed(setOf(id))
         }
     }
 
     /**
      * Lists a request that leaves the queue for [reason]: true once it is listed or needs no entry (a free request of
-     * a blocked viewer). The entry is written before the request leaves the queue (this runs under the controller's
-     * lock): a request whose entry cannot be written stays queued, and a crash leaves a duplicate, never a loss.
+     * a blocked viewer); false while rejected.json could not be read yet (the request then stays queued).
      */
     private fun listedOrNeedNot(request: Request, reason: RejectReason): Boolean =
         !isListed(request.payment, request.requester) || rejected.add(

@@ -70,7 +70,7 @@ class AppScaffoldTest {
         AppGraph(AppPaths(dataDir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
 
     @Test
-    fun aSettingThatCannotBeSavedSaysSoAndIsNotApplied() = runDesktopComposeUiTest(width = 1180, height = 760) {
+    fun aSettingThatCannotBeSavedYetIsApplied() = runDesktopComposeUiTest(width = 1180, height = 760) {
         // A file where the data folder should be: every save fails, like a file held by another program.
         val graph = graph(dataDir = dir.resolve("blocker").createFile())
         setContent { AppScaffold(graph) }
@@ -79,8 +79,7 @@ class AppScaffoldTest {
 
         onNodeWithText("Dark").performClick()
         waitForIdle()
-        onNodeWithText("Couldn’t save the change. Try again.").assertIsDisplayed()
-        assertEquals(DarkMode.System, graph.settings.settings.value.darkMode)
+        assertEquals(DarkMode.Dark, graph.settings.settings.value.darkMode, "applied at once, saving retried")
     }
 
     @Test

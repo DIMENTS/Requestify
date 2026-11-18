@@ -131,7 +131,7 @@ class SavedFormatCompatTest {
     @Test
     fun settingsV1WithACustomColourIsRead() {
         val file = installed("settings-v1.json", "settings.json")
-        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value
+        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext()).settings.value
         assertEquals(
             Settings(
                 spotifyClientId = "0123456789abcdef0123456789abcdef",
@@ -148,7 +148,7 @@ class SavedFormatCompatTest {
     @Test
     fun settingsV1WithTheAlbumColourIsRead() {
         val file = installed("settings-v1-album.json", "settings.json")
-        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value
+        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext()).settings.value
         assertEquals(Settings(themeMode = ThemeMode.Album), loaded)
         assertNothingMovedAside()
     }
@@ -197,7 +197,7 @@ class SavedFormatCompatTest {
     @Test
     fun oldSettingsWithoutDonationsRead() {
         val file = installed("settings-v1.json", "settings.json")
-        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }).settings.value
+        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext()).settings.value
         assertEquals(DonationSettings(), loaded.donations)
         assertNothingMovedAside()
     }

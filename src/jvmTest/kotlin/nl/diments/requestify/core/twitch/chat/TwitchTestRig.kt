@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.intake.FakeShortLinks
@@ -38,7 +39,7 @@ class TwitchTestRig(scope: TestScope, dir: Path) {
     val events = MutableSharedFlow<EventSubEvent>(extraBufferCapacity = 64)
     val twitch = RecordingTwitchApi()
     val catalog = FakeSpotifyCatalog()
-    val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+    val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
     val open = MutableStateFlow(true)
     val player = FakeSpotifyPlayer { scope.testScheduler.currentTime }
     val controller = PlaybackController(
@@ -50,15 +51,17 @@ class TwitchTestRig(scope: TestScope, dir: Path) {
         clock = { scope.testScheduler.currentTime },
         ioDispatcher = StandardTestDispatcher(scope.testScheduler),
     )
-    val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() })
+    val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() }, inCallerSaveContext())
     val rejected = RejectedStore(
         JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() },
+        inCallerSaveContext(),
     )
     val shortLinks = FakeShortLinks()
     val intake = RequestIntake(
         controller, catalog, settings, blacklist, rejected,
         PendingResolveStore(
             JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer())) { emptyList() },
+            inCallerSaveContext(),
         ),
         open,
         CoroutineScope(scope.backgroundScope.coroutineContext + Job(scope.backgroundScope.coroutineContext[Job])),

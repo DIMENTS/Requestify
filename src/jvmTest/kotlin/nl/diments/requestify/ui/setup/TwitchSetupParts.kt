@@ -4,6 +4,7 @@ import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.secrets.InMemorySecretStore
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.settings.AppLanguage
@@ -35,7 +36,7 @@ internal class TwitchSetupParts(
     val copied = mutableListOf<String>()
     val secrets = InMemorySecretStore().apply { if (loggedIn) put(SecretKeys.TWITCH_REFRESH_TOKEN, "r0") }
     val auth = TwitchAuth(twitch.http, secrets, clock)
-    val settings = SettingsStore(JsonFileStore(dir.resolve("twitch-settings.json"), Settings.serializer()) { Settings() })
+    val settings = SettingsStore(JsonFileStore(dir.resolve("twitch-settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         .apply { update { it.copy(twitch = TwitchSettings(account = account, channelPoints = points)) } }
     private val api = TwitchApi(
         twitch.http,

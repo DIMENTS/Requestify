@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.core.storage.JsonFileStore
 
@@ -24,6 +25,7 @@ class DonationCursorStoreTest {
 
     private fun store() = DonationCursorStore(
         JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer(), retryDelaysMs = emptyList()) { DonationCursors() },
+        inCallerSaveContext(),
     )
 
     @Test
@@ -47,8 +49,11 @@ class DonationCursorStoreTest {
     }
 
     @Test
-    fun aFailedSaveSaysSo() {
+    fun aFailedSaveIsReported() {
         dir.resolve("donations.json.tmp").resolve("blocker").createDirectories()
-        assertFalse(store().save(DonationSourceKind.DonoLink, DonationCursor("x")))
+        val store = store()
+        assertTrue(store.save(DonationSourceKind.DonoLink, DonationCursor("x")), "applied at once, saving retried")
+        assertEquals(DonationCursor("x"), store.get(DonationSourceKind.DonoLink))
+        assertEquals("donations.json", store.saveProblem.value?.file)
     }
 }

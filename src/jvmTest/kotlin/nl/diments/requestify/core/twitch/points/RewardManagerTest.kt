@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.settings.ChannelPointsSettings
 import nl.diments.requestify.core.settings.Settings
@@ -46,7 +47,7 @@ class RewardManagerTest {
 
     private class Harness(dir: Path, scope: CoroutineScope, language: AppLanguage, points: ChannelPointsSettings) {
         val helix = FakeRewardsHelix()
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
             .apply { update { it.copy(twitch = TwitchSettings(channelPoints = points)) } }
         val events = MutableSharedFlow<EventSubEvent>(extraBufferCapacity = 16)
         val open = MutableStateFlow(true)

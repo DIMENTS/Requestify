@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.donations.Donation
 import nl.diments.requestify.core.donations.DonationCursor
 import nl.diments.requestify.core.donations.DonationCursorStore
@@ -84,6 +85,7 @@ class DonoLinkSourceTest {
 
     private fun cursors() = DonationCursorStore(
         JsonFileStore(dir.resolve("donations.json"), DonationCursors.serializer(), retryDelaysMs = emptyList()) { DonationCursors() },
+        inCallerSaveContext(),
     )
 
     /** Every hand-over (calls) and what a handler that drops known ids would keep (kept). */

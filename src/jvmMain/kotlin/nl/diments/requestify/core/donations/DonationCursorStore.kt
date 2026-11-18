@@ -1,9 +1,12 @@
 package nl.diments.requestify.core.donations
 
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.storage.PersistedState
+import nl.diments.requestify.core.storage.SaveContext
+import nl.diments.requestify.core.storage.SaveProblem
 
 /**
  * How far a donation source has read: everything recorded before [since] (ISO-8601 UTC) is handled, and so are the
@@ -18,8 +21,17 @@ data class DonationCursor(val since: String, val seenAtSince: Set<String> = empt
 data class DonationCursors(val donoLink: DonationCursor? = null, val streamElements: DonationCursor? = null)
 
 /** Each donation source's [DonationCursor], kept across restarts. */
-class DonationCursorStore(file: JsonFileStore<DonationCursors>) {
-    private val state = PersistedState(file) { DonationCursors() }
+class DonationCursorStore(file: JsonFileStore<DonationCursors>, context: SaveContext) {
+    private val state = PersistedState(file, context) { DonationCursors() }
+
+    /** Set while the file cannot be saved (the change stays and is retried). */
+    val saveProblem: StateFlow<SaveProblem?> get() = state.saveProblem
+
+    /** Returns once every change made before this call is on disk. */
+    suspend fun awaitSaved() = state.awaitSaved()
+
+    /** [awaitSaved] with a deadline: true when everything was saved in time. */
+    suspend fun flush(timeoutMs: Long): Boolean = state.flush(timeoutMs)
 
     fun get(kind: DonationSourceKind): DonationCursor? = when (kind) {
         DonationSourceKind.DonoLink -> state.value.value.donoLink
@@ -27,7 +39,7 @@ class DonationCursorStore(file: JsonFileStore<DonationCursors>) {
         DonationSourceKind.None -> null
     }
 
-    /** False when it could not be saved (the source then keeps it in memory and saves it after its next page). */
+    /** False only while donations.json could not be read yet (the source then keeps it in memory and saves it after its next page). */
     fun save(kind: DonationSourceKind, cursor: DonationCursor): Boolean = state.change { all ->
         when (kind) {
             DonationSourceKind.DonoLink -> all.copy(donoLink = cursor)

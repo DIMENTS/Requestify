@@ -22,6 +22,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.blacklist.Blacklist
 import nl.diments.requestify.core.blacklist.BlacklistStore
 import nl.diments.requestify.core.model.Payment
@@ -42,6 +43,7 @@ import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.ShortLinkAnswer
 import nl.diments.requestify.core.spotify.SpotifyResult
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.SaveContext
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalPathApi::class)
 class RequestIntakeTest {
@@ -53,7 +55,7 @@ class RequestIntakeTest {
     private val catalog = FakeSpotifyCatalog()
     private val shortLinks = FakeShortLinks()
     private val settings by lazy {
-        SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
     }
     private val open = MutableStateFlow(true)
 
@@ -95,8 +97,8 @@ class RequestIntakeTest {
             clock = { testScheduler.currentTime },
             ioDispatcher = StandardTestDispatcher(testScheduler),
         )
-        val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() })
-        val rejected = RejectedStore(JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() })
+        val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() }, saves())
+        val rejected = RejectedStore(JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() }, saves())
         val pending = pendingStore()
         val intake = RequestIntake(
             controller, catalog, settings, blacklist, rejected, pending, open,
@@ -106,8 +108,11 @@ class RequestIntakeTest {
         return Parts(controller, blacklist, rejected, pending, intake, job)
     }
 
-    private fun pendingStore() =
-        PendingResolveStore(JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer())) { emptyList() })
+    /** The stores save in the background on the test scheduler, as in the app. */
+    private fun TestScope.saves() = SaveContext(backgroundScope, { testScheduler.currentTime }, StandardTestDispatcher(testScheduler))
+
+    private fun TestScope.pendingStore() =
+        PendingResolveStore(JsonFileStore(dir.resolve("pending.json"), ListSerializer(IncomingRequest.serializer())) { emptyList() }, saves())
 
     @Test
     fun linkResolvesAndIsQueuedWithPosition() = runTest {
@@ -226,6 +231,7 @@ class RequestIntakeTest {
         val paid = incoming("p1", payment = Payment.Bits(500), source = RequestSource.BITS)
         val first = parts()
         assertEquals(IntakeOutcome.Pending, first.intake.submit(paid))
+        runCurrent()
         assertEquals(listOf(paid), pendingStore().pending.value) // on disk
         first.job.cancel() // the app is closed
 
@@ -363,6 +369,7 @@ class RequestIntakeTest {
         runCurrent()
 
         assertTrue(p.intake.blockViewer("u1", "v", "mod"))
+        runCurrent()
 
         assertTrue(p.controller.queue.value.items.isEmpty())
         assertEquals(listOf("paid"), p.rejected.entries.value.map { it.id })
@@ -400,7 +407,7 @@ class RequestIntakeTest {
     }
 
     @Test
-    fun sweepLeavesARequestQueuedWhenItsRejectedEntryCannotBeWritten() = runTest {
+    fun aSweptRequestLeavesTheQueueOnlyOnceItsEntryIsOnDisk() = runTest {
         val p = parts()
         p.controller.enqueue(Request("paid", track("t-paid", "Bad", "bad"), Requester("V", "v", "u1"), RequestSource.BITS, Payment.Bits(100), 1L))
         runCurrent()
@@ -411,10 +418,19 @@ class RequestIntakeTest {
         assertTrue(p.intake.blockArtist("bad", "Bad", null))
         runCurrent()
 
-        assertEquals(listOf("paid"), p.controller.queue.value.items.map { it.id })
+        assertEquals(listOf("paid"), p.controller.queue.value.items.map { it.id }, "stays queued while its entry is not on disk")
         assertTrue(events.filterIsInstance<RequestEvent.Removed>().isEmpty())
-        assertTrue(p.rejected.entries.value.isEmpty())
+        assertEquals(listOf("paid"), p.rejected.entries.value.map { it.id }, "listed at once, saving retried")
+
+        healWrites("rejected.json")
+        advanceTimeBy(30_000); runCurrent()
+        assertTrue(p.controller.queue.value.items.isEmpty(), "leaves the queue once the entry is saved")
+        assertEquals(listOf("paid"), events.filterIsInstance<RequestEvent.Removed>().map { it.request.id })
+        assertEquals(listOf("paid"), rejectedOnDisk())
     }
+
+    private fun rejectedOnDisk(): List<String> =
+        JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() }.read().map { it.id }
 
     @Test
     fun paidRequestIsStillPendingWhenPendingJsonCannotBeWritten() = runTest {
@@ -433,32 +449,33 @@ class RequestIntakeTest {
     }
 
     @Test
-    fun paidRejectionThatCannotBeSavedIsRetriedUntilSaved() = runTest {
+    fun aPaidRejectionIsListedAtOnceAndSavedOnceTheFileWorks() = runTest {
         breakWrites("rejected.json")
         val p = parts()
 
         val out = p.intake.submit(incoming("p1", input = "https://open.spotify.com/album/$idA", payment = Payment.Bits(500), source = RequestSource.BITS))
 
         assertEquals(IntakeOutcome.Rejected(RejectReason.NotATrack("album"), null, listed = true), out)
-        assertTrue(p.rejected.entries.value.isEmpty())
-        advanceTimeBy(5_001); runCurrent()
-        assertTrue(p.rejected.entries.value.isEmpty()) // still broken
-        healWrites("rejected.json")
-        advanceTimeBy(15_001); runCurrent()
         assertEquals(listOf("p1"), p.rejected.entries.value.map { it.id })
+        runCurrent()
+        assertTrue(p.rejected.saveProblem.value != null, "the failing save shows")
+        healWrites("rejected.json")
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(listOf("p1"), rejectedOnDisk())
     }
 
     @Test
-    fun freeRejectionThatCannotBeSavedIsDroppedAndNotListed() = runTest {
+    fun aFreeRejectionIsListedEvenWhileItsFileCannotBeWritten() = runTest {
         breakWrites("rejected.json")
         val p = parts()
 
         val out = p.intake.submit(incoming("r1", input = "https://open.spotify.com/album/$idA"))
-        healWrites("rejected.json")
-        advanceTimeBy(60_000); runCurrent()
 
-        assertEquals(IntakeOutcome.Rejected(RejectReason.NotATrack("album"), null, listed = false), out)
-        assertTrue(p.rejected.entries.value.isEmpty())
+        assertEquals(IntakeOutcome.Rejected(RejectReason.NotATrack("album"), null, listed = true), out)
+        assertEquals(listOf("r1"), p.rejected.entries.value.map { it.id })
+        healWrites("rejected.json")
+        advanceTimeBy(30_000); runCurrent()
+        assertEquals(listOf("r1"), rejectedOnDisk())
     }
 
     /** Collects every [IntakeRecord] the intake reports, from now on. */

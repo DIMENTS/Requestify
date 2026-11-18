@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.builtins.ListSerializer
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.RequestSource
@@ -26,6 +27,7 @@ class RejectedStoreTest {
 
     private fun store() = RejectedStore(
         JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer()), retryDelaysMs = emptyList()) { emptyList() },
+        inCallerSaveContext(),
     )
 
     private fun entry(id: String, paid: Boolean = false, at: Long = 0) = RejectedEntry(

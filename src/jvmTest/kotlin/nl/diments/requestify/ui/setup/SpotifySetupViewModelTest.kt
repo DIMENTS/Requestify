@@ -43,6 +43,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
 import nl.diments.requestify.core.playback.PlaybackController
@@ -77,7 +78,7 @@ class SpotifySetupViewModelTest {
     }
 
     private fun settingsStore() =
-        SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
 
     /**
      * A real [SpotifyAuth] over a mock token endpoint and a loopback receiver on a free port. [openBrowser] plays
@@ -294,25 +295,18 @@ class SpotifySetupViewModelTest {
     }
 
     @Test
-    fun clientIdThatCannotBeSavedSaysSoAndIsSavedAgainOnLogin() = runTest {
+    fun aClientIdThatCannotBeSavedYetIsAppliedAndLoginWorks() = runTest {
         // A file where the settings folder should be: every write fails, like a file held by another program.
         val blocker = dir.resolve("blocker").createFile()
-        val settings = SettingsStore(JsonFileStore(blocker.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(blocker.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val vm = viewModel(settings, auth(settings), backgroundScope)
         vm.onClientIdChange(VALID_ID)
         runCurrent()
-        assertNull(settings.settings.value.spotifyClientId)
-        assertEquals(SaveFailure.ClientId, vm.state.value.saveFailure)
-
-        vm.onLogin()
-        runCurrent()
-        assertFalse(vm.state.value.loggingIn, "no login while the Client ID is not saved")
-
-        blocker.deleteExisting() // the other program let go
-        vm.onLogin()
-        runCurrent()
-        assertEquals(VALID_ID, settings.settings.value.spotifyClientId)
+        assertEquals(VALID_ID, settings.settings.value.spotifyClientId, "applied at once, saving retried")
         assertNull(vm.state.value.saveFailure)
+
+        vm.onLogin()
+        runCurrent()
         assertTrue(vm.state.value.loggingIn)
     }
 

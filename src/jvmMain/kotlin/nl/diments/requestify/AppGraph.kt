@@ -75,6 +75,7 @@ import nl.diments.requestify.core.spotify.auth.SpotifyAuth
 import nl.diments.requestify.core.storage.AppJson
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
+import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.StreamWatcher
@@ -126,7 +127,10 @@ class AppGraph(
         install(WebSockets)
     }
 
-    val settings = SettingsStore(JsonFileStore(paths.settingsFile, Settings.serializer()) { Settings() })
+    /** Where every file is saved: in the background, on the app scope. */
+    private val saveContext = SaveContext(scope, System::currentTimeMillis)
+
+    val settings = SettingsStore(JsonFileStore(paths.settingsFile, Settings.serializer()) { Settings() }, saveContext)
 
     val auth = SpotifyAuth(
         http = http,
@@ -166,10 +170,11 @@ class AppGraph(
         ioDispatcher = Dispatchers.IO,
     )
 
-    val blacklist = BlacklistStore(JsonFileStore(paths.blacklistFile, Blacklist.serializer()) { Blacklist() })
-    val rejected = RejectedStore(JsonFileStore(paths.rejectedFile, ListSerializer(RejectedEntry.serializer())) { emptyList() })
+    val blacklist = BlacklistStore(JsonFileStore(paths.blacklistFile, Blacklist.serializer()) { Blacklist() }, saveContext)
+    val rejected = RejectedStore(JsonFileStore(paths.rejectedFile, ListSerializer(RejectedEntry.serializer())) { emptyList() }, saveContext)
     private val pending = PendingResolveStore(
         JsonFileStore(paths.pendingFile, ListSerializer(IncomingRequest.serializer())) { emptyList() },
+        saveContext,
     )
 
     val intake = RequestIntake(
@@ -314,7 +319,7 @@ class AppGraph(
     )
 
     private val donationCursors =
-        DonationCursorStore(JsonFileStore(paths.donationsFile, DonationCursors.serializer()) { DonationCursors() })
+        DonationCursorStore(JsonFileStore(paths.donationsFile, DonationCursors.serializer()) { DonationCursors() }, saveContext)
     private val donoLinkApi = DonoLinkApi(http, key = { secrets.get(SecretKeys.DONOLINK_KEY) })
     private val streamElementsApi = StreamElementsApi(http, jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) })
 

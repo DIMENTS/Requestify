@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
 import nl.diments.requestify.core.playback.PlaybackController
@@ -80,7 +81,7 @@ class SpotifySetupScreenTest {
         savedLogin: Boolean = false,
         player: FakeSpotifyPlayer = FakeSpotifyPlayer { 0L },
     ): SpotifySetupViewModel {
-        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() })
+        val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val secrets = InMemorySecretStore()
         if (savedLogin) secrets.put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1")
         val auth = SpotifyAuth(
