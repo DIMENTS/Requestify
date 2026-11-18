@@ -117,7 +117,7 @@ const val START_WITH_WINDOWS_TAG = "start-with-windows"
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SettingsScreen(settings: SettingsStore, autostart: Autostart = NoAutostart) {
+fun SettingsScreen(settings: SettingsStore, autostart: Autostart = NoAutostart, about: AboutViewModel? = null) {
     val current by settings.settings.collectAsState()
     var saveFailed by remember { mutableStateOf(false) }
     fun save(change: (Settings) -> Settings) {
@@ -171,6 +171,7 @@ fun SettingsScreen(settings: SettingsStore, autostart: Autostart = NoAutostart) 
             }
         }
         StartupCard(settings, autostart)
+        about?.let { AboutSection(it) }
     }
 }
 

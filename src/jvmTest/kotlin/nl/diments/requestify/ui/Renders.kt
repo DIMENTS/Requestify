@@ -6,6 +6,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.foundation.layout.padding
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
@@ -189,6 +190,71 @@ class Renders {
                         waitUntil(timeoutMillis = 5_000) { graph.saveHealth.problems.value.isNotEmpty() }
                         waitForIdle()
                         capture("save-banner-${if (dark) "dark" else "light"}-$width")
+                    }
+                } finally {
+                    scope.cancel()
+                }
+            }
+        }
+    }
+
+    /** Settings → Over Requestify in each update state, Dutch, dark and light. */
+    @Test
+    fun aboutStates() {
+        if (out == null) return
+        val page = "https://github.com/DIMENTS/Requestify/releases/tag/v0.2.1"
+        val v021 = nl.diments.requestify.core.update.AppVersion(0, 2, 1)
+        val states = listOf(
+            "uptodate" to (nl.diments.requestify.core.update.UpdateState.UpToDate(0) to true),
+            "ready" to (nl.diments.requestify.core.update.UpdateState.Ready(v021, "notes", page) to true),
+            "ready-live" to (nl.diments.requestify.core.update.UpdateState.Ready(v021, "notes", page) to false),
+            "failed" to (nl.diments.requestify.core.update.UpdateState.InstallFailed(v021, page) to true),
+            "checkfailed" to (nl.diments.requestify.core.update.UpdateState.CheckFailed(manual = true) to true),
+        )
+        dutch {
+            for ((name, value) in states) for (dark in listOf(true, false)) {
+                runDesktopComposeUiTest(width = 900, height = 520) {
+                    setContent {
+                        nl.diments.requestify.ui.theme.RequestifyTheme(nl.diments.requestify.ui.theme.BrandSeed, dark) {
+                            androidx.compose.material3.Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.surface) {
+                                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.padding(nl.diments.requestify.ui.theme.Spacing.xl)) {
+                                    nl.diments.requestify.ui.settings.AboutCard("0.2.0", value.first, value.second, hasWizard = true, actions = nl.diments.requestify.ui.settings.AboutActions())
+                                }
+                            }
+                        }
+                    }
+                    waitForIdle()
+                    capture("about-$name-${if (dark) "dark" else "light"}")
+                }
+            }
+        }
+    }
+
+    /** Home after an update, with its card, and the rail's dot while the next one waits; Dutch, dark and light. */
+    @Test
+    fun updatedCardAndDot() {
+        if (out == null) return
+        dutch {
+            for (dark in listOf(true, false)) {
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val dir = createTempDirectory("requestify-render")
+                val store = nl.diments.requestify.core.update.UpdateStore(dir.resolve("updates"))
+                store.saveJustUpdated(nl.diments.requestify.core.update.JustUpdated("0.2.0", "0.2.1", "## Nieuw\n- Een **welkomstwizard**\n- Requestify werkt zichzelf bij"))
+                store.savePending(nl.diments.requestify.core.update.PendingUpdate("0.2.2", "Requestify-0.2.2.msi", "ab", "", ""))
+                try {
+                    runDesktopComposeUiTest(width = 1180, height = 760) {
+                        val graph = AppGraph(
+                            AppPaths(dir, updatesDir = dir.resolve("updates")), InMemorySecretStore(),
+                            MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope,
+                            runningVersion = nl.diments.requestify.core.update.AppVersion(0, 2, 1),
+                        )
+                        graph.settings.tryUpdate {
+                            it.copy(darkMode = if (dark) DarkMode.Dark else DarkMode.Light, spotifyClientId = "0123456789abcdef0123456789abcdef")
+                        }
+                        setContent { AppScaffold(graph, openOn = nl.diments.requestify.ui.Destination.Home) }
+                        Thread.sleep(500)
+                        waitForIdle()
+                        capture("updated-card-${if (dark) "dark" else "light"}")
                     }
                 } finally {
                     scope.cancel()

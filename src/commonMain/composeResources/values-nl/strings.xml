@@ -502,4 +502,22 @@
     <string name="donations_minimum_hint_streamelements_unknown">De valuta van je kanaal is onbekend: het minimum geldt in de valuta van elke tip</string>
     <string name="donations_minimum_invalid">Minstens 0,01</string>
     <string name="donations_no_catch_up">Tips gedaan terwijl Requestify uit staat, worden niet opgehaald.</string>
+    <string name="about_title">Over Requestify</string>
+    <string name="about_version">Versie %1$s</string>
+    <string name="about_check">Zoeken naar updates</string>
+    <string name="about_checking">Zoeken…</string>
+    <string name="about_up_to_date">Je hebt de nieuwste versie</string>
+    <string name="about_check_failed">Kon niet zoeken naar updates</string>
+    <string name="about_ready">Versie %1$s staat klaar</string>
+    <string name="about_ready_hint">Hij wordt geïnstalleerd bij de volgende start, of nu meteen. Spotify speelt intussen gewoon door.</string>
+    <string name="about_update_now">Nu bijwerken</string>
+    <string name="about_update_when_offline">Bijwerken kan als je offline bent en de verzoeken dicht zijn</string>
+    <string name="about_whats_new">Wat is er nieuw</string>
+    <string name="about_install_failed">Bijwerken mislukt</string>
+    <string name="about_download_yourself">Download hem zelf</string>
+    <string name="about_licence">Licentie</string>
+    <string name="about_credits">Credits</string>
+    <string name="about_open_wizard">Welkomstwizard openen</string>
+    <string name="updated_title">Bijgewerkt naar %1$s</string>
+    <string name="updated_close">Sluiten</string>
 </resources>

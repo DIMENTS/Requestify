@@ -280,6 +280,14 @@ class SavedFormatCompatTest {
         )
     }
 
+    /** Which version's "Bijgewerkt" card was closed is kept in settings.json under this name. */
+    @Test
+    fun lastUpdateCardVersionIsPinned() {
+        val json = AppJson.instance.encodeToString(Settings.serializer(), Settings(lastUpdateCardVersion = "0.2.1"))
+        assertTrue(""""lastUpdateCardVersion":"0.2.1"""" in json, json)
+        assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").lastUpdateCardVersion)
+    }
+
     /** The uninstaller's note of the autostart it removed (autostart-removed.json): a later version restores from it. */
     @Test
     fun autostartRemovedMarkerIsPinned() {

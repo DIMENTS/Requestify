@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
@@ -80,6 +83,9 @@ import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.blacklist.BlacklistScreen
 import nl.diments.requestify.ui.home.HomeScreen
+import nl.diments.requestify.ui.home.UpdatedCard
+import nl.diments.requestify.ui.home.showUpdatedCard
+import nl.diments.requestify.core.update.UpdateState
 import nl.diments.requestify.ui.log.LogScreen
 import nl.diments.requestify.ui.rules.RulesScreen
 import nl.diments.requestify.ui.settings.SettingsScreen
@@ -138,6 +144,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
         .collectAsState(graph.home.state.value.nowPlaying?.track)
     val problems by graph.problems.collectAsState()
     val gate by graph.gate.status.collectAsState()
+    val updateState by graph.updates.state.collectAsState()
+    val justUpdated by graph.updates.justUpdated.collectAsState()
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
     val caption = rememberWindowCaption(window, dark)
@@ -172,6 +180,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                             destination = Destination.Home
                             focusAddField = true
                         },
+                        settingsDot = updateState is UpdateState.Ready,
                     )
                     val motion = MaterialTheme.motionScheme
                     // Home is narrow below this width: the banners then take one line, so the queue keeps its room.
@@ -203,6 +212,24 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                                 compact = compactBanners,
                             )
                         }
+                        // After an update, once, on Home: what is new.
+                        val updated = justUpdated
+                        AnimatedVisibility(
+                            visible = destination == Destination.Home && showUpdatedCard(updated, settings.lastUpdateCardVersion),
+                            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                        ) {
+                            if (updated != null) {
+                                UpdatedCard(
+                                    updated,
+                                    onDismiss = {
+                                        graph.settings.tryUpdate { it.copy(lastUpdateCardVersion = updated.to) }
+                                        graph.updates.dismissJustUpdated()
+                                    },
+                                    modifier = Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl),
+                                )
+                            }
+                        }
                         AnimatedContent(
                             targetState = destination,
                             transitionSpec = {
@@ -226,7 +253,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                                     Destination.Rules -> RulesScreen(graph.settings)
                                     Destination.Blacklist -> BlacklistScreen(graph.blacklistScreen)
                                     Destination.Log -> LogScreen(graph.logScreen)
-                                    Destination.Settings -> SettingsScreen(graph.settings, graph.autostart)
+                                    Destination.Settings -> SettingsScreen(graph.settings, graph.autostart, graph.about)
                                 }
                             }
                         }
@@ -237,6 +264,9 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
     }
 }
 
+/** The dot on the rail's Settings item while an update is ready to install. */
+const val SETTINGS_UPDATE_DOT_TAG = "settings-update-dot"
+
 /** The collapsed M3 navigation rail's width; its items are centred in it. */
 internal val CollapsedRailWidth = 96.dp
 
@@ -246,7 +276,7 @@ internal val CollapsedRailWidth = 96.dp
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun AppRail(selected: Destination, onSelect: (Destination) -> Unit, onAdd: () -> Unit) {
+private fun AppRail(selected: Destination, onSelect: (Destination) -> Unit, onAdd: () -> Unit, settingsDot: Boolean = false) {
     WideNavigationRail(
         header = {
             // The rail places its header at its start edge; centre the FAB over the items.
@@ -269,7 +299,19 @@ private fun AppRail(selected: Destination, onSelect: (Destination) -> Unit, onAd
             WideNavigationRailItem(
                 selected = destination == selected,
                 onClick = { onSelect(destination) },
-                icon = { Icon(destination.icon, contentDescription = null) },
+                icon = {
+                    // A quiet dot while an update waits: no banner, no chip, no notification.
+                    BadgedBox(
+                        badge = {
+                            if (destination == Destination.Settings && settingsDot) {
+                                // Good news, not a problem: the theme's primary colour, not the error red.
+                                Badge(Modifier.testTag(SETTINGS_UPDATE_DOT_TAG), containerColor = MaterialTheme.colorScheme.primary)
+                            }
+                        },
+                    ) {
+                        Icon(destination.icon, contentDescription = null)
+                    }
+                },
                 label = { Text(stringResource(destination.label)) },
                 railExpanded = false,
             )

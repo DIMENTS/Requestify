@@ -25,6 +25,8 @@ data class Settings(
     val startWithWindows: Boolean? = null,
     /** The hint "Requestify keeps running in the system tray" was shown (the first time the window was closed). */
     val closeHintShown: Boolean = false,
+    /** The version whose "Bijgewerkt" card the streamer closed: it never shows again for that version. */
+    val lastUpdateCardVersion: String? = null,
 )
 
 /** A DonoLink key that expires at [expiresAtEpochMs] was notified at [stage]: 7 (within a week) or 1 (its last day). */

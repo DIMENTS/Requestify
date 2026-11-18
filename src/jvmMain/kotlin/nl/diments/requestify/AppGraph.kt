@@ -113,6 +113,7 @@ import nl.diments.requestify.core.update.UpdateService
 import nl.diments.requestify.core.update.UpdateStore
 import nl.diments.requestify.core.update.updateHttpClient
 import nl.diments.requestify.ui.blacklist.BlacklistViewModel
+import nl.diments.requestify.ui.settings.AboutViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 import nl.diments.requestify.ui.setup.TwitchSetupViewModel
@@ -451,6 +452,9 @@ class AppGraph(
             clock = System::currentTimeMillis,
         )
     }
+
+    /** Settings → Over Requestify. */
+    val about = AboutViewModel(updates, version = runningVersion?.toString() ?: "dev", openUrl = { url -> browse(url) })
 
     /** The Log: it listens to what the app already reports. */
     val logbook = Logbook(

@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
@@ -72,6 +73,25 @@ class AppScaffoldTest {
     /** A graph that is never started and never reaches the network. */
     private fun graph(dataDir: Path = dir) =
         AppGraph(AppPaths(dataDir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+
+    @Test
+    fun theRailShowsADotWhileAnUpdateIsReady() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        val updates = dir.resolve("updates")
+        nl.diments.requestify.core.update.UpdateStore(updates)
+            .savePending(nl.diments.requestify.core.update.PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "notes", "page"))
+        val installed = AppGraph(
+            AppPaths(dir, updatesDir = updates), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope,
+            runningVersion = nl.diments.requestify.core.update.AppVersion(0, 2, 0),
+        )
+        setContent { AppScaffold(installed) }
+        onNodeWithTag(SETTINGS_UPDATE_DOT_TAG, useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun noUpdateNoDot() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        setContent { AppScaffold(graph()) }
+        onNodeWithTag(SETTINGS_UPDATE_DOT_TAG, useUnmergedTree = true).assertDoesNotExist()
+    }
 
     @Test
     fun openOnShowsThatScreen() = runDesktopComposeUiTest(width = 1180, height = 760) {
