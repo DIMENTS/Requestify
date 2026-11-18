@@ -432,6 +432,10 @@
     <string name="notice_restarted_text">Requestify stopte door een fout en is opnieuw gestart.</string>
     <string name="notice_close_hint_title">Requestify draait door</string>
     <string name="notice_close_hint_text">Je vindt het in het systeemvak. Afsluiten doe je via het menu daar.</string>
+    <string name="tray_tooltip">Requestify — %1$s</string>
+    <string name="tray_cannot_save">Kan %1$s niet opslaan</string>
+    <string name="tray_open">Openen</string>
+    <string name="tray_quit">Afsluiten</string>
     <string name="log_stream_live">Live · verzoeken open</string>
     <string name="log_stream_offline">Offline · verzoeken dicht</string>
     <string name="log_stream_opened">Verzoeken met de hand geopend</string>

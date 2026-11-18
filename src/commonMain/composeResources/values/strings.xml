@@ -432,6 +432,10 @@
     <string name="notice_restarted_text">Requestify stopped after an error and started again.</string>
     <string name="notice_close_hint_title">Requestify keeps running</string>
     <string name="notice_close_hint_text">It’s in the system tray. Quit it from its menu there.</string>
+    <string name="tray_tooltip">Requestify — %1$s</string>
+    <string name="tray_cannot_save">Can’t save %1$s</string>
+    <string name="tray_open">Open</string>
+    <string name="tray_quit">Quit</string>
     <string name="log_stream_live">Live · requests open</string>
     <string name="log_stream_offline">Offline · requests closed</string>
     <string name="log_stream_opened">Requests opened by hand</string>

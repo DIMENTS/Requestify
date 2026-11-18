@@ -23,6 +23,8 @@ data class Settings(
     val keyExpiryNotified: KeyExpiryNotice? = null,
     /** Start with Windows, as the streamer chose; null: never chosen (the installed app then turns it on once). */
     val startWithWindows: Boolean? = null,
+    /** The hint "Requestify keeps running in the system tray" was shown (the first time the window was closed). */
+    val closeHintShown: Boolean = false,
 )
 
 /** A DonoLink key that expires at [expiresAtEpochMs] was notified at [stage]: 7 (within a week) or 1 (its last day). */

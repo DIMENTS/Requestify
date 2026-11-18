@@ -220,6 +220,14 @@ class SavedFormatCompatTest {
         assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").keyExpiryNotified, "old settings read")
     }
 
+    /** That the first-close hint was shown is kept in settings.json under this name. */
+    @Test
+    fun closeHintShownIsPinned() {
+        val json = AppJson.instance.encodeToString(Settings.serializer(), Settings(closeHintShown = true))
+        assertTrue(""""closeHintShown":true""" in json, json)
+        assertEquals(false, AppJson.instance.decodeFromString(Settings.serializer(), "{}").closeHintShown)
+    }
+
     /** Whether the streamer chose to start with Windows is kept in settings.json under this name. */
     @Test
     fun startWithWindowsIsPinned() {

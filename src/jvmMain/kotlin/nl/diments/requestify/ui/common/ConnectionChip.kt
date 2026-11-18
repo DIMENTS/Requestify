@@ -18,6 +18,10 @@ import nl.diments.requestify.resources.connection_streamelements_disconnected
 import nl.diments.requestify.resources.connection_streamelements_refused
 import nl.diments.requestify.resources.connection_twitch_disconnected
 import nl.diments.requestify.resources.connection_twitch_login_needed
+import org.jetbrains.compose.resources.StringResource
+
+/** The chip's text for this problem, also for the tray's status line. */
+internal fun ConnectionProblem.label(): StringResource = look().text
 
 private fun ConnectionProblem.look(): StatusLook = when (this) {
     is ConnectionProblem.Spotify -> health.look()
