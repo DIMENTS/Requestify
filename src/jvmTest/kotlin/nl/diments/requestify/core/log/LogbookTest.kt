@@ -57,11 +57,11 @@ class LogbookTest {
         dir.resolve("log"), backgroundScope, clock = { testScheduler.currentTime }, io = StandardTestDispatcher(testScheduler),
     )
 
-    private fun TestScope.logbook(store: LogStore = store()) = Logbook(
+    private fun TestScope.logbook(store: LogStore = store(), previousRun: PreviousRun? = null) = Logbook(
         store = store,
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
-        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves),
+        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves, previousRun),
         folding = StandardTestDispatcher(testScheduler),
     ).also {
         it.start()
@@ -139,6 +139,17 @@ class LogbookTest {
         runCurrent()
         assertEquals(LogStep.Refunded, log.row("cp1").latestStep)
         assertFalse(log.row("cp1").isProblem)
+    }
+
+    @Test
+    fun aPreviousRunBecomesOneRow() = runTest {
+        val log = logbook(previousRun = PreviousRun(lastAliveEpochMs = 0, crashLine = "java.lang.IllegalStateException: boom", restarted = true))
+        val row = log.rows.value.single()
+        assertEquals(LogKind.App, row.kind)
+        assertTrue(row.isProblem)
+        val stopped = row.records.single() as LogRecord.AppStopped
+        assertEquals("java.lang.IllegalStateException: boom", stopped.crashLine)
+        assertTrue(stopped.restarted)
     }
 
     @Test

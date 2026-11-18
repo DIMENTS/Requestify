@@ -40,6 +40,8 @@ data class LogInputs(
     val gaps: Flow<LogRecord.GapNoticed> = emptyFlow(),
     /** The files that cannot be saved right now: one Files outage row while any. */
     val saves: Flow<List<SaveProblem>> = emptyFlow(),
+    /** The run before this one, when it did not end properly: one row at start. */
+    val previousRun: PreviousRun? = null,
 )
 
 /**
@@ -91,6 +93,9 @@ class Logbook(
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.connections.collect { inbox.trySend(ConnectionChange(it.first, it.second)) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.gaps.collect { inbox.trySend(it) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.saves.collect { inbox.trySend(SavesChange(it)) } }
+            inputs.previousRun?.let { run ->
+                inbox.trySend(LogRecord.AppStopped("app:${run.lastAliveEpochMs}", clock(), run.lastAliveEpochMs, run.crashLine, run.restarted))
+            }
             launch(start = CoroutineStart.UNDISPATCHED) {
                 changed.collect {
                     val snapshot = synchronized(lock) { records.toList() }
@@ -147,6 +152,7 @@ class Logbook(
                 event.problems.joinToString { "${it.file}: ${it.reason}" }.ifEmpty { null },
             )
             is LogRecord.GapNoticed -> add(event)
+            is LogRecord.AppStopped -> add(event)
         }
     }
 

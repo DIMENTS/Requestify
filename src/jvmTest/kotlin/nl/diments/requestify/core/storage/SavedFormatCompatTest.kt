@@ -165,6 +165,7 @@ class SavedFormatCompatTest {
             LogRecord.ConnectionChanged("c", 1, LogService.Twitch, LogConnectionState.Lost) to "connection",
             LogRecord.StreamChanged("s", 1, LogStreamChange.Live) to "stream",
             LogRecord.GapNoticed("g", 1, RequestSource.BITS, null, 2) to "gap",
+            LogRecord.AppStopped("a", 1, lastAliveEpochMs = 0, crashLine = null, restarted = false) to "app_stopped",
         )
         for ((record, name) in records) {
             val json = AppJson.instance.encodeToString(LogRecord.serializer(), record)
@@ -202,6 +203,13 @@ class SavedFormatCompatTest {
         val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext()).settings.value
         assertEquals(DonationSettings(), loaded.donations)
         assertNothingMovedAside()
+    }
+
+    /** The running marker (running.json) keeps these names: an update must still read the one a crash left. */
+    @Test
+    fun runMarkerIsPinned() {
+        val json = AppJson.instance.encodeToString(nl.diments.requestify.desktop.RunMarker.serializer(), nl.diments.requestify.desktop.RunMarker(1, 2, afterCrash = true, crashFile = "c.txt"))
+        assertEquals("""{"startedAtEpochMs":1,"lastAliveEpochMs":2,"afterCrash":true,"crashFile":"c.txt"}""", json)
     }
 
     /** Which DonoLink expiry step was notified is kept in settings.json under these names. */

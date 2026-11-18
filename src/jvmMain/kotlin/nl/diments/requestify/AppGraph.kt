@@ -58,6 +58,7 @@ import nl.diments.requestify.core.log.ConnectionSnapshot
 import nl.diments.requestify.core.log.LogInputs
 import nl.diments.requestify.core.log.LogService
 import nl.diments.requestify.core.log.LogStore
+import nl.diments.requestify.core.log.PreviousRun
 import nl.diments.requestify.core.log.Logbook
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.playback.SpotifyHealth
@@ -125,6 +126,8 @@ class AppGraph(
     private val scope: CoroutineScope,
     /** Null: Ktor's WebSocket. Tests drive EventSub with a fake one. */
     eventSubConnector: EventSubConnector? = null,
+    /** The run before this one, when it did not end properly: one row in the Log. */
+    previousRun: PreviousRun? = null,
 ) {
     private val http = HttpClient(httpEngine) {
         install(ContentNegotiation) { json(AppJson.instance) }
@@ -430,6 +433,7 @@ class AppGraph(
             ),
             gaps = merge(bitsGaps.gaps, streamElementsSource.gaps),
             saves = saveHealth.problems,
+            previousRun = previousRun,
         ),
     )
 

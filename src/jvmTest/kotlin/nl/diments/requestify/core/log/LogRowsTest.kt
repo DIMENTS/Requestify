@@ -115,4 +115,12 @@ class LogRowsTest {
         assertEquals(LogKind.Gap, row.kind)
         assertTrue(row.isProblem)
     }
+
+    @Test
+    fun appStoppedIsAProblemRow() {
+        val stopped = LogRecord.AppStopped("app:1000", 9_000, lastAliveEpochMs = 1_000, crashLine = "java.lang.IllegalStateException: boom", restarted = true)
+        val row = foldRows(listOf(stopped)).single()
+        assertEquals(LogKind.App, row.kind)
+        assertTrue(row.isProblem)
+    }
 }

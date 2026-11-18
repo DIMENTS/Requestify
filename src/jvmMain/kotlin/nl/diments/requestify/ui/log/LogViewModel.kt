@@ -86,7 +86,7 @@ class LogViewModel(
         LogFilter.All -> true
         // A gap is about requests that may never have come in.
         LogFilter.Requests -> kind == LogKind.Request || kind == LogKind.Gap
-        LogFilter.Connections -> kind == LogKind.Connection || kind == LogKind.Stream
+        LogFilter.Connections -> kind == LogKind.Connection || kind == LogKind.Stream || kind == LogKind.App
         LogFilter.Problems -> isProblem
     }
 

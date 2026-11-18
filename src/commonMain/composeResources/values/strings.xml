@@ -407,6 +407,9 @@
     <string name="log_conn_key_expiring">Key expires soon</string>
     <string name="log_service_log">Log</string>
     <string name="log_service_files">Files</string>
+    <string name="log_app_stopped">Requestify stopped unexpectedly (last active %1$s)</string>
+    <string name="log_app_restarted"> · restarted</string>
+    <string name="log_app_no_crash">No error was recorded: it was ended from outside (Task Manager, or the power went off).</string>
     <string name="log_save_failing">Can’t save: %1$s</string>
     <string name="log_save_restored_after">Couldn’t save · saved after %1$s</string>
     <string name="notice_spotify_login_title">Spotify login expired</string>

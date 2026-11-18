@@ -50,6 +50,17 @@ sealed interface LogRecord {
     @SerialName("stream")
     data class StreamChanged(override val rowId: String, override val atEpochMs: Long, val change: LogStreamChange) : LogRecord
 
+    /** Requestify did not end properly the last time ([PreviousRun]); one row, always a problem. */
+    @Serializable
+    @SerialName("app_stopped")
+    data class AppStopped(
+        override val rowId: String,
+        override val atEpochMs: Long,
+        val lastAliveEpochMs: Long,
+        val crashLine: String? = null,
+        val restarted: Boolean = false,
+    ) : LogRecord
+
     /** Requests of [source] may have been missed from [fromEpochMs] (null: unknown, "before") to [toEpochMs]. */
     @Serializable
     @SerialName("gap")

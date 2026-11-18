@@ -76,6 +76,9 @@ import nl.diments.requestify.resources.log_gap_tips
 import nl.diments.requestify.resources.log_search
 import nl.diments.requestify.resources.log_service_log
 import nl.diments.requestify.resources.log_service_files
+import nl.diments.requestify.resources.log_app_no_crash
+import nl.diments.requestify.resources.log_app_restarted
+import nl.diments.requestify.resources.log_app_stopped
 import nl.diments.requestify.resources.log_save_failing
 import nl.diments.requestify.resources.log_save_restored_after
 import nl.diments.requestify.resources.log_step_fulfilled
@@ -273,6 +276,7 @@ private fun RowChip(row: LogRow) {
             val source = (row.records.first() as LogRecord.GapNoticed).source
             SourceChip(source, gapWhat(source))
         }
+        LogKind.App -> SourceChip(RequestSource.MANUAL, "Requestify")
     }
 }
 
@@ -301,6 +305,7 @@ private fun LogRow.title(zone: ZoneId): String = when (kind) {
     }
     LogKind.Stream -> (records.first() as LogRecord.StreamChanged).change.text(this)
     LogKind.Gap -> (records.first() as LogRecord.GapNoticed).text(zone)
+    LogKind.App -> (records.first() as LogRecord.AppStopped).title(zone)
 }
 
 /** The second line: where a request stands now; null for other rows. */
@@ -387,7 +392,14 @@ private fun LogRecord.text(row: LogRow, zone: ZoneId): String = when (this) {
     is LogRecord.ConnectionChanged -> state.text()
     is LogRecord.StreamChanged -> change.text(row)
     is LogRecord.GapNoticed -> text(zone)
+    is LogRecord.AppStopped -> crashLine ?: stringResource(Res.string.log_app_no_crash)
 }
+
+/** "Requestify stopped unexpectedly (last active 21:14)", and " · restarted" when it started itself again. */
+@Composable
+private fun LogRecord.AppStopped.title(zone: ZoneId): String =
+    stringResource(Res.string.log_app_stopped, timeOf(lastAliveEpochMs, zone)) +
+        if (restarted) stringResource(Res.string.log_app_restarted) else ""
 
 @Composable
 private fun Details(row: LogRow, zone: ZoneId, onClose: () -> Unit) {

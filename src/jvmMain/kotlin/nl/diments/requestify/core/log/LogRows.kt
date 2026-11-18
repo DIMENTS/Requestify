@@ -4,7 +4,7 @@ import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.RemoveReason
 
-enum class LogKind { Request, Connection, Stream, Gap }
+enum class LogKind { Request, Connection, Stream, Gap, App }
 
 /**
  * One row of the Log: every record with its [id], in time order. [atEpochMs] is when it began. A stream-end row counts
@@ -53,6 +53,7 @@ private fun rowOf(id: String, records: List<LogRecord>): LogRow {
         is LogRecord.ConnectionChanged -> LogKind.Connection
         is LogRecord.StreamChanged -> LogKind.Stream
         is LogRecord.GapNoticed -> LogKind.Gap
+        is LogRecord.AppStopped -> LogKind.App
     }
     val row = LogRow(id, kind, records.first().atEpochMs, records, isProblem = false)
     return row.copy(isProblem = row.problem())
@@ -70,6 +71,7 @@ private fun LogRow.problem(): Boolean = when (kind) {
     LogKind.Connection -> (records.last() as LogRecord.ConnectionChanged).state != LogConnectionState.Restored
     LogKind.Stream -> false
     LogKind.Gap -> true
+    LogKind.App -> true
 }
 
 private fun LogRow.endsStream() = records.any { it is LogRecord.StreamChanged && it.change == LogStreamChange.StreamEnded }
