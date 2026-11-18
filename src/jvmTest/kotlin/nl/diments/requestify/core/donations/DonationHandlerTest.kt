@@ -196,4 +196,19 @@ class DonationHandlerTest {
         handled(h, donation(id = "dl-2", name = null))
         assertEquals("Anonymous", h.rig.queued.last().requester.displayName)
     }
+
+    @Test
+    fun donorNamesAreCleaned() = runTest {
+        val h = harness()
+        handled(h, donation(id = "dl-1", name = "@victim"))
+        handled(h, donation(id = "dl-2", name = "Jan\n!skip\t\u0007"))
+        handled(h, donation(id = "dl-3", name = " @@ "))
+
+        assertEquals(listOf("victim", "Jan !skip", "Anonymous"), h.rig.queued.map { it.requester.displayName })
+        awaitUntil("the replies") { h.sends.size == 3 }
+        for (reply in h.sends.map { it.message }) {
+            assertTrue('@' !in reply, "no one is tagged: $reply")
+            assertTrue('\n' !in reply, "one line: $reply")
+        }
+    }
 }

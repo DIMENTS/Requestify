@@ -73,7 +73,7 @@ class DonationHandler(
             id = d.id,
             input = d.message,
             linkOnly = true,
-            requester = Requester(d.donorName?.trim()?.takeIf { it.isNotEmpty() } ?: getString(Res.string.donation_anonymous)),
+            requester = Requester(cleanName(d.donorName) ?: getString(Res.string.donation_anonymous)),
             source = d.source,
             payment = Payment.Money(d.amountCents, currency),
             receivedAtEpochMs = clock(),
@@ -111,6 +111,18 @@ class DonationHandler(
             // a reply that cannot be made never loses the request
         }
     }
+
+    /**
+     * A donor's name as it may be shown and said in chat: free text, so without "@" (the broadcaster's account would
+     * tag whoever has that name) and without control characters (a new line could start a command), on one line. Null
+     * when nothing is left.
+     */
+    private fun cleanName(name: String?): String? = name
+        ?.replace("@", "")
+        ?.replace(Regex("\\p{Cntrl}+"), " ")
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
 
     private companion object {
         const val DONOLINK_CURRENCY = "EUR"
