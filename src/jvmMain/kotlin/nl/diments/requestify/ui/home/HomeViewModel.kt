@@ -134,9 +134,10 @@ class HomeViewModel(
             // A short link is followed first; one that leads to no track finds nothing.
             is SpotifyInput.ShortLink -> lookUp(text) {
                 when (val target = intake.followShortLink(input)) {
-                    is ShortLinkTarget.Link -> (target.input as? SpotifyInput.TrackId)
-                        ?.let { catalog.track(it.id).valueOrNull()?.let(::listOf) }
-                        ?: emptyList()
+                    is ShortLinkTarget.Link -> when (val linked = target.input) {
+                        is SpotifyInput.TrackId -> catalog.track(linked.id).valueOrNull()?.let(::listOf)
+                        else -> emptyList()
+                    }
                     ShortLinkTarget.Unresolvable -> emptyList()
                     ShortLinkTarget.Unreachable -> null
                 }

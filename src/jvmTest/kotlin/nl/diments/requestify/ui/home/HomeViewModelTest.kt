@@ -54,6 +54,7 @@ class HomeViewModelTest {
         val searches = mutableListOf<Pair<String, Int>>()
         val lookups = mutableListOf<String>()
         var searchResult: SpotifyResult<List<Track>> = SpotifyResult.Ok(emptyList())
+        var trackFailure: SpotifyResult<Nothing>? = null
 
         override suspend fun searchTracks(query: String, limit: Int): SpotifyResult<List<Track>> {
             searches += query to limit
@@ -66,6 +67,7 @@ class HomeViewModelTest {
 
         override suspend fun track(id: String): SpotifyResult<Track> {
             lookups += id
+            trackFailure?.let { return it }
             return SpotifyResult.Ok(Track(id, "spotify:track:$id", "Linked", listOf("Artist"), 180_000, false, null))
         }
 
@@ -143,6 +145,11 @@ class HomeViewModelTest {
         assertTrue(home.vm.state.value.results.isEmpty())
         assertEquals(AddMessage.NoResults, home.vm.state.value.addMessage)
         assertTrue(home.catalog.searches.isEmpty())
+
+        home.catalog.trackFailure = SpotifyResult.Failed("down")
+        home.vm.onAddInput("https://spotify.link/abc ")
+        settle()
+        assertEquals(AddMessage.SpotifyUnavailable, home.vm.state.value.addMessage, "the track behind it could not be looked up")
     }
 
     @Test
