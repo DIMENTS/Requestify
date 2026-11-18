@@ -176,6 +176,46 @@ object AppIcons {
             .build()
     }
 
+    /** Phosphor "spotify-logo" (fill), MIT licence (see NOTICE). */
+    val SpotifyLogo by phosphor(
+        "SpotifyLogo",
+        "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm31.07,145.74a8,8,0,0,1-10.81,3.33,42.79,42.79,0,0,0-40.52,0," +
+            "8,8,0,0,1-7.48-14.14,59.33,59.33,0,0,1,55.48,0A8,8,0,0,1,159.07,169.74Zm16-28a8,8,0,0,1-10.82,3.3,77.07,77.07,0,0,0-72.48,0," +
+            "8,8,0,0,1-7.52-14.12,93,93,0,0,1,87.52,0A8,8,0,0,1,175.06,141.76Zm16-28a8,8,0,0,1-10.83,3.29,110.62,110.62,0,0,0-104.46,0," +
+            "8,8,0,0,1-7.54-14.12,126.67,126.67,0,0,1,119.54,0A8,8,0,0,1,191.06,113.76Z",
+    )
+
+    /** Phosphor "twitch-logo" (fill), MIT licence (see NOTICE). */
+    val TwitchLogo by phosphor(
+        "TwitchLogo",
+        "M208,32H48A16,16,0,0,0,32,48V192a16,16,0,0,0,16,16H64v32a8,8,0,0,0,13.12,6.15L122.9,208h42.2a16,16,0,0,0,10.25-3.71" +
+            "l42.89-35.75A15.93,15.93,0,0,0,224,156.25V48A16,16,0,0,0,208,32ZM128,136a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Z" +
+            "m48,0a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Z",
+    )
+
+    /** Phosphor "hand-heart" (fill), for donations; MIT licence (see NOTICE). */
+    val HandHeart by phosphor(
+        "HandHeart",
+        "M230.33,141.06a24.34,24.34,0,0,0-18.61-4.77C230.5,117.33,240,98.48,240,80c0-26.47-21.29-48-47.46-48A47.58,47.58,0,0,0,156,48.75," +
+            "47.58,47.58,0,0,0,119.46,32C93.29,32,72,53.53,72,80c0,11,3.24,21.69,10.06,33a31.87,31.87,0,0,0-14.75,8.4L44.69,144H16" +
+            "A16,16,0,0,0,0,160v40a16,16,0,0,0,16,16H120a7.93,7.93,0,0,0,1.94-.24l64-16a6.94,6.94,0,0,0,1.19-.4L226,182.82l.44-.2" +
+            "a24.6,24.6,0,0,0,3.93-41.56Zm-10.9,27.15-38,16.18L119,200H56V155.31l22.63-22.62A15.86,15.86,0,0,1,89.94,128H140" +
+            "a12,12,0,0,1,0,24H112a8,8,0,0,0,0,16h32a8.32,8.32,0,0,0,1.79-.2l67-15.41.31-.08a8.6,8.6,0,0,1,6.3,15.9Z",
+    )
+
+    /** Phosphor "check" (bold), MIT licence (see NOTICE). */
+    val CheckBold by phosphor(
+        "CheckBold",
+        "M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z",
+    )
+
+    /** A Phosphor icon: its 256-unit grid, drawn at 24 dp like the Material ones. */
+    private fun phosphor(name: String, path: String) = lazy {
+        ImageVector.Builder(name, 24.dp, 24.dp, 256f, 256f)
+            .addPath(addPathNodes(path), fill = SolidColor(Color.Black))
+            .build()
+    }
+
     private fun icon(name: String, path: String) = lazy {
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
             .addPath(addPathNodes(path), fill = SolidColor(Color.Black))

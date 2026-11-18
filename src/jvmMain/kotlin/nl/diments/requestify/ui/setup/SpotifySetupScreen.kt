@@ -107,6 +107,8 @@ import nl.diments.requestify.resources.setup_step_redirect_title
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.PageScaffold
 import nl.diments.requestify.ui.common.SpotifyStatusChip
+import nl.diments.requestify.ui.common.PlatformLogo
+import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -142,6 +144,7 @@ private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
     ) {
         Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                PlatformLogo(PlatformMark.Spotify, Modifier.padding(end = Spacing.m))
                 Text(stringResource(Res.string.setup_spotify), style = MaterialTheme.typography.titleLargeEmphasized)
                 Spacer(Modifier.weight(1f))
                 ConnectionBadge(state.auth)

@@ -12,8 +12,12 @@ Material Icons
   https://www.apache.org/licenses/LICENSE-2.0
 
 Phosphor Icons
-  The glyph path of the Requestify mark (AppIcons.RequestifyGlyph in
-  src/jvmMain/kotlin/nl/diments/requestify/ui/common/Icons.kt), "music-notes-plus", comes from
-  Phosphor Icons (https://github.com/phosphor-icons/core).
+  These icon paths in src/jvmMain/kotlin/nl/diments/requestify/ui/common/Icons.kt come from
+  Phosphor Icons (https://github.com/phosphor-icons/core):
+    AppIcons.RequestifyGlyph  "music-notes-plus" (the Requestify mark)
+    AppIcons.SpotifyLogo      "spotify-logo" (fill)
+    AppIcons.TwitchLogo       "twitch-logo" (fill)
+    AppIcons.HandHeart        "hand-heart" (fill)
+    AppIcons.CheckBold        "check" (bold)
   Copyright (c) 2023 Phosphor Icons.
   Licensed under the MIT License: https://opensource.org/licenses/MIT

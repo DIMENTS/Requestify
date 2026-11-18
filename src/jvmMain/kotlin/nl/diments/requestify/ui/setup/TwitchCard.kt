@@ -116,6 +116,8 @@ import nl.diments.requestify.ui.rules.RowDivider
 import nl.diments.requestify.ui.rules.RowMinHeight
 import nl.diments.requestify.ui.rules.RuleText
 import nl.diments.requestify.ui.rules.Stepper
+import nl.diments.requestify.ui.common.PlatformLogo
+import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -159,6 +161,7 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                PlatformLogo(PlatformMark.Twitch, Modifier.padding(end = Spacing.m))
                 Text(stringResource(Res.string.twitch_title), style = MaterialTheme.typography.titleLargeEmphasized)
                 Box(Modifier.weight(1f))
                 ConnectionBadge(

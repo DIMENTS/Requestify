@@ -60,6 +60,8 @@ import nl.diments.requestify.resources.donations_test_failed
 import nl.diments.requestify.resources.donations_testing
 import nl.diments.requestify.resources.donations_title
 import nl.diments.requestify.ui.common.formatShortDate
+import nl.diments.requestify.ui.common.PlatformLogo
+import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
 
@@ -78,6 +80,7 @@ fun DonationsCard(vm: DonationsSetupViewModel) {
     ) {
         Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                PlatformLogo(PlatformMark.Donations, Modifier.padding(end = Spacing.m))
                 Text(stringResource(Res.string.donations_title), style = MaterialTheme.typography.titleLargeEmphasized)
                 Box(Modifier.weight(1f))
                 if (state.kind != DonationSourceKind.None) {

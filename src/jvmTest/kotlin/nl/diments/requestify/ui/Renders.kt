@@ -262,4 +262,28 @@ class Renders {
             }
         }
     }
+
+    /** Connections with the platform logos; Dutch, dark and light. */
+    @Test
+    fun connections() {
+        if (out == null) return
+        dutch {
+            for (dark in listOf(true, false)) {
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val dir = createTempDirectory("requestify-render")
+                try {
+                    runDesktopComposeUiTest(width = 1180, height = 1500) {
+                        val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+                        graph.settings.tryUpdate { it.copy(darkMode = if (dark) DarkMode.Dark else DarkMode.Light) }
+                        setContent { AppScaffold(graph, openOn = nl.diments.requestify.ui.Destination.Connections) }
+                        Thread.sleep(300)
+                        waitForIdle()
+                        capture("connections-${if (dark) "dark" else "light"}")
+                    }
+                } finally {
+                    scope.cancel()
+                }
+            }
+        }
+    }
 }
