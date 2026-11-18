@@ -1,6 +1,8 @@
 package nl.diments.requestify.core.donations.streamelements
 
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.websocket.Frame
@@ -41,6 +43,14 @@ interface AstroSocket {
 /** Opens a connection to an Astro URL; throws when that is not possible. */
 fun interface AstroConnector {
     suspend fun connect(url: String): AstroSocket
+}
+
+/**
+ * The HTTP client for Astro alone: it pings every 30 s, so a connection that died silently (sleep, a network switch)
+ * closes and is tried again. Not the app's shared client: Twitch EventSub closes a connection that sends anything.
+ */
+fun astroHttpClient(engine: HttpClientEngine): HttpClient = HttpClient(engine) {
+    install(WebSockets) { pingIntervalMillis = 30_000 }
 }
 
 /** Connects with Ktor's WebSocket client (the `WebSockets` plugin answers Astro's pings). */

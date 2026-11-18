@@ -15,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import nl.diments.requestify.core.intake.IncomingRequest
@@ -212,5 +213,17 @@ class LogbookTest {
         val took = measureTime { rows = foldRows(records) }
         assertEquals(10_001, rows.size)
         assertTrue(took.inWholeMilliseconds < 1_000, "folded in $took")
+    }
+
+    @Test
+    fun oldRecordsLeaveMemoryOnceADay() = runTest {
+        val log = logbook()
+        gate.tryEmit(GateEvent.WentLive(0, byRead = false))
+        runCurrent()
+        assertEquals(1, log.rows.value.size)
+
+        advanceTimeBy(31 * 24 * 3_600_000L)
+        runCurrent()
+        assertEquals(emptyList(), log.rows.value, "older than 30 days: gone from the screen too, not only from disk")
     }
 }

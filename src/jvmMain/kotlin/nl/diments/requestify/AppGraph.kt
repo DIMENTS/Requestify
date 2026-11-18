@@ -44,6 +44,7 @@ import nl.diments.requestify.core.donations.donolink.DonoLinkApi
 import nl.diments.requestify.core.donations.donolink.DonoLinkSource
 import nl.diments.requestify.core.donations.streamelements.AstroClient
 import nl.diments.requestify.core.donations.streamelements.KtorAstroConnector
+import nl.diments.requestify.core.donations.streamelements.astroHttpClient
 import nl.diments.requestify.core.donations.streamelements.SeResult
 import nl.diments.requestify.core.donations.streamelements.StreamElementsApi
 import nl.diments.requestify.core.donations.streamelements.StreamElementsSource
@@ -330,7 +331,7 @@ class AppGraph(
 
     private val streamElementsSource = StreamElementsSource(
         feed = AstroClient(
-            connector = KtorAstroConnector(http),
+            connector = KtorAstroConnector(astroHttpClient(httpEngine)), // its own client: it pings, EventSub must not
             jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) },
             room = {
                 when (val channel = streamElementsApi.channel()) {

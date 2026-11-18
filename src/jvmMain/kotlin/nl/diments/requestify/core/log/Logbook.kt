@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +50,7 @@ class Logbook(
     private val clock: () -> Long,
     private val inputs: LogInputs,
     private val folding: CoroutineDispatcher = Dispatchers.Default,
+    private val retentionDays: Int = 30,
 ) {
     private val lock = Any()
 
@@ -95,6 +97,15 @@ class Logbook(
             synchronized(lock) { records.addAll(0, saved) }
             saved.forEach(::index)
             changed.value++
+            // Once a day what is older than the retention leaves memory too, like its day files leave the disk.
+            launch {
+                while (true) {
+                    delay(DAY_MS)
+                    val cutoff = clock() - retentionDays * DAY_MS
+                    val removed = synchronized(lock) { records.removeAll { it.atEpochMs < cutoff } }
+                    if (removed) changed.value++
+                }
+            }
             for (event in inbox) {
                 try {
                     handle(event)
@@ -245,3 +256,5 @@ class Logbook(
         }
     }
 }
+
+private const val DAY_MS = 24 * 3_600_000L
