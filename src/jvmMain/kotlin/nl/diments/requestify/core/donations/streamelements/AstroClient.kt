@@ -80,6 +80,14 @@ private class KtorAstroSocket(private val session: DefaultClientWebSocketSession
     }
 }
 
+/** What [StreamElementsSource] needs from the gateway. */
+interface AstroFeed {
+    val tips: SharedFlow<JsonObject>
+    val state: StateFlow<AstroState>
+    fun start()
+    fun stop()
+}
+
 sealed interface AstroState {
     data object Stopped : AstroState
     data object Connecting : AstroState
@@ -104,12 +112,12 @@ class AstroClient(
     private val scope: CoroutineScope,
     private val clock: () -> Long,
     private val url: String = DEFAULT_URL,
-) {
+) : AstroFeed {
     private val _tips = MutableSharedFlow<JsonObject>(extraBufferCapacity = Int.MAX_VALUE)
-    val tips: SharedFlow<JsonObject> = _tips.asSharedFlow()
+    override val tips: SharedFlow<JsonObject> = _tips.asSharedFlow()
 
     private val _state = MutableStateFlow<AstroState>(AstroState.Stopped)
-    val state: StateFlow<AstroState> = _state.asStateFlow()
+    override val state: StateFlow<AstroState> = _state.asStateFlow()
 
     private val _freshSessions = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
     val freshSessions: SharedFlow<Unit> = _freshSessions.asSharedFlow()
@@ -117,7 +125,7 @@ class AstroClient(
     private val lock = Any()
     private var job: Job? = null
 
-    fun start() {
+    override fun start() {
         synchronized(lock) {
             if (job?.isActive == true) return
             _state.value = AstroState.Connecting
@@ -125,7 +133,7 @@ class AstroClient(
         }
     }
 
-    fun stop() {
+    override fun stop() {
         synchronized(lock) {
             job?.cancel()
             job = null
