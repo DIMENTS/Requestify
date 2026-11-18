@@ -15,6 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -76,6 +79,7 @@ import nl.diments.requestify.core.storage.AppJson
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.storage.SaveContext
+import nl.diments.requestify.core.storage.SaveHealth
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.StreamWatcher
@@ -111,7 +115,7 @@ internal const val EXIT_PAUSE_TIMEOUT_MS = 3_000L
  */
 class AppGraph(
     paths: AppPaths,
-    secrets: SecretStore,
+    private val secrets: SecretStore,
     httpEngine: HttpClientEngine = CIO.create(),
     private val scope: CoroutineScope,
     /** Null: Ktor's WebSocket. Tests drive EventSub with a fake one. */
@@ -378,6 +382,17 @@ class AppGraph(
         restartSource = { donationSources.restartCurrent() },
     )
 
+    /** Every file that cannot be saved right now: the one banner, the Log, the tray and the notifier. */
+    val saveHealth = SaveHealth(
+        problems = listOf(
+            settings.saveProblem, blacklist.saveProblem, rejected.saveProblem, pending.saveProblem, donationCursors.saveProblem,
+            gate.saveProblem, redemptionOutbox.saveProblem, secrets.saveProblem,
+        ),
+        queueError = controller.persistError,
+        scope = scope,
+        clock = System::currentTimeMillis,
+    )
+
     /** The Log: it listens to what the app already reports. */
     val logbook = Logbook(
         store = logStore,
@@ -394,6 +409,7 @@ class AppGraph(
                 donationSources.health.mapNotNull { h -> h.service()?.let { it to h.toSnapshot(System.currentTimeMillis()) } },
             ),
             gaps = merge(bitsGaps.gaps, streamElementsSource.gaps),
+            saves = saveHealth.problems,
         ),
     )
 
@@ -494,12 +510,32 @@ class AppGraph(
 
     /**
      * The exit: pauses Requestify's own Channel Points reward (when it is switched on, so viewers cannot redeem it
-     * while nobody is listening), then [stop]s everything. The pause gets [EXIT_PAUSE_TIMEOUT_MS] at most.
+     * while nobody is listening), then [stop]s everything, then waits for what the Log still holds and for every change
+     * still being saved. The pause gets [EXIT_PAUSE_TIMEOUT_MS] at most, and so do the Log and the saves together: a
+     * file that keeps failing never holds the exit up longer.
      */
     suspend fun stopGracefully() {
         withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { withContext(Dispatchers.IO) { rewardManager.pauseForExit() } }
         stop()
-        withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { logStore.stop() } // writes what the Log still holds
+        coroutineScope {
+            launch { withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { logStore.stop() } }
+            launch { flushAll(EXIT_PAUSE_TIMEOUT_MS) }
+        }
+    }
+
+    /** Waits, at most [timeoutMs], until every file is saved; true when all of them were. */
+    suspend fun flushAll(timeoutMs: Long): Boolean = coroutineScope {
+        listOf<suspend () -> Boolean>(
+            { settings.flush(timeoutMs) },
+            { blacklist.flush(timeoutMs) },
+            { rejected.flush(timeoutMs) },
+            { pending.flush(timeoutMs) },
+            { donationCursors.flush(timeoutMs) },
+            { gate.flush(timeoutMs) },
+            { redemptionOutbox.flush(timeoutMs) },
+            { secrets.flush(timeoutMs) },
+            { withTimeoutOrNull(timeoutMs) { controller.awaitSaved() } != null },
+        ).map { flush -> async { flush() } }.awaitAll().all { it }
     }
 
     /** Opens the Spotify login page in the default browser, or shows its address when that is not possible. */

@@ -3,6 +3,7 @@ package nl.diments.requestify.ui
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getBoundsInRoot
@@ -83,6 +84,21 @@ class AppScaffoldTest {
     }
 
     @Test
+    fun aSaveProblemShowsOneBanner() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        // A file where the data folder should be: every save fails.
+        val graph = graph(dataDir = dir.resolve("blocker").createFile())
+        setContent { AppScaffold(graph) }
+        onNode(hasText("Settings") and hasClickAction()).performClick()
+        waitForIdle()
+        onNodeWithText("Dark").performClick()
+        waitUntil(timeoutMillis = 5_000) { graph.saveHealth.problems.value.isNotEmpty() }
+        waitForIdle()
+
+        onAllNodes(hasText("Can’t save ", substring = true)).assertCountEquals(1)
+        onNode(hasText("settings.json", substring = true)).assertIsDisplayed()
+    }
+
+    @Test
     fun settingsThatCannotBeReadStillOpenTheAppAndSaySo() = runDesktopComposeUiTest(width = 1180, height = 760) {
         val settingsFile = AppPaths(dir).settingsFile
         JsonFileStore(settingsFile, Settings.serializer()) { Settings() }
@@ -94,7 +110,7 @@ class AppScaffoldTest {
             setContent { AppScaffold(graph) }
             waitForIdle()
             onNodeWithText(
-                "Couldn’t read your settings, so Requestify uses the defaults for now. Restart Requestify to try again.",
+                "Couldn’t read your settings, so Requestify uses the defaults until it can read them again.",
             ).assertIsDisplayed()
             assertEquals(Settings(), graph.settings.settings.value)
         }

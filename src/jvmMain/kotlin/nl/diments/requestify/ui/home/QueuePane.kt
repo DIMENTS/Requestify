@@ -60,7 +60,6 @@ import nl.diments.requestify.resources.home_queue_title
 import nl.diments.requestify.resources.home_rejected_paid_badge
 import nl.diments.requestify.resources.home_rejected_tab
 import nl.diments.requestify.resources.home_queue_total
-import nl.diments.requestify.resources.home_save_failing
 import nl.diments.requestify.resources.queue_no_requests_yet
 import nl.diments.requestify.resources.queue_then_in_spotify
 import nl.diments.requestify.ui.common.AppIcons
@@ -117,13 +116,6 @@ fun QueuePane(
             exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
         ) {
             ProblemBanner(stringResource(Res.string.home_load_failing))
-        }
-        AnimatedVisibility(
-            visible = state.saveFailing,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
-        ) {
-            ProblemBanner(stringResource(Res.string.home_save_failing))
         }
         AnimatedVisibility(
             visible = state.blockFailing,

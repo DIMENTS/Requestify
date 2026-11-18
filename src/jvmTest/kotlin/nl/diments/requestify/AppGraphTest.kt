@@ -49,6 +49,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.settings.DarkMode
 import nl.diments.requestify.core.donations.DonationCursor
 import nl.diments.requestify.core.donations.DonationCursors
 import nl.diments.requestify.core.donations.DonationStatus
@@ -274,6 +275,38 @@ class AppGraphTest {
             graph.stopGracefully()
             val tookMs = (System.nanoTime() - started) / 1_000_000
             assertTrue(tookMs in 2_500..6_000, "the exit waited $tookMs ms")
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun quitFlushesAChangeMadeJustBefore() = runBlocking {
+        val blocker = dir.resolve("settings.json.tmp").also { it.toFile().mkdirs() } // the first save fails
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), scope)
+            graph.settings.tryUpdate { it.copy(darkMode = DarkMode.Dark) }
+            Thread { Thread.sleep(300); blocker.toFile().deleteRecursively() }.start() // the disk works again
+            withTimeout(10.seconds) { graph.stopGracefully() }
+            val saved = JsonFileStore(AppPaths(dir).settingsFile, Settings.serializer()) { Settings() }.read()
+            assertEquals(DarkMode.Dark, saved.darkMode, "the quit waited for the save that works")
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun quitGivesUpOnAFailingDiskWithinTheBudget() = runBlocking {
+        dir.resolve("settings.json.tmp").toFile().mkdirs() // settings.json can never be saved
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), scope)
+            graph.settings.tryUpdate { it.copy(darkMode = DarkMode.Dark) }
+            val started = System.nanoTime()
+            withTimeout(10.seconds) { graph.stopGracefully() }
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertTrue(tookMs in 2_500..6_000, "the quit waited $tookMs ms for the failing save, then gave up")
         } finally {
             scope.coroutineContext.job.cancelAndJoin()
         }

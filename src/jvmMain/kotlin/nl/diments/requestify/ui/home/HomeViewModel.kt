@@ -42,8 +42,8 @@ sealed interface AddMessage {
 /**
  * Everything the Home screen shows. [handedOver] is the request Spotify has queued but not started yet (it is
  * not in [queue]); [upcoming] is what Spotify itself plays after the requests, without [handedOver];
- * [queueDurationMs] counts the requests only. [saveFailing] is true while the queue could not be saved,
- * [loadFailing] while the saved queue could not be read yet (it is retried). While [lookingUp], [results] still
+ * [queueDurationMs] counts the requests only. A queue that cannot be saved shows in the app-wide save banner;
+ * [loadFailing] is true while the saved queue could not be read yet (it is retried). While [lookingUp], [results] still
  * answer the previous input and must not be acted on.
  */
 data class HomeUiState(
@@ -55,7 +55,6 @@ data class HomeUiState(
     val results: List<Track>,
     val addMessage: AddMessage?,
     val handedOver: Request? = null,
-    val saveFailing: Boolean = false,
     val lookingUp: Boolean = false,
     val loadFailing: Boolean = false,
     val upcoming: List<Track> = emptyList(),
@@ -311,7 +310,6 @@ class HomeViewModel(
         results = add.results,
         addMessage = add.message,
         handedOver = playback.handedOver,
-        saveFailing = storage.persistError != null,
         lookingUp = add.lookingUp,
         loadFailing = storage.loadError != null,
         blockFailing = storage.blockFailed,

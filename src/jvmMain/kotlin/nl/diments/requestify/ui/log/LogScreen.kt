@@ -75,6 +75,9 @@ import nl.diments.requestify.resources.log_gap_bits
 import nl.diments.requestify.resources.log_gap_tips
 import nl.diments.requestify.resources.log_search
 import nl.diments.requestify.resources.log_service_log
+import nl.diments.requestify.resources.log_service_files
+import nl.diments.requestify.resources.log_save_failing
+import nl.diments.requestify.resources.log_save_restored_after
 import nl.diments.requestify.resources.log_step_fulfilled
 import nl.diments.requestify.resources.log_step_handed_over
 import nl.diments.requestify.resources.log_step_ignored
@@ -283,7 +286,14 @@ private fun LogRow.title(zone: ZoneId): String = when (kind) {
     LogKind.Connection -> {
         val changes = records.filterIsInstance<LogRecord.ConnectionChanged>()
         val last = changes.last()
-        if (last.state == LogConnectionState.Restored) {
+        if (last.service == LogService.Files) {
+            val took = shortDuration(last.atEpochMs - changes.first().atEpochMs)
+            if (last.state == LogConnectionState.Restored) {
+                stringResource(Res.string.log_save_restored_after, took)
+            } else {
+                stringResource(Res.string.log_save_failing, changes.first().detail.orEmpty())
+            }
+        } else if (last.state == LogConnectionState.Restored) {
             stringResource(Res.string.log_conn_restored_after, shortDuration(last.atEpochMs - changes.first().atEpochMs))
         } else {
             last.state.text()
@@ -366,6 +376,7 @@ private fun LogService.label(): String = when (this) {
     LogService.DonoLink -> "DonoLink"
     LogService.StreamElements -> "StreamElements"
     LogService.Log -> stringResource(Res.string.log_service_log)
+    LogService.Files -> stringResource(Res.string.log_service_files)
 }
 
 /** One record of a row's timeline, as text. */

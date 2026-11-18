@@ -13,11 +13,13 @@ import kotlin.test.assertTrue
 import kotlin.time.measureTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.intake.IncomingRequest
 import nl.diments.requestify.core.intake.IntakeOutcome
 import nl.diments.requestify.core.intake.IntakeRecord
@@ -47,6 +49,7 @@ class LogbookTest {
     private val gate = MutableSharedFlow<GateEvent>(extraBufferCapacity = 64)
     private val connections = MutableSharedFlow<Pair<LogService, ConnectionSnapshot>>(extraBufferCapacity = 64)
     private val gaps = MutableSharedFlow<LogRecord.GapNoticed>(extraBufferCapacity = 64)
+    private val saves = MutableStateFlow<List<SaveProblem>>(emptyList())
 
     private val track = Track("t1", "spotify:track:t1", "Mr. Brightside", listOf("The Killers"), 222_000, false, null)
 
@@ -58,7 +61,7 @@ class LogbookTest {
         store = store,
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
-        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps),
+        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves),
         folding = StandardTestDispatcher(testScheduler),
     ).also {
         it.start()
@@ -136,6 +139,32 @@ class LogbookTest {
         runCurrent()
         assertEquals(LogStep.Refunded, log.row("cp1").latestStep)
         assertFalse(log.row("cp1").isProblem)
+    }
+
+    @Test
+    fun aSaveOutageIsOneRowUntilItWorks() = runTest {
+        val log = logbook()
+        saves.value = listOf(SaveProblem("settings.json", "disk full", 0))
+        runCurrent()
+        val failing = log.rows.value.single()
+        assertEquals(LogKind.Connection, failing.kind)
+        assertTrue(failing.isProblem)
+        val lost = failing.records.single() as LogRecord.ConnectionChanged
+        assertEquals(LogService.Files, lost.service)
+        assertEquals("settings.json: disk full", lost.detail)
+
+        saves.value = listOf(SaveProblem("settings.json", "disk full", 0), SaveProblem("queue.json", "disk full", 5))
+        runCurrent()
+        assertEquals(1, log.rows.value.size, "one row per outage")
+
+        saves.value = emptyList()
+        runCurrent()
+        val saved = log.rows.value.single()
+        assertEquals(
+            listOf(LogConnectionState.Lost, LogConnectionState.Restored),
+            saved.records.map { (it as LogRecord.ConnectionChanged).state },
+        )
+        assertFalse(saved.isProblem)
     }
 
     @Test

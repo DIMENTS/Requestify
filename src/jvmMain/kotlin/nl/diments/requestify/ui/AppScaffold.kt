@@ -60,6 +60,7 @@ import kotlinx.coroutines.withContext
 import nl.diments.requestify.AppGraph
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.settings.Settings
+import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.spotify.auth.SpotifyAuthStatus
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.nav_add
@@ -69,6 +70,7 @@ import nl.diments.requestify.resources.nav_connections
 import nl.diments.requestify.resources.nav_home
 import nl.diments.requestify.resources.nav_rules
 import nl.diments.requestify.resources.nav_settings
+import nl.diments.requestify.resources.save_problem
 import nl.diments.requestify.resources.settings_load_failed
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
@@ -123,6 +125,10 @@ private const val SEED_ART_SIZE_PX = 128
 fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     val settings by graph.settings.settings.collectAsState()
     val settingsUnreadable by graph.settings.loadFailed.collectAsState()
+    val saveProblems by graph.saveHealth.problems.collectAsState()
+    // What the banner showed last, so it does not go blank while it slides away.
+    var lastSaveProblems by remember { mutableStateOf(emptyList<SaveProblem>()) }
+    if (saveProblems.isNotEmpty() && saveProblems != lastSaveProblems) lastSaveProblems = saveProblems
     val track by remember(graph) { graph.home.state.map { it.nowPlaying?.track }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.nowPlaying?.track)
     val health by remember(graph) { graph.home.state.map { it.health }.distinctUntilChanged() }
@@ -168,6 +174,19 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
                         ) {
                             ProblemBanner(
                                 stringResource(Res.string.settings_load_failed),
+                                Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl),
+                            )
+                        }
+                        // A file that cannot be saved right now: the change stands and saving is retried. The
+                        // technical reason is in the Log.
+                        AnimatedVisibility(
+                            visible = saveProblems.isNotEmpty(),
+                            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                        ) {
+                            val shown = saveProblems.ifEmpty { lastSaveProblems }
+                            ProblemBanner(
+                                stringResource(Res.string.save_problem, shown.joinToString { it.file }),
                                 Modifier.padding(start = Spacing.xl, end = Spacing.xl, top = Spacing.xl),
                             )
                         }

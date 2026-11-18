@@ -202,6 +202,12 @@ class SavedFormatCompatTest {
         assertNothingMovedAside()
     }
 
+    /** A file that could not be saved is logged under this service name. */
+    @Test
+    fun filesServiceNameIsPinned() {
+        assertEquals("\"files\"", AppJson.instance.encodeToString(LogService.serializer(), LogService.Files))
+    }
+
     /** The chosen donation source is saved in settings.json under these names. */
     @Test
     fun donationNamesArePinned() {

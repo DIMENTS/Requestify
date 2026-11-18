@@ -16,7 +16,6 @@
     <string name="queue_then_in_spotify">Daarna in Spotify</string>
     <string name="queue_your_music">Je muziek</string>
     <string name="queue_no_requests_yet">Nog geen verzoeken — nieuwe verzoeken verschijnen hier</string>
-    <string name="home_save_failing">Wachtrij opslaan mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_load_failing">Opgeslagen wachtrij lezen mislukt — wordt opnieuw geprobeerd</string>
     <string name="home_drag_to_reorder">Sleep om te verplaatsen</string>
     <string name="home_paid_request">Betaald verzoek</string>
@@ -129,7 +128,8 @@
     <string name="settings_language_dutch">Nederlands</string>
     <string name="settings_language_restart">De nieuwe taal wordt gebruikt nadat je Requestify opnieuw hebt gestart.</string>
     <string name="save_failed">De wijziging kon niet worden opgeslagen. Probeer het opnieuw.</string>
-    <string name="settings_load_failed">Je instellingen konden niet worden gelezen, dus Requestify gebruikt voorlopig de standaardinstellingen. Start Requestify opnieuw om het nog eens te proberen.</string>
+    <string name="settings_load_failed">Je instellingen konden niet worden gelezen, dus Requestify gebruikt de standaardinstellingen tot dat weer lukt.</string>
+    <string name="save_problem">Kan %1$s niet opslaan. Je wijzigingen blijven staan; Requestify blijft het proberen.</string>
 
     <!-- Title bar -->
     <string name="connection_all_connected">Alles verbonden</string>
@@ -406,6 +406,9 @@
     <string name="log_conn_key_refused">Sleutel geweigerd</string>
     <string name="log_conn_key_expiring">Sleutel verloopt binnenkort</string>
     <string name="log_service_log">Logboek</string>
+    <string name="log_service_files">Bestanden</string>
+    <string name="log_save_failing">Kan niet opslaan: %1$s</string>
+    <string name="log_save_restored_after">Kon niet opslaan · na %1$s opgeslagen</string>
     <string name="log_stream_live">Live · verzoeken open</string>
     <string name="log_stream_offline">Offline · verzoeken dicht</string>
     <string name="log_stream_opened">Verzoeken met de hand geopend</string>

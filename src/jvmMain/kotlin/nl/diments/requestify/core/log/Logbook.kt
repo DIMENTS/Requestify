@@ -23,6 +23,7 @@ import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.RequestEvent
 import nl.diments.requestify.core.stream.GateEvent
+import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.twitch.RedemptionStatus
 import nl.diments.requestify.core.twitch.points.OutboxResult
 
@@ -37,6 +38,8 @@ data class LogInputs(
     val gate: Flow<GateEvent> = emptyFlow(),
     val connections: Flow<Pair<LogService, ConnectionSnapshot>> = emptyFlow(),
     val gaps: Flow<LogRecord.GapNoticed> = emptyFlow(),
+    /** The files that cannot be saved right now: one Files outage row while any. */
+    val saves: Flow<List<SaveProblem>> = emptyFlow(),
 )
 
 /**
@@ -87,6 +90,7 @@ class Logbook(
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.gate.collect { inbox.trySend(it) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.connections.collect { inbox.trySend(ConnectionChange(it.first, it.second)) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.gaps.collect { inbox.trySend(it) } }
+            launch(start = CoroutineStart.UNDISPATCHED) { inputs.saves.collect { inbox.trySend(SavesChange(it)) } }
             launch(start = CoroutineStart.UNDISPATCHED) {
                 changed.collect {
                     val snapshot = synchronized(lock) { records.toList() }
@@ -128,6 +132,8 @@ class Logbook(
 
     private data class ConnectionChange(val service: LogService, val snapshot: ConnectionSnapshot)
 
+    private data class SavesChange(val problems: List<SaveProblem>)
+
     private fun handle(event: Any) {
         when (event) {
             is IntakeRecord -> onIntake(event)
@@ -135,6 +141,11 @@ class Logbook(
             is OutboxResult -> onRefund(event)
             is GateEvent -> onGate(event)
             is ConnectionChange -> onConnection(event.service, event.snapshot)
+            is SavesChange -> onConnection(
+                LogService.Files,
+                if (event.problems.isEmpty()) ConnectionSnapshot.Up else ConnectionSnapshot.Down,
+                event.problems.joinToString { "${it.file}: ${it.reason}" }.ifEmpty { null },
+            )
             is LogRecord.GapNoticed -> add(event)
         }
     }
@@ -194,7 +205,7 @@ class Logbook(
         add(LogRecord.StreamChanged("stream:${event.atEpochMs}:${change.name}", event.atEpochMs, change))
     }
 
-    private fun onConnection(service: LogService, snapshot: ConnectionSnapshot) {
+    private fun onConnection(service: LogService, snapshot: ConnectionSnapshot, detail: String? = null) {
         if (connectionNow[service] == snapshot) return
         connectionNow[service] = snapshot
         val now = clock()
@@ -213,7 +224,7 @@ class Logbook(
             else -> LogConnectionState.KeyExpiring
         }
         val row = open ?: "conn:${service.name}:$now".also { openOutage[service] = it }
-        add(LogRecord.ConnectionChanged(row, now, service, state))
+        add(LogRecord.ConnectionChanged(row, now, service, state, detail))
     }
 
     private fun received(

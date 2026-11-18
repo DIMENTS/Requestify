@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import nl.diments.requestify.core.storage.SaveHealth
 import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.intake.FakeShortLinks
 import nl.diments.requestify.core.model.Request
@@ -341,14 +342,15 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun failingSaveIsFlagged() = runTest {
+    fun aFailingQueueSaveReachesTheSaveHealth() = runTest {
         val home = home()
+        val health = SaveHealth(emptyList(), home.controller.persistError, backgroundScope, clock = { testScheduler.currentTime })
         settle()
-        assertEquals(false, home.vm.state.value.saveFailing)
+        assertEquals(emptyList(), health.problems.value)
         dir.resolve("queue.json.tmp").createDirectory() // the store cannot write its temp file
         home.controller.enqueue(request("r1"))
         settle()
-        assertEquals(true, home.vm.state.value.saveFailing)
+        assertEquals(listOf("queue.json"), health.problems.value.map { it.file }, "the app-wide save banner shows it")
     }
 
     @Test

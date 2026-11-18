@@ -116,6 +116,9 @@ enum class LogService {
 
     /** The Log itself (it could not save). */
     @SerialName("log") Log,
+
+    /** Requestify's own files (one could not be saved). */
+    @SerialName("files") Files,
 }
 
 @Serializable
