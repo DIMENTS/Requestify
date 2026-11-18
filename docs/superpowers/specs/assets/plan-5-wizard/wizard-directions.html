@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Requestify — welkomstwizard</title>
+<style>
+  :root {
+    --bg: #120819; --page: #0d0612;
+    --surface: #1d0f2b; --surface-hi: #281639; --surface-top: #321d47;
+    --primary: #cdb8ff; --on-primary: #2a0e57;
+    --pc: #5a3191; --on-pc: #f0e4ff;
+    --text: #ede2f6; --muted: #b6a5c7; --outline: #4a3a5b;
+    --ok: #86e0a8; --ok-c: #1c4630; --on-ok-c: #b8f5cf;
+    --spring: cubic-bezier(.34, 1.56, .64, 1);
+    --emph: cubic-bezier(.2, 0, 0, 1);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font-family: "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif; }
+  .page-head { max-width: 980px; margin: 28px auto 8px; padding: 0 20px; }
+  .page-head h1 { font-size: 24px; margin: 0 0 6px; font-weight: 650; }
+  .page-head p { margin: 0; color: var(--muted); line-height: 1.5; }
+  .tabs { max-width: 980px; margin: 18px auto 14px; padding: 0 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .tab { background: var(--surface); color: var(--muted); border: 1px solid var(--outline); border-radius: 999px; padding: 9px 18px; font: inherit; font-weight: 600; cursor: pointer; transition: background .25s, color .25s, border-radius .35s var(--spring); }
+  .tab.active { background: var(--primary); color: var(--on-primary); border-color: transparent; border-radius: 12px; }
+  .panel { display: none; max-width: 980px; margin: 0 auto; padding: 0 20px; }
+  .panel.active { display: block; }
+  .explain { color: var(--muted); line-height: 1.55; margin: 14px 2px 0; }
+  .explain b { color: var(--text); }
+  .reset { margin-left: 8px; background: none; border: 1px solid var(--outline); color: var(--muted); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+
+  /* The app window */
+  .window { height: 580px; border-radius: 14px; background: var(--bg); border: 1px solid #2c1c3c; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  .titlebar { height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px; font-size: 14px; font-weight: 600; }
+  .glyph { width: 24px; height: 24px; border-radius: 7px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; }
+  .glyph svg { width: 15px; height: 15px; }
+  .win-body { flex: 1; min-height: 0; position: relative; }
+
+  /* Buttons and fields */
+  .btn { font: inherit; font-weight: 600; font-size: 14px; border-radius: 999px; padding: 10px 20px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: border-radius .3s var(--spring), transform .15s, background .2s; }
+  .btn:active { transform: scale(.96); border-radius: 12px; }
+  .btn.primary { background: var(--primary); color: var(--on-primary); }
+  .btn.tonal { background: var(--pc); color: var(--on-pc); }
+  .btn.outline { background: none; color: var(--text); border: 1px solid var(--outline); }
+  .btn.loading { pointer-events: none; border-radius: 14px; }
+  .btn.loading::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+  .link { background: none; border: none; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; padding: 10px 6px; }
+  .link:hover { color: var(--text); }
+  .input { width: 100%; background: transparent; border: 1px solid var(--outline); border-radius: 10px; padding: 10px 12px; color: var(--text); font: inherit; font-size: 14px; }
+  code { background: var(--surface-top); padding: 7px 10px; border-radius: 8px; font-size: 13px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--outline); border-radius: 999px; overflow: hidden; }
+  .seg button { background: none; border: none; color: var(--muted); padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .2s, color .2s; }
+  .seg button.on { background: var(--pc); color: var(--on-pc); }
+  .code-box { font-size: 30px; letter-spacing: 6px; font-weight: 700; background: var(--surface-top); border-radius: 16px; padding: 14px 22px; display: inline-block; }
+
+  /* Platform icon */
+  .pic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .pic svg { width: 20px; height: 20px; }
+  .pic.spotify { background: #1ed760; }
+  .pic.twitch { background: #9146ff; border-radius: 10px; }
+  .pic.donations { background: #ff9e6b; }
+
+  /* Mini steps inside a platform */
+  .msteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .msteps li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; }
+  .msteps .n { width: 28px; height: 28px; border-radius: 50%; background: var(--pc); color: var(--on-pc); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+  .msteps b { display: block; margin: 3px 0 4px; font-size: 14px; }
+  .msteps p { margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .muted { color: var(--muted); }
+
+  /* Success and motion */
+  .check-big { width: 84px; height: 84px; border-radius: 28px; background: var(--ok-c); color: var(--ok); display: grid; place-items: center; animation: pop .6s var(--spring) both; }
+  .check-big svg { width: 44px; height: 44px; }
+  .check-big path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw .45s .2s ease-out forwards; }
+  @keyframes pop { 0% { transform: scale(.3) rotate(-20deg); opacity: 0; border-radius: 50%; } 70% { transform: scale(1.08) rotate(4deg); opacity: 1; } 100% { transform: scale(1) rotate(0); border-radius: 28px; } }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .rise { animation: rise .45s var(--emph) both; }
+  .stage { transition: opacity .22s, transform .35s var(--emph); }
+  .stage.out { opacity: 0; transform: translateX(-28px); }
+  .stage.in { opacity: 0; transform: translateX(28px); transition: none; }
+  .collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .5s var(--emph), opacity .3s; }
+  .collapse.closed { grid-template-rows: 0fr; opacity: 0; }
+  .collapse > div { overflow: hidden; min-height: 0; }
+
+  /* ---------- A: Stappenpad ---------- */
+  .a-wrap { display: grid; grid-template-columns: 240px 1fr; height: 100%; }
+  .a-rail { list-style: none; margin: 0; padding: 22px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 4px; }
+  .a-item { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 16px; transition: background .3s; }
+  .a-item.active { background: var(--surface-top); }
+  .a-dot { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--surface-hi); color: var(--muted); transition: border-radius .5s var(--spring), background .35s, color .35s, transform .5s var(--spring); }
+  .a-item.active .a-dot { background: var(--primary); color: var(--on-primary); }
+  .a-item.done .a-dot { background: var(--ok-c); color: var(--ok); border-radius: 11px; transform: rotate(360deg); }
+  .a-item.skipped .a-dot { background: transparent; border: 1px dashed var(--outline); }
+  .a-dot svg { width: 18px; height: 18px; }
+  .a-text b { display: block; font-size: 14px; }
+  .a-text small { display: block; font-size: 12px; color: var(--muted); max-height: 0; opacity: 0; transition: max-height .4s var(--emph), opacity .3s; white-space: nowrap; }
+  .a-text small.show { max-height: 18px; opacity: 1; }
+  .a-item.done .a-text small { color: var(--ok); }
+  .a-main { padding: 36px 44px; overflow: auto; }
+  .a-head { display: flex; gap: 14px; align-items: center; margin-bottom: 22px; }
+  .a-head h2 { margin: 0; font-size: 24px; }
+  .a-foot { display: flex; gap: 10px; align-items: center; margin-top: 24px; }
+  .stage { min-height: 100%; display: flex; flex-direction: column; }
+  .stage > .center-col { flex: 1; }
+  .center-col { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; }
+  .center-col h2 { margin: 6px 0 0; font-size: 26px; }
+  .center-col p { margin: 0; color: var(--muted); max-width: 440px; line-height: 1.5; }
+  .hero-glyph { width: 88px; height: 88px; border-radius: 30px; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; animation: pop .7s var(--spring) both; }
+  .hero-glyph svg { width: 48px; height: 48px; }
+  .summary { list-style: none; padding: 0; margin: 4px 0 8px; display: grid; gap: 8px; text-align: left; }
+  .summary li { display: flex; gap: 10px; align-items: center; background: var(--surface); border-radius: 14px; padding: 8px 14px 8px 8px; }
+  .summary .ok { color: var(--ok); font-size: 13px; }
+  .summary .later { color: var(--muted); font-size: 13px; }
+
+  /* ---------- B: Eén kaart ---------- */
+  .b-wrap { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 18px 24px 24px; }
+  .b-top { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 600px; min-height: 40px; }
+  .b-dots { display: flex; gap: 8px; }
+  .b-dots span { width: 8px; height: 8px; border-radius: 99px; background: var(--outline); transition: width .45s var(--spring), background .3s; }
+  .b-dots span.on { width: 26px; background: var(--primary); }
+  .b-dots span.ok { background: var(--ok); }
+  .b-badges { display: flex; gap: 6px; }
+  .b-badge { display: flex; align-items: center; gap: 6px; background: var(--ok-c); color: var(--on-ok-c); border-radius: 999px; padding: 4px 10px 4px 4px; font-size: 12px; font-weight: 600; animation: badge .6s var(--spring) both; }
+  .b-badge .pic { width: 22px; height: 22px; }
+  .b-badge .pic svg { width: 13px; height: 13px; }
+  @keyframes badge { from { transform: translateY(60px) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+  .b-card { margin-top: 14px; width: 100%; max-width: 600px; flex: 1; min-height: 0; background: var(--surface); border-radius: 32px; padding: 30px 34px; overflow: auto; transition: border-radius .5s var(--spring); }
+  .b-card.celebrate { border-radius: 56px; }
+
+  /* ---------- C: Overzicht ---------- */
+  .c-wrap { height: 100%; overflow: auto; padding: 26px 44px; }
+  .c-head h2 { margin: 0 0 4px; font-size: 24px; }
+  .c-head p { margin: 0; color: var(--muted); }
+  .c-progress { margin: 16px 0 18px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+  .c-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-hi); overflow: hidden; }
+  .c-bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--primary); transition: width .7s var(--spring); }
+  .c-tile { background: var(--surface); border-radius: 24px; margin-bottom: 10px; transition: background .4s, border-radius .5s var(--spring); }
+  .c-tile.done { background: var(--surface); border-radius: 18px; }
+  .c-tile-head { display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer; }
+  .c-tile-head h3 { margin: 0; font-size: 16px; flex: 1; }
+  .c-chip { font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: var(--surface-top); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; transition: background .35s, color .35s; }
+  .c-tile.done .c-chip { background: var(--ok-c); color: var(--on-ok-c); }
+  .c-chip svg { width: 13px; height: 13px; }
+  .c-tile-body > div > div { padding: 2px 18px 20px 66px; }
+  .c-tile .pic { transition: transform .5s var(--spring); }
+  .c-tile.done .pic { transform: scale(.82); }
+  .c-tile.done .c-tile-head { padding: 8px 18px; }
+  .c-foot { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+  .btn:disabled { opacity: .38; pointer-events: none; }
+
+  /* Choice row */
+  .pick-wrap { max-width: 980px; margin: 26px auto 40px; padding: 0 20px; }
+  .pick-wrap h3 { margin: 0 0 10px; font-size: 16px; }
+  .options { display: flex; gap: 10px; flex-wrap: wrap; }
+  .option { background: var(--surface); border: 1px solid var(--outline); border-radius: 16px; padding: 12px 18px; cursor: pointer; transition: background .25s, border-radius .35s var(--spring); }
+  .option.selected { background: var(--pc); border-color: var(--primary); border-radius: 26px; }
+  .option b { display: block; }
+  .option span { font-size: 13px; color: var(--muted); }
+  .option.selected span { color: var(--on-pc); }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>Welkomstwizard — welke richting voelt goed?</h1>
+  <p>Drie richtingen, alle drie klikbaar. Klik op de knop om te verbinden (dat doe ik hier na; het duurt even net als echt) en kijk hoe een verbonden platform wordt opgeruimd. <b>Later doen</b> slaat een stap over. Kies onderaan, en zeg in de chat wat je van welke wilt houden.</p>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="a">A · Stappenpad</button>
+  <button class="tab" data-tab="b">B · Eén kaart tegelijk</button>
+  <button class="tab" data-tab="c">C · Overzicht</button>
+</nav>
+
+<section class="panel active" id="panel-a">
+  <div class="window"><div class="titlebar"><span class="glyph g"></span>Requestify</div>
+    <div class="win-body"><div class="a-wrap"><ul class="a-rail" id="a-rail"></ul><div class="a-main"><div class="stage" id="a-stage"></div></div></div></div>
+  </div>
+  <p class="explain"><b>A · Stappenpad.</b> Links staat de hele route, rechts de stap waar je nu bent. Is een platform verbonden, dan krimpt het links tot één regel met een vinkje en je accountnaam, en schuift de wizard zelf door. Je ziet steeds hoe ver je bent. <button class="reset" data-reset="a">Opnieuw</button></p>
+</section>
+
+<section class="panel" id="panel-b">
+  <div class="window"><div class="titlebar"><span class="glyph g"></span>Requestify</div>
+    <div class="win-body"><div class="b-wrap"><div class="b-top"><div class="b-dots" id="b-dots"></div><div class="b-badges" id="b-badges"></div></div><div class="b-card"><div class="stage" id="b-stage"></div></div></div></div>
+  </div>
+  <p class="explain"><b>B · Eén kaart tegelijk.</b> Rust en focus: één grote kaart in het midden, verder niets. Is een platform verbonden, dan springt een groot vinkje op en vliegt het platform als klein plaatje naar boven. De volgende kaart schuift in. Het meest "app-installatie-achtig". <button class="reset" data-reset="b">Opnieuw</button></p>
+</section>
+
+<section class="panel" id="panel-c">
+  <div class="window"><div class="titlebar"><span class="glyph g"></span>Requestify</div>
+    <div class="win-body"><div class="c-wrap" id="c-wrap"></div></div>
+  </div>
+  <p class="explain"><b>C · Overzicht.</b> Alles op één pagina, in de volgorde die de streamer zelf kiest. Eén platform staat open; is het verbonden, dan klapt het dicht tot een compacte regel en gaat het volgende open. De balk bovenaan loopt mee. Alleen Spotify is nodig om te beginnen. <button class="reset" data-reset="c">Opnieuw</button></p>
+</section>
+
+<div class="pick-wrap">
+  <h3>Welke richting wil je?</h3>
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)"><b>A · Stappenpad</b><span>route links, stap rechts</span></div>
+    <div class="option" data-choice="b" onclick="toggleSelect(this)"><b>B · Eén kaart tegelijk</b><span>focus, vinkje vliegt naar boven</span></div>
+    <div class="option" data-choice="c" onclick="toggleSelect(this)"><b>C · Overzicht</b><span>alles op één pagina, klapt dicht</span></div>
+  </div>
+</div>
+
+<script>
+// Standalone: the brainstorm server injected toggleSelect; without it, a click just toggles the selection.
+window.toggleSelect = window.toggleSelect || function (el) { el.classList.toggle("selected"); };
+const GLYPH = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 4v10.6A3.5 3.5 0 1 0 11 17V8h6V4H9zm9 10h-2v2h-2v2h2v2h2v-2h2v-2h-2z"/></svg>';
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const ICONS = {
+  spotify: '<svg viewBox="0 0 24 24" fill="none" stroke="#0b0b0b" stroke-width="2.2" stroke-linecap="round"><path d="M5 9c4.5-1.5 9.5-1 14 1.4"/><path d="M6 12.6c3.8-1.1 7.8-.7 11.4 1.1"/><path d="M7 16c3-.8 6-.5 8.6.8"/></svg>',
+  twitch: '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M10 8v5"/><path d="M15 8v5"/></svg>',
+  donations: '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
+};
+const P = [
+  { id: 'spotify', name: 'Spotify', account: 'lofi_lisa', title: 'Spotify koppelen' },
+  { id: 'twitch', name: 'Twitch', account: 'LofiLisaLive', title: 'Twitch koppelen' },
+  { id: 'donations', name: 'Donaties', account: 'StreamElements', title: 'Donaties koppelen' },
+];
+const byId = id => P.find(p => p.id === id);
+const pic = id => `<span class="pic ${id}">${ICONS[id]}</span>`;
+document.querySelectorAll('.g').forEach(g => g.innerHTML = GLYPH);
+
+function body(id) {
+  if (id === 'spotify') return `
+    <ol class="msteps">
+      <li><span class="n">1</span><div><b>Maak een Spotify-app</b><p>Open het dashboard voor ontwikkelaars, maak een app en vink “Web API” aan.</p><button class="btn tonal">Dashboard openen</button></div></li>
+      <li><span class="n">2</span><div><b>Voeg de redirect-URI toe</b><div class="row"><code>http://127.0.0.1:43821/callback</code><button class="btn outline">Kopiëren</button></div></div></li>
+      <li><span class="n">3</span><div><b>Plak de Client ID</b><input class="input" placeholder="Client ID"></div></li>
+    </ol>`;
+  if (id === 'twitch') return `
+    <p class="muted" style="margin:0 0 12px">Open twitch.tv/activate en vul deze code in. Requestify ziet het vanzelf.</p>
+    <div class="code-box">WDJB-MJHT</div>
+    <p class="muted" style="margin:14px 0 0;font-size:13px">Affiliate of Partner? Dan maakt Requestify ook meteen de Channel Points-beloning.</p>`;
+  return `
+    <p class="muted" style="margin:0 0 12px">Waar komen je donaties binnen?</p>
+    <div class="seg" style="margin-bottom:14px"><button class="on">StreamElements</button><button>DonoLink</button><button>Geen</button></div>
+    <input class="input" placeholder="JWT-token van StreamElements">`;
+}
+function connectLabel(id) { return { spotify: 'Inloggen met Spotify', twitch: 'Twitch openen', donations: 'Testen en verbinden' }[id]; }
+function successView(id) {
+  const p = byId(id);
+  return `<div class="center-col"><div class="check-big">${CHECK}</div><h2 class="rise">${p.name} is verbonden</h2><p class="rise" style="animation-delay:.1s">als <b style="color:var(--text)">${p.account}</b></p></div>`;
+}
+function welcomeView(go) {
+  return `<div class="center-col"><div class="hero-glyph">${GLYPH}</div><h2 class="rise">Welkom bij Requestify</h2>
+    <p class="rise" style="animation-delay:.08s">Je kijkers vragen nummers aan via chat, Channel Points en donaties; Requestify zet ze in je Spotify-wachtrij. Koppel eerst je accounts — een paar minuten werk.</p>
+    <button class="btn primary rise" style="animation-delay:.16s" data-go="${go}">Beginnen</button></div>`;
+}
+function doneView(status, dir) {
+  const rows = P.map(p => status[p.id] === 'done'
+    ? `<li>${pic(p.id)}<span><b>${p.name}</b><br><span class="ok">Verbonden als ${p.account}</span></span></li>`
+    : `<li>${pic(p.id)}<span><b>${p.name}</b><br><span class="later">Kan later, in Koppelingen</span></span></li>`).join('');
+  return `<div class="center-col"><div class="check-big">${CHECK}</div><h2 class="rise">Klaar!</h2>
+    <ul class="summary rise" style="animation-delay:.1s">${rows}</ul>
+    <p class="rise" style="animation-delay:.18s;font-size:13px">Requestify start voortaan met Windows en wacht in het systeemvak tot je live gaat.</p>
+    <button class="btn primary rise" style="animation-delay:.24s" data-reset="${dir}">Requestify openen</button></div>`;
+}
+function swap(el, html, after) {
+  el.classList.add('out');
+  setTimeout(() => {
+    el.innerHTML = html;
+    el.classList.remove('out');
+    el.classList.add('in');
+    void el.offsetWidth; // apply the start position before animating in
+    setTimeout(() => { el.classList.remove('in'); if (after) after(); }, 20);
+  }, 230);
+}
+function simulate(btn, done) {
+  if (btn.classList.contains('loading')) return;
+  btn.classList.add('loading');
+  btn.textContent = 'Verbinden…';
+  setTimeout(done, 1300);
+}
+
+/* ---------- A ---------- */
+const A_STEPS = [{ id: 'welcome', name: 'Welkom' }, ...P.map(p => ({ id: p.id, name: p.name })), { id: 'done', name: 'Klaar' }];
+let A = { step: 0, status: {} };
+function aBuildRail() {
+  document.getElementById('a-rail').innerHTML = A_STEPS.map((s, i) =>
+    `<li class="a-item" data-i="${i}"><span class="a-dot">${i + 1}</span><span class="a-text"><b>${s.name}</b><small></small></span></li>`).join('');
+}
+function aUpdateRail() {
+  document.querySelectorAll('#a-rail .a-item').forEach((li, i) => {
+    const s = A_STEPS[i], st = A.status[s.id];
+    li.className = 'a-item' + (i === A.step ? ' active' : '') + (st === 'done' ? ' done' : '') + (st === 'skipped' ? ' skipped' : '');
+    li.querySelector('.a-dot').innerHTML = st === 'done' ? CHECK : String(i + 1);
+    const small = li.querySelector('small');
+    small.textContent = st === 'done' ? 'Verbonden als ' + byId(s.id).account : st === 'skipped' ? 'Later' : '';
+    small.classList.toggle('show', !!small.textContent);
+  });
+}
+function aView() {
+  const s = A_STEPS[A.step];
+  if (s.id === 'welcome') return welcomeView('a');
+  if (s.id === 'done') return doneView(A.status, 'a');
+  const p = byId(s.id);
+  return `<div class="a-head">${pic(p.id)}<h2>${p.title}</h2></div>${body(p.id)}
+    <div class="a-foot"><button class="btn primary" data-connect="a:${p.id}">${connectLabel(p.id)}</button><button class="link" data-skip="a:${p.id}">Later doen</button></div>`;
+}
+function aGo(step) { A.step = step; aUpdateRail(); swap(document.getElementById('a-stage'), aView()); }
+function aReset() { A = { step: 0, status: {} }; aBuildRail(); aUpdateRail(); document.getElementById('a-stage').innerHTML = aView(); }
+
+/* ---------- B ---------- */
+const B_STEPS = ['welcome', ...P.map(p => p.id), 'done'];
+let B = { step: 0, status: {} };
+function bDots() {
+  document.getElementById('b-dots').innerHTML = B_STEPS.map((id, i) =>
+    `<span class="${i === B.step ? 'on' : ''} ${B.status[id] === 'done' ? 'ok' : ''}"></span>`).join('');
+}
+function bView() {
+  const id = B_STEPS[B.step];
+  if (id === 'welcome') return welcomeView('b');
+  if (id === 'done') return doneView(B.status, 'b');
+  const p = byId(id);
+  return `<div class="a-head">${pic(p.id)}<h2>${p.title}</h2></div>${body(p.id)}
+    <div class="a-foot"><button class="btn primary" data-connect="b:${p.id}">${connectLabel(p.id)}</button><button class="link" data-skip="b:${p.id}">Later doen</button></div>`;
+}
+function bGo(step) { B.step = step; bDots(); swap(document.getElementById('b-stage'), bView()); }
+function bReset() { B = { step: 0, status: {} }; bDots(); document.getElementById('b-badges').innerHTML = ''; document.getElementById('b-stage').innerHTML = bView(); }
+
+/* ---------- C ---------- */
+let C = { open: 'spotify', status: {} };
+function cRender(first) {
+  const wrap = document.getElementById('c-wrap');
+  if (first) {
+    wrap.innerHTML = `<div class="c-head"><h2>Welkom bij Requestify</h2><p>Koppel je accounts in de volgorde die jij wilt. Alleen Spotify is nodig om te beginnen.</p></div>
+      <div class="c-progress"><div class="c-bar"><i id="c-bar"></i></div><span id="c-count"></span></div>
+      ${P.map(p => `<div class="c-tile" id="c-${p.id}">
+        <div class="c-tile-head" data-open="${p.id}">${pic(p.id)}<h3>${p.name}</h3><span class="c-chip"></span></div>
+        <div class="c-tile-body collapse closed"><div><div>${body(p.id)}
+          <div class="a-foot"><button class="btn primary" data-connect="c:${p.id}">${connectLabel(p.id)}</button></div></div></div></div>
+      </div>`).join('')}
+      <div class="c-foot"><button class="btn primary" id="c-finish" disabled>Klaar — Requestify openen</button><span class="muted" style="font-size:13px" id="c-hint">Koppel eerst Spotify</span></div>`;
+  }
+  const n = P.filter(p => C.status[p.id] === 'done').length;
+  document.getElementById('c-bar').style.width = (n / P.length * 100) + '%';
+  document.getElementById('c-count').textContent = `${n} van ${P.length} verbonden`;
+  P.forEach(p => {
+    const tile = document.getElementById('c-' + p.id), done = C.status[p.id] === 'done';
+    tile.classList.toggle('done', done);
+    tile.querySelector('.c-tile-body').classList.toggle('closed', C.open !== p.id);
+    tile.querySelector('.c-chip').innerHTML = done ? `${CHECK} Verbonden als ${p.account}` : 'Niet gekoppeld';
+  });
+  const ready = C.status.spotify === 'done';
+  document.getElementById('c-finish').disabled = !ready;
+  document.getElementById('c-hint').textContent = ready ? (n < P.length ? 'De rest kan later, in Koppelingen' : '') : 'Koppel eerst Spotify';
+}
+function cReset() { C = { open: 'spotify', status: {} }; cRender(true); }
+
+/* ---------- Events ---------- */
+document.addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab.dataset.tab));
+    return;
+  }
+  const go = e.target.closest('[data-go]');
+  if (go) { go.dataset.go === 'a' ? aGo(1) : bGo(1); return; }
+  const reset = e.target.closest('[data-reset]');
+  if (reset) { ({ a: aReset, b: bReset, c: cReset })[reset.dataset.reset](); return; }
+  const seg = e.target.closest('.seg button');
+  if (seg) { seg.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === seg)); return; }
+  const open = e.target.closest('[data-open]');
+  if (open) { C.open = C.open === open.dataset.open ? null : open.dataset.open; cRender(false); return; }
+  const skip = e.target.closest('[data-skip]');
+  if (skip) {
+    const [dir, id] = skip.dataset.skip.split(':');
+    if (dir === 'a') { A.status[id] = 'skipped'; aGo(A.step + 1); } else { B.status[id] = 'skipped'; bGo(B.step + 1); }
+    return;
+  }
+  const btn = e.target.closest('[data-connect]');
+  if (btn) {
+    const [dir, id] = btn.dataset.connect.split(':');
+    simulate(btn, () => {
+      if (dir === 'a') {
+        A.status[id] = 'done'; aUpdateRail();
+        swap(document.getElementById('a-stage'), successView(id));
+        setTimeout(() => aGo(A.step + 1), 1700);
+      } else if (dir === 'b') {
+        B.status[id] = 'done'; bDots();
+        document.querySelector('#panel-b .b-card').classList.add('celebrate');
+        swap(document.getElementById('b-stage'), successView(id));
+        setTimeout(() => {
+          const badge = document.createElement('span');
+          badge.className = 'b-badge'; badge.innerHTML = pic(id) + byId(id).name;
+          document.getElementById('b-badges').appendChild(badge);
+        }, 700);
+        setTimeout(() => { document.querySelector('#panel-b .b-card').classList.remove('celebrate'); bGo(B.step + 1); }, 1800);
+      } else {
+        C.status[id] = 'done';
+        const next = P.find(p => C.status[p.id] !== 'done');
+        C.open = next ? next.id : null;
+        cRender(false);
+      }
+    });
+  }
+});
+
+aReset(); bReset(); cReset();
+</script>
+</body>
+</html>
