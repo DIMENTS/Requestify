@@ -36,6 +36,8 @@ class DonoLinkSource(
     private val scope: CoroutineScope,
     private val clock: () -> Long,
     private val pollMs: Long = 5_000,
+    /** At most this many pages per poll; a long catch-up goes on at the next poll, from the saved cursor. */
+    private val maxPagesPerPoll: Int = 10,
 ) : DonationSource {
     private val lock = Any()
     private var job: Job? = null
@@ -132,6 +134,7 @@ class DonoLinkSource(
         // DonoLink's times may come with a space instead of the T: read leniently, like every other time from it.
         val startMs = parseInstant(start.since) ?: clock()
         var pageCursor: String? = null
+        var pages = 0
         while (true) {
             val page = when (val answer = feed.activity(start.since, pageCursor)) {
                 is DonoLinkResult.Ok -> answer.value
@@ -158,6 +161,7 @@ class DonoLinkSource(
             }
             cursors.save(DonationSourceKind.DonoLink, cursor)
             pageCursor = page.nextCursor
+            if (++pages >= maxPagesPerPoll) return Polled.Done to cursor
             if (!page.hasMore || pageCursor == null) return Polled.Done to cursor
         }
     }

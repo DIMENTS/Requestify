@@ -126,6 +126,21 @@ class DonoLinkSourceTest {
     }
 
     @Test
+    fun catchUpReadsAtMostTenPagesPerPoll() = runTest {
+        val feed = FakeFeed()
+        feed.pageSize = 1
+        val sink = Sink()
+        source(feed, sink)
+        repeat(25) { feed.items += item("don_$it", base + 1_000L * (it + 1)) } // a long time off: 25 pages
+        wait(5_000)
+        assertEquals(10, sink.calls.size, "ten pages, then the next poll goes on")
+        wait(5_000)
+        assertEquals(19, sink.calls.size, "since is inclusive: the page at the cursor comes back once (and is skipped)")
+        wait(5_000)
+        assertEquals((0 until 25).map { "dl-don_$it" }, sink.calls, "all of them, in order, none twice")
+    }
+
+    @Test
     fun theCursorIsSavedOnlyAfterTheRequest() = runTest {
         val feed = FakeFeed()
         val onDisk = CompletableDeferred<Unit>() // the handler returns once the request is on disk

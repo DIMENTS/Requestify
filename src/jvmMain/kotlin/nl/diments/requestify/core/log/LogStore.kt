@@ -137,8 +137,13 @@ class LogStore(
         }
     }
 
-    /** Writes the buffered records, day by day; true when all of them are on disk. */
-    private fun writeBuffered(): Boolean {
+    /** One write at a time: [stop]'s last write must not write a batch the writer is still writing. */
+    private val writeLock = Any()
+
+    /** Writes the buffered records, day by day; true when all of them are on disk. One at a time ([writeLock]). */
+    private fun writeBuffered(): Boolean = synchronized(writeLock) { writeBufferedLocked() }
+
+    private fun writeBufferedLocked(): Boolean {
         val batch = synchronized(lock) { buffer.toList() }
         if (batch.isEmpty()) {
             if (synchronized(lock) { buffer.isEmpty() }) _writeError.value = null

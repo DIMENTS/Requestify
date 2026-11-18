@@ -238,7 +238,10 @@ class TwitchSetupViewModel(
     private fun logOut() {
         val account = store.settings.value.twitch.account
         // The account goes first: when that cannot be saved nothing has changed, and the login is not half undone.
-        if (!save { it.copy(twitch = it.twitch.copy(account = null)) }) return
+        if (!save { it.copy(twitch = it.twitch.copy(account = null)) }) {
+            scope.launch { rewards.resumeAfterExitPause() } // still logged in: the reward follows the requests again
+            return
+        }
         try {
             auth.logout()
         } catch (_: IOException) {
@@ -254,6 +257,7 @@ class TwitchSetupViewModel(
     /** The saved login could not be removed: it stays, so the account that goes with it comes back. */
     private fun restoreAfterFailedLogout(account: TwitchAccount?) {
         if (account != null) store.tryUpdate { it.copy(twitch = it.twitch.copy(account = account)) }
+        scope.launch { rewards.resumeAfterExitPause() }
         _saveFailed.value = true
     }
 

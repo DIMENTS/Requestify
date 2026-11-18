@@ -351,6 +351,15 @@ class RewardManagerTest {
     }
 
     @Test
+    fun aLogoutThatCannotGoOnResumesTheReward() = runBlocking {
+        val h = harness(points = managedPoints).withOwnReward()
+        h.manager.pauseForExit() // the logout pauses it first
+        assertTrue(h.helix.rewards.single().isPaused)
+        h.manager.resumeAfterExitPause() // the logout could not go on: still logged in
+        assertEquals(h.open.value, !h.helix.rewards.single().isPaused, "back to what the requests want (open: not paused)")
+    }
+
+    @Test
     fun pausingForExitPausesOnlyAnOwnEnabledReward() = runBlocking {
         val h = harness(points = managedPoints).withOwnReward()
         h.manager.pauseForExit()

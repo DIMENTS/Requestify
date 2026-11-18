@@ -56,6 +56,22 @@ class LogStoreTest {
     private fun healWrites() { dayFile(today).deleteRecursively() }
 
     @Test
+    fun stopWhileWritingWritesEachRecordOnce() = kotlinx.coroutines.runBlocking {
+        repeat(20) { round ->
+            val roundDir = dir.resolve("round-$round")
+            val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+            val store = LogStore(roundDir, scope, clock = { noon }, zone = ZoneOffset.UTC, io = kotlinx.coroutines.Dispatchers.IO)
+            store.start()
+            repeat(500) { store.append(record(it)) }
+            store.stop() // races the writer that is still busy with the same records
+            scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+            val ids = roundDir.resolve("$today.jsonl").readLines().map { AppJson.instance.decodeFromString(LogRecord.serializer(), it).rowId }
+            assertEquals(500, ids.size, "round $round: every record once, none twice")
+            assertEquals(500, ids.toSet().size)
+        }
+    }
+
+    @Test
     fun appendedRecordsReadBackInOrder() = runTest {
         val store = store()
         store.start()

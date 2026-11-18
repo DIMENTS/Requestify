@@ -253,6 +253,31 @@ class SavedFormatCompatTest {
         assertTrue(""""streamStartedAtEpochMs":5""" in json, json)
     }
 
+    /**
+     * Every file Requestify keeps reads as written by this version: field names may never change (an update must read
+     * what the last one left). Literal JSON, not an encoding of today's classes.
+     */
+    @Test
+    fun everyPersistedTypeHasAFixture() {
+        val json = AppJson.instance
+        assertEquals(
+            nl.diments.requestify.core.donations.DonationCursors(donoLink = nl.diments.requestify.core.donations.DonationCursor("2026-11-18T20:00:00Z", setOf("a"))),
+            json.decodeFromString(nl.diments.requestify.core.donations.DonationCursors.serializer(), """{"donoLink":{"since":"2026-11-18T20:00:00Z","seenAtSince":["a"]},"streamElements":null}"""),
+        )
+        assertEquals(
+            nl.diments.requestify.core.stream.StreamState(live = true, override = false, overrideAfterStream = true, offlineSinceMs = 3, clearPostponed = true, openWithoutTwitch = false, lastSeenLiveMs = 4, streamStartedAtEpochMs = 5),
+            json.decodeFromString(nl.diments.requestify.core.stream.StreamState.serializer(), """{"live":true,"override":false,"overrideAfterStream":true,"offlineSinceMs":3,"clearPostponed":true,"openWithoutTwitch":false,"lastSeenLiveMs":4,"streamStartedAtEpochMs":5}"""),
+        )
+        assertEquals(
+            nl.diments.requestify.core.twitch.points.OutboxEntry("rw", "rd", nl.diments.requestify.core.twitch.RedemptionStatus.CANCELED, tries = 2),
+            json.decodeFromString(nl.diments.requestify.core.twitch.points.OutboxEntry.serializer(), """{"rewardId":"rw","redemptionId":"rd","status":"CANCELED","tries":2}"""),
+        )
+        assertEquals(
+            nl.diments.requestify.desktop.RunMarker(1, 2, afterCrash = true, crashFile = "c.txt"),
+            json.decodeFromString(nl.diments.requestify.desktop.RunMarker.serializer(), """{"startedAtEpochMs":1,"lastAliveEpochMs":2,"afterCrash":true,"crashFile":"c.txt"}"""),
+        )
+    }
+
     /** A file that could not be saved is logged under this service name. */
     @Test
     fun filesServiceNameIsPinned() {

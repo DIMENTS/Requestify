@@ -170,7 +170,7 @@ class AstroClient(
         var failures = 0
         while (true) {
             val socket = try {
-                connector.connect(if (resumeToken != null) "$url?reconnect_token=$resumeToken" else url)
+                connector.connect(resumeToken?.let { "$url?reconnect_token=${java.net.URLEncoder.encode(it, Charsets.UTF_8)}" } ?: url)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

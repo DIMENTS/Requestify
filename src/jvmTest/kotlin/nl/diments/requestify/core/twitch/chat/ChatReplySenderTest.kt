@@ -42,12 +42,15 @@ class ChatReplySenderTest {
         sender.send("hello", "m1")
 
         awaitUntil("first attempt") { twitch.sends.size == 1 }
-        settle()
-        advanceTimeBy(4_000)
-        settle()
-        assertEquals(1, twitch.sends.size)
-        advanceTimeBy(1_500)
-        awaitUntil("retry") { twitch.sends.size == 2 }
+        settle() // the 429 is answered on a real thread; its wait starts once that answer is handled
+        // Step virtual time (each step lets the real threads catch up) until the retry, and see how long it waited.
+        var waited = 0L
+        while (twitch.sends.size < 2 && waited < 10_000) {
+            advanceTimeBy(250)
+            waited += 250
+            settle()
+        }
+        assertTrue(waited in 4_750..6_000, "the retry came after the client's default wait of 5 s, not after $waited ms")
         assertEquals(listOf("hello", "hello"), twitch.sends.map { it.message })
         awaitUntil("remembered") { sender.isOwnMessage("own-1") }
     }

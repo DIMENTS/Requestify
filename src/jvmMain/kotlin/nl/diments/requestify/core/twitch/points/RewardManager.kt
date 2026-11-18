@@ -175,6 +175,9 @@ class RewardManager(
         if (api.updateReward(id, RewardPatch(isPaused = true)) is TwitchResult.Ok) known = null
     }
 
+    /** The exit pause was not followed by an exit (a logout that could not go on): back to what the requests want. */
+    suspend fun resumeAfterExitPause() = sync()
+
     /** Follows the switch, the reward and whether requests are open, and Twitch's own reward events. */
     @Synchronized
     fun start() {

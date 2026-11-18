@@ -134,6 +134,15 @@ class AstroClientTest {
     }
 
     @Test
+    fun theResumeTokenIsUrlEncoded() = runTest {
+        val r = run()
+        val first = r.connector.sockets.single()
+        say(first, welcome, subscribed)
+        say(first, """{"type":"reconnect","data":{"reconnect_token":"a+b/c=&d"}}""")
+        assertEquals("${base}?reconnect_token=a%2Bb%2Fc%3D%26d", r.connector.connects.last().second)
+    }
+
+    @Test
     fun aReconnectMessageResumesWithItsToken() = runTest {
         val r = run()
         val first = r.connector.sockets.single()
