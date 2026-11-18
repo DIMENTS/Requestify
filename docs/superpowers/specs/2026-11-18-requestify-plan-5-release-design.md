@@ -285,7 +285,7 @@ The mockup's texts, colours and timings are guidance, not specification.
 
 ## Review Focus (inputs the tests are most likely to miss)
 
-1. **Install at start while live.** The streamer quits and restarts Requestify mid-stream with an update waiting: `stream.json` shows the stream as live within the grace, so the install waits. A crash restart never installs. The boundary (exactly 10 minutes, a missing or unreadable `stream.json`) must lean towards *not* installing.
+1. **Install at start while live.** The streamer quits and restarts Requestify mid-stream with an update waiting: `stream.json` shows the stream as live within the grace, so the install waits. A crash restart never installs. The boundary must lean towards *not* installing: exactly 10 minutes counts as live, and so does an unreadable `stream.json`. A missing `stream.json` means no stream was ever seen, so it does not block the install; otherwise a streamer without Twitch would never be updated at a start.
 2. **A broken or partial release** (an asset missing, a wrong checksum, a draft published without the MSI): no install, no loop, at most one Log line per version.
 3. **A failing `msiexec`** (disk full, an MSI error, the user cancelling a prompt): the old version is back by itself, the Log says why, and there is no endless retry.
 4. **Upgrade versus uninstall:** an upgrade keeps the autostart choice; only a real uninstall removes it. A reinstall after uninstall restores every connection.
