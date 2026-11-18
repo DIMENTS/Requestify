@@ -102,10 +102,16 @@ fun main(args: Array<String>) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main + crashHandler)
     // Secrets are read and decrypted here, before the window; later changes are saved in the background.
     val secrets = DpapiSecretStore(paths.secretsFile, SaveContext(appScope, System::currentTimeMillis))
-    val graph = AppGraph(paths, secrets, scope = appScope, previousRun = previousRun)
+    val graph = AppGraph(
+        paths,
+        secrets,
+        scope = appScope,
+        previousRun = previousRun,
+        autostart = RunKeyAutostart(JnaRegistry, installation),
+    )
     // The language is read once, before anything is composed; a change applies at the next start.
     localeFor(graph.settings.settings.value.language)?.let(Locale::setDefault)
-    applyAutostartAtStart(graph.settings, RunKeyAutostart(JnaRegistry, installation))
+    applyAutostartAtStart(graph.settings, graph.autostart)
     graph.start()
 
     lateinit var tray: AwtTray

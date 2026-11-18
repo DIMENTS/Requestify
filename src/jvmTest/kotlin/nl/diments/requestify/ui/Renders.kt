@@ -87,6 +87,45 @@ class Renders {
         }
     }
 
+    /** Settings with Start with Windows: on, not installed, switched off in Task Manager; dark and light. */
+    @Test
+    fun settingsStartup() {
+        if (out == null) return
+        dutch {
+            for (state in listOf(
+                nl.diments.requestify.desktop.AutostartState.On,
+                nl.diments.requestify.desktop.AutostartState.Unavailable,
+                nl.diments.requestify.desktop.AutostartState.DisabledInTaskManager,
+            )) for (dark in listOf(true, false)) {
+                val dir = createTempDirectory("requestify-render")
+                val settings = nl.diments.requestify.core.settings.SettingsStore(
+                    nl.diments.requestify.core.storage.JsonFileStore(dir.resolve("settings.json"), nl.diments.requestify.core.settings.Settings.serializer()) {
+                        nl.diments.requestify.core.settings.Settings()
+                    },
+                    nl.diments.requestify.core.storage.inCallerSaveContext(),
+                )
+                val autostart = object : nl.diments.requestify.desktop.Autostart {
+                    override fun state() = state
+                    override fun enable() {}
+                    override fun disable() {}
+                    override fun repairPath() {}
+                }
+                runDesktopComposeUiTest(width = 900, height = 900) {
+                    setContent {
+                        nl.diments.requestify.ui.theme.RequestifyTheme(nl.diments.requestify.ui.theme.BrandSeed, dark) {
+                            androidx.compose.material3.Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.surface) {
+                                nl.diments.requestify.ui.settings.SettingsScreen(settings, autostart)
+                            }
+                        }
+                    }
+                    Thread.sleep(300)
+                    waitForIdle()
+                    capture("settings-startup-${state.name}-${if (dark) "dark" else "light"}")
+                }
+            }
+        }
+    }
+
     @Test
     fun narrowBanners() {
         if (out == null) return

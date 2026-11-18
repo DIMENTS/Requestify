@@ -226,7 +226,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                                     Destination.Rules -> RulesScreen(graph.settings)
                                     Destination.Blacklist -> BlacklistScreen(graph.blacklistScreen)
                                     Destination.Log -> LogScreen(graph.logScreen)
-                                    Destination.Settings -> SettingsScreen(graph.settings)
+                                    Destination.Settings -> SettingsScreen(graph.settings, graph.autostart)
                                 }
                             }
                         }

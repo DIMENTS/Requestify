@@ -59,6 +59,8 @@ import nl.diments.requestify.core.log.LogInputs
 import nl.diments.requestify.core.log.LogService
 import nl.diments.requestify.core.log.LogStore
 import nl.diments.requestify.core.log.PreviousRun
+import nl.diments.requestify.desktop.Autostart
+import nl.diments.requestify.desktop.NoAutostart
 import nl.diments.requestify.core.log.Logbook
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.playback.SpotifyHealth
@@ -128,6 +130,8 @@ class AppGraph(
     eventSubConnector: EventSubConnector? = null,
     /** The run before this one, when it did not end properly: one row in the Log. */
     previousRun: PreviousRun? = null,
+    /** Starting with Windows: the installed app's Run key, or nothing (tests, `gradlew run`). */
+    val autostart: Autostart = NoAutostart,
 ) {
     private val http = HttpClient(httpEngine) {
         install(ContentNegotiation) { json(AppJson.instance) }

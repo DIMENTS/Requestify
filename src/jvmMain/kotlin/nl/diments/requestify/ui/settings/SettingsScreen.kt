@@ -45,6 +45,21 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import nl.diments.requestify.resources.settings_start_hidden
+import nl.diments.requestify.resources.settings_start_disabled_in_task_manager
+import nl.diments.requestify.resources.settings_start_only_installed
+import nl.diments.requestify.resources.settings_start_with_windows
+import nl.diments.requestify.resources.settings_startup
+import nl.diments.requestify.desktop.NoAutostart
+import nl.diments.requestify.desktop.AutostartState
+import nl.diments.requestify.desktop.Autostart
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.settings.DarkMode
 import nl.diments.requestify.core.settings.Settings
@@ -92,13 +107,17 @@ private val SwatchSize = 48.dp
 
 private enum class ColourSource { Album, Custom }
 
+/** The "Start with Windows" switch, for tests. */
+const val START_WITH_WINDOWS_TAG = "start-with-windows"
+
 /**
- * Settings → Appearance. Every change is saved at once; colour and theme apply at once, language at next start.
- * A change that cannot be saved is not applied, and the screen says so until a later change saves.
+ * Settings → Appearance and Start-up. Every change applies at once (language at the next start); one that cannot be
+ * made because the settings cannot be read yet says so. Start with Windows follows Windows itself ([autostart]): it
+ * is read and switched off the UI thread, and a choice is remembered so a start never undoes it.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SettingsScreen(settings: SettingsStore) {
+fun SettingsScreen(settings: SettingsStore, autostart: Autostart = NoAutostart) {
     val current by settings.settings.collectAsState()
     var saveFailed by remember { mutableStateOf(false) }
     fun save(change: (Settings) -> Settings) {
@@ -149,6 +168,48 @@ fun SettingsScreen(settings: SettingsStore) {
                         onSelect = { language -> save { it.copy(language = language) } },
                     )
                 }
+            }
+        }
+        StartupCard(settings, autostart)
+    }
+}
+
+/** Settings → Start-up: start with Windows, hidden in the tray. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun StartupCard(settings: SettingsStore, autostart: Autostart) {
+    val scope = rememberCoroutineScope()
+    var state by remember(autostart) { mutableStateOf<AutostartState?>(null) }
+    LaunchedEffect(autostart) { state = withContext(Dispatchers.IO) { autostart.state() } }
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
+            Text(stringResource(Res.string.settings_startup), style = MaterialTheme.typography.titleLargeEmphasized)
+            Setting(
+                Res.string.settings_start_with_windows,
+                hint = when (state) {
+                    AutostartState.Unavailable -> Res.string.settings_start_only_installed
+                    AutostartState.DisabledInTaskManager -> Res.string.settings_start_disabled_in_task_manager
+                    else -> Res.string.settings_start_hidden
+                },
+            ) {
+                Switch(
+                    checked = state == AutostartState.On,
+                    enabled = state != null && state != AutostartState.Unavailable,
+                    onCheckedChange = { on ->
+                        settings.tryUpdate { it.copy(startWithWindows = on) }
+                        scope.launch {
+                            state = withContext(Dispatchers.IO) {
+                                if (on) autostart.enable() else autostart.disable()
+                                autostart.state()
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag(START_WITH_WINDOWS_TAG),
+                )
             }
         }
     }

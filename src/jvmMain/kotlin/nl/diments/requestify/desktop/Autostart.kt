@@ -132,3 +132,11 @@ fun applyAutostartAtStart(settings: SettingsStore, autostart: Autostart) {
         false -> Unit
     }
 }
+
+/** No starting with Windows here (tests, and builds that cannot): always [AutostartState.Unavailable]. */
+object NoAutostart : Autostart {
+    override fun state() = AutostartState.Unavailable
+    override fun enable() {}
+    override fun disable() {}
+    override fun repairPath() {}
+}
