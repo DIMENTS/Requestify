@@ -64,6 +64,25 @@ sealed interface LogRecord {
         val restarted: Boolean = false,
     ) : LogRecord
 
+    /** Requestify updated itself from [from] to [to] (reported at the first start of [to]); good news, no problem. */
+    @Serializable
+    @SerialName("app_updated")
+    data class AppUpdated(override val rowId: String, override val atEpochMs: Long, val from: String, val to: String) : LogRecord
+
+    /**
+     * Updating to [version] failed: its install ended with Windows Installer's [exitCode], or its download failed for
+     * [reason]. Requestify kept running the version it had.
+     */
+    @Serializable
+    @SerialName("update_failed")
+    data class UpdateFailed(
+        override val rowId: String,
+        override val atEpochMs: Long,
+        val version: String,
+        val exitCode: Int? = null,
+        val reason: String? = null,
+    ) : LogRecord
+
     /** Requests of [source] may have been missed from [fromEpochMs] (null: unknown, "before") to [toEpochMs]. */
     @Serializable
     @SerialName("gap")

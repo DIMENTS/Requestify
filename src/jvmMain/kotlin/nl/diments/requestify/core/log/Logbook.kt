@@ -27,6 +27,7 @@ import nl.diments.requestify.core.stream.GateEvent
 import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.core.twitch.RedemptionStatus
 import nl.diments.requestify.core.twitch.points.OutboxResult
+import nl.diments.requestify.core.update.UpdateEvent
 
 /** A connection as the Log sees it; a change from one to another may be news. */
 enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged }
@@ -43,6 +44,8 @@ data class LogInputs(
     val saves: Flow<List<SaveProblem>> = emptyFlow(),
     /** The run before this one, when it did not end properly: one row at start. */
     val previousRun: PreviousRun? = null,
+    /** What happened to updates: installed, or failed to download or install. */
+    val updates: Flow<UpdateEvent> = emptyFlow(),
 )
 
 /**
@@ -94,6 +97,7 @@ class Logbook(
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.connections.collect { inbox.trySend(ConnectionChange(it.first, it.second)) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.gaps.collect { inbox.trySend(it) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.saves.collect { inbox.trySend(SavesChange(it)) } }
+            launch(start = CoroutineStart.UNDISPATCHED) { inputs.updates.collect { inbox.trySend(it) } }
             inputs.previousRun?.let { run ->
                 inbox.trySend(LogRecord.AppStopped("app:${run.lastAliveEpochMs}", clock(), run.lastAliveEpochMs, run.crashLine, run.restarted))
             }
@@ -158,7 +162,20 @@ class Logbook(
             )
             is LogRecord.GapNoticed -> add(event)
             is LogRecord.AppStopped -> add(event)
+            is UpdateEvent -> onUpdate(event)
         }
+    }
+
+    /** One row per update event: updated (good news), or a failed download or install (a problem). */
+    private fun onUpdate(event: UpdateEvent) {
+        val at = clock()
+        add(
+            when (event) {
+                is UpdateEvent.Updated -> LogRecord.AppUpdated("update:${event.to}:$at", at, event.from.toString(), event.to.toString())
+                is UpdateEvent.InstallFailed -> LogRecord.UpdateFailed("update-failed:${event.version}:$at", at, event.version.toString(), exitCode = event.exitCode)
+                is UpdateEvent.DownloadFailed -> LogRecord.UpdateFailed("update-failed:${event.version}:$at", at, event.version.toString(), reason = event.reason)
+            },
+        )
     }
 
     private fun onIntake(r: IntakeRecord) {

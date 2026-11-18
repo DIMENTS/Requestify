@@ -53,7 +53,7 @@ private fun rowOf(id: String, records: List<LogRecord>): LogRow {
         is LogRecord.ConnectionChanged -> LogKind.Connection
         is LogRecord.StreamChanged -> LogKind.Stream
         is LogRecord.GapNoticed -> LogKind.Gap
-        is LogRecord.AppStopped -> LogKind.App
+        is LogRecord.AppStopped, is LogRecord.AppUpdated, is LogRecord.UpdateFailed -> LogKind.App
     }
     val row = LogRow(id, kind, records.first().atEpochMs, records, isProblem = false)
     return row.copy(isProblem = row.problem())
@@ -71,7 +71,7 @@ private fun LogRow.problem(): Boolean = when (kind) {
     LogKind.Connection -> !(records.last() as LogRecord.ConnectionChanged).state.closesOutage
     LogKind.Stream -> false
     LogKind.Gap -> true
-    LogKind.App -> true
+    LogKind.App -> records.first() !is LogRecord.AppUpdated
 }
 
 private fun LogRow.endsStream() = records.any { it is LogRecord.StreamChanged && it.change == LogStreamChange.StreamEnded }

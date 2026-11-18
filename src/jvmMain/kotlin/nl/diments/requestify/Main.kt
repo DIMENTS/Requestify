@@ -28,6 +28,9 @@ import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.core.update.AppVersion
+import nl.diments.requestify.core.update.installAtStart
+import nl.diments.requestify.core.update.streamAtStart
+import nl.diments.requestify.desktop.UpdateLauncher
 import nl.diments.requestify.desktop.AppIconImages
 import nl.diments.requestify.desktop.AwtTray
 import nl.diments.requestify.desktop.CrashGuard
@@ -63,6 +66,9 @@ import org.jetbrains.compose.resources.stringResource
 
 /** The app's version as the installed launcher reports it; "dev" under `gradlew run`. */
 private val APP_VERSION: String = AppVersion.current()?.toString() ?: "dev"
+
+/** The developer sets this to "1" to be offered pre-releases too (testing an update); never set for the streamer. */
+private const val PRERELEASES_ENV = "REQUESTIFY_UPDATE_PRERELEASES"
 
 /** A test run sets this (seconds) to force a crash on the UI thread; never set for the streamer. */
 private const val TEST_CRASH_ENV = "REQUESTIFY_TEST_CRASH_AFTER_S"
@@ -118,12 +124,32 @@ fun main(args: Array<String>) {
         scope = appScope,
         previousRun = previousRun,
         autostart = RunKeyAutostart(JnaRegistry, installation),
+        runningVersion = AppVersion.current(),
+        includePrereleases = System.getenv(PRERELEASES_ENV) == "1",
     )
     // The language is read once, before anything is composed; a change applies at the next start.
     localeFor(graph.settings.settings.value.language)?.let(Locale::setDefault)
     // A reinstall first gets back the entry its uninstall removed; then the streamer's choice applies as before.
     restoreAutostartAfterReinstall(paths.dataDir, graph.autostart)
     applyAutostartAtStart(graph.settings, graph.autostart)
+    val launcherExe = installation.launcherExe
+    // A waiting update installs now, before anything connects, unless this start may be during a stream (or is a crash
+    // restart): the helper installs it once this process has ended, and starts Requestify again.
+    if (launcherExe != null && installAtStart(
+            afterCrash = mode == LaunchMode.AfterCrash,
+            running = AppVersion.current(),
+            pending = graph.updateStore.pending(),
+            stream = streamAtStart(graph.gate),
+            now = System.currentTimeMillis(),
+        )
+    ) {
+        graph.updates.prepareInstallAtStart()?.let { pending ->
+            UpdateLauncher().launch(pending, graph.updateStore, launcherExe, hidden = !initiallyVisible(mode))
+            crashGuard.markOrderlyEnd()
+            instance.close()
+            exitProcess(0)
+        }
+    }
     graph.start()
 
     lateinit var tray: AwtTray
@@ -159,6 +185,24 @@ fun main(args: Array<String>) {
     tray.show(runBlocking { trayLook(graph.problems.value, graph.saveHealth.problems.value) })
     Notifier(graph.problems, graph.saveHealth.problems, graph.settings, appScope, System::currentTimeMillis, notify).start()
     if (mode == LaunchMode.AfterCrash) notify(Notice.RestartedAfterCrash)
+    // "Nu bijwerken" (only allowed offline with requests closed): stop like Quit, hand the MSI to the helper, end.
+    appScope.launch {
+        graph.updates.installRequests.collect { pending ->
+            val exe = launcherExe ?: return@collect
+            val hidden = !shell.visible
+            tray.remove()
+            shell.hideNow()
+            try {
+                graph.stopGracefully()
+            } catch (_: Throwable) {
+            }
+            UpdateLauncher().launch(pending, graph.updateStore, exe, hidden)
+            crashGuard.markOrderlyEnd()
+            instance.close()
+            exitProcess(0)
+        }
+    }
+    graph.updates.start()
     appScope.launch(Dispatchers.IO) {
         while (true) {
             delay(ALIVE_EVERY_MS)

@@ -106,6 +106,12 @@ import nl.diments.requestify.core.twitch.points.ChannelPointsSource
 import nl.diments.requestify.core.twitch.points.OutboxEntry
 import nl.diments.requestify.core.twitch.points.RedemptionOutbox
 import nl.diments.requestify.core.twitch.points.RewardManager
+import nl.diments.requestify.core.update.AppVersion
+import nl.diments.requestify.core.update.GitHubReleases
+import nl.diments.requestify.core.update.UpdateDownloader
+import nl.diments.requestify.core.update.UpdateService
+import nl.diments.requestify.core.update.UpdateStore
+import nl.diments.requestify.core.update.updateHttpClient
 import nl.diments.requestify.ui.blacklist.BlacklistViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
@@ -133,6 +139,10 @@ class AppGraph(
     previousRun: PreviousRun? = null,
     /** Starting with Windows: the installed app's Run key, or nothing (tests, `gradlew run`). */
     val autostart: Autostart = NoAutostart,
+    /** The installed version ([AppVersion.current]); null (tests, `gradlew run`) keeps the updater off. */
+    runningVersion: AppVersion? = null,
+    /** The developer's own testing (`REQUESTIFY_UPDATE_PRERELEASES=1`): pre-releases count as updates too. */
+    includePrereleases: Boolean = false,
 ) {
     private val http = HttpClient(httpEngine) {
         install(ContentNegotiation) { json(AppJson.instance) }
@@ -423,6 +433,25 @@ class AppGraph(
         clock = System::currentTimeMillis,
     )
 
+    /** The updater's notes and downloads (`%LOCALAPPDATA%\Requestify-updates`). */
+    val updateStore = UpdateStore(paths.updatesDir)
+
+    /** Requestify's own updates from GitHub Releases: off unless this is an installed release build ([runningVersion]). */
+    val updates: UpdateService = run {
+        val updateHttp = updateHttpClient(httpEngine)
+        val releases = GitHubReleases(updateHttp, includePrereleases = includePrereleases)
+        val downloader = UpdateDownloader(updateHttp, updateStore)
+        UpdateService(
+            running = runningVersion,
+            latestRelease = releases::latest,
+            download = downloader::download,
+            store = updateStore,
+            gate = gate.status,
+            scope = scope,
+            clock = System::currentTimeMillis,
+        )
+    }
+
     /** The Log: it listens to what the app already reports. */
     val logbook = Logbook(
         store = logStore,
@@ -441,6 +470,7 @@ class AppGraph(
             gaps = merge(bitsGaps.gaps, streamElementsSource.gaps),
             saves = saveHealth.problems,
             previousRun = previousRun,
+            updates = updates.events,
         ),
     )
 

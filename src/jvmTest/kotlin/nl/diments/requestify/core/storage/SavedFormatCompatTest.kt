@@ -167,6 +167,8 @@ class SavedFormatCompatTest {
             LogRecord.StreamChanged("s", 1, LogStreamChange.Live) to "stream",
             LogRecord.GapNoticed("g", 1, RequestSource.BITS, null, 2) to "gap",
             LogRecord.AppStopped("a", 1, lastAliveEpochMs = 0, crashLine = null, restarted = false) to "app_stopped",
+            LogRecord.AppUpdated("u", 1, from = "0.2.0", to = "0.2.1") to "app_updated",
+            LogRecord.UpdateFailed("f", 1, version = "0.2.1", exitCode = 1603, reason = null) to "update_failed",
         )
         for ((record, name) in records) {
             val json = AppJson.instance.encodeToString(LogRecord.serializer(), record)

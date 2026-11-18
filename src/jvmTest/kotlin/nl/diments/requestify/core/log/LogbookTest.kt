@@ -36,6 +36,8 @@ import nl.diments.requestify.core.playback.RequestEvent
 import nl.diments.requestify.core.stream.GateEvent
 import nl.diments.requestify.core.twitch.RedemptionStatus
 import nl.diments.requestify.core.twitch.points.OutboxResult
+import nl.diments.requestify.core.update.AppVersion
+import nl.diments.requestify.core.update.UpdateEvent
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalPathApi::class)
 class LogbookTest {
@@ -51,6 +53,7 @@ class LogbookTest {
     private val connections = MutableSharedFlow<Pair<LogService, ConnectionSnapshot>>(extraBufferCapacity = 64)
     private val gaps = MutableSharedFlow<LogRecord.GapNoticed>(extraBufferCapacity = 64)
     private val saves = MutableStateFlow<List<SaveProblem>>(emptyList())
+    private val updates = MutableSharedFlow<UpdateEvent>(extraBufferCapacity = 64)
 
     private val track = Track("t1", "spotify:track:t1", "Mr. Brightside", listOf("The Killers"), 222_000, false, null)
 
@@ -62,7 +65,7 @@ class LogbookTest {
         store = store,
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
-        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves, previousRun),
+        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves, previousRun, updates = updates),
         folding = StandardTestDispatcher(testScheduler),
     ).also {
         it.start()
@@ -194,6 +197,24 @@ class LogbookTest {
         val stopped = row.records.single() as LogRecord.AppStopped
         assertEquals("java.lang.IllegalStateException: boom", stopped.crashLine)
         assertTrue(stopped.restarted)
+    }
+
+    @Test
+    fun updateEventsBecomeAppRows() = runTest {
+        val log = logbook()
+        updates.tryEmit(UpdateEvent.Updated(AppVersion(0, 2, 0), AppVersion(0, 2, 1)))
+        updates.tryEmit(UpdateEvent.InstallFailed(AppVersion(0, 2, 2), 1603))
+        updates.tryEmit(UpdateEvent.DownloadFailed(AppVersion(0, 2, 3), "checksum mismatch"))
+        runCurrent()
+        val rows = log.rows.value
+        assertEquals(3, rows.size)
+        assertTrue(rows.all { it.kind == LogKind.App })
+        val records = rows.flatMap { it.records }
+        assertEquals(listOf("0.2.0" to "0.2.1"), records.filterIsInstance<LogRecord.AppUpdated>().map { it.from to it.to })
+        val failed = records.filterIsInstance<LogRecord.UpdateFailed>().sortedBy { it.version }
+        assertEquals(listOf("0.2.2", "0.2.3"), failed.map { it.version })
+        assertEquals(1603, failed[0].exitCode)
+        assertEquals("checksum mismatch", failed[1].reason)
     }
 
     @Test

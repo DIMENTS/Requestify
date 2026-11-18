@@ -424,6 +424,9 @@
     <string name="log_app_stopped">Requestify is onverwacht gestopt (laatst actief %1$s)</string>
     <string name="log_app_restarted"> · herstart</string>
     <string name="log_app_no_crash">Er is geen fout vastgelegd: het werd van buitenaf beëindigd (Taakbeheer, of de stroom viel weg).</string>
+    <string name="log_app_updated">Bijgewerkt van %1$s naar %2$s</string>
+    <string name="log_update_failed">Bijwerken naar %1$s mislukt</string>
+    <string name="log_update_failed_code">Windows Installer gaf code %1$d; Requestify draait verder op de versie die er was.</string>
     <string name="log_save_failing">Kan niet opslaan: %1$s</string>
     <string name="log_save_restored_after">Kon niet opslaan · na %1$s opgeslagen</string>
     <string name="notice_spotify_login_title">Spotify-login verlopen</string>

@@ -117,6 +117,16 @@ class LogRowsTest {
     }
 
     @Test
+    fun aFailedUpdateIsAProblemAnUpdateIsNot() {
+        val updated = foldRows(listOf(LogRecord.AppUpdated("update:1", 1_000, from = "0.2.0", to = "0.2.1"))).single()
+        assertEquals(LogKind.App, updated.kind)
+        assertEquals(false, updated.isProblem, "an update that worked is good news")
+        val failed = foldRows(listOf(LogRecord.UpdateFailed("update-failed:1", 1_000, version = "0.2.1", exitCode = 1603, reason = null))).single()
+        assertEquals(LogKind.App, failed.kind)
+        assertTrue(failed.isProblem)
+    }
+
+    @Test
     fun appStoppedIsAProblemRow() {
         val stopped = LogRecord.AppStopped("app:1000", 9_000, lastAliveEpochMs = 1_000, crashLine = "java.lang.IllegalStateException: boom", restarted = true)
         val row = foldRows(listOf(stopped)).single()
