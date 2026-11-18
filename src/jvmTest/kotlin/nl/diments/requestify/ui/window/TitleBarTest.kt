@@ -22,7 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import nl.diments.requestify.core.playback.SpotifyHealth
 import nl.diments.requestify.core.stream.GateStatus
-import nl.diments.requestify.ui.common.ConnectionProblem
+import nl.diments.requestify.core.health.ConnectionProblem
 import nl.diments.requestify.ui.theme.BrandSeed
 import nl.diments.requestify.ui.theme.RequestifyTheme
 

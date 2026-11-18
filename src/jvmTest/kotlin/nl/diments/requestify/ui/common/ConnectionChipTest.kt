@@ -10,6 +10,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import nl.diments.requestify.core.health.ConnectionProblem
+import nl.diments.requestify.core.health.DonationProblem
+import nl.diments.requestify.core.health.TwitchHealth
+import nl.diments.requestify.core.health.connectionProblems
 import nl.diments.requestify.core.donations.DonationHealth
 import nl.diments.requestify.core.donations.DonationStatus
 import nl.diments.requestify.core.playback.SpotifyHealth
@@ -108,7 +112,7 @@ class ConnectionChipTest {
             problems(DonationHealth(DonationSourceKind.StreamElements, DonationStatus.Retrying, retryingSinceMs = now - 1_000)),
         )
         assertEquals(
-            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring)),
+            listOf(ConnectionProblem.Donation(DonationSourceKind.DonoLink, DonationProblem.KeyExpiring, now + 6 * day)),
             problems(DonationHealth(DonationSourceKind.DonoLink, DonationStatus.Connected, keyExpiresAtEpochMs = now + 6 * day)),
         )
         assertEquals(

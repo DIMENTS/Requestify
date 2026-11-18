@@ -21,7 +21,7 @@ import nl.diments.requestify.core.twitch.auth.TwitchAuth
 import nl.diments.requestify.core.twitch.auth.TwitchAuthStatus
 import nl.diments.requestify.core.twitch.eventsub.EventSubClient
 import nl.diments.requestify.core.twitch.eventsub.EventSubState
-import nl.diments.requestify.ui.common.TwitchHealth
+import nl.diments.requestify.core.health.TwitchHealth
 
 /** A dropped EventSub connection is only worth showing once it has lasted this long: reconnects are usually instant. */
 private const val DISCONNECT_GRACE_MS = 30_000L

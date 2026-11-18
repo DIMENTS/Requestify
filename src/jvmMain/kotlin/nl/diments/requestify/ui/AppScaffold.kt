@@ -78,7 +78,6 @@ import nl.diments.requestify.resources.save_problem
 import nl.diments.requestify.resources.settings_load_failed
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
-import nl.diments.requestify.ui.common.connectionProblems
 import nl.diments.requestify.ui.blacklist.BlacklistScreen
 import nl.diments.requestify.ui.home.HomeScreen
 import nl.diments.requestify.ui.log.LogScreen
@@ -137,11 +136,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
     if (saveProblems.isNotEmpty() && saveProblems != lastSaveProblems) lastSaveProblems = saveProblems
     val track by remember(graph) { graph.home.state.map { it.nowPlaying?.track }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.nowPlaying?.track)
-    val health by remember(graph) { graph.home.state.map { it.health }.distinctUntilChanged() }
-        .collectAsState(graph.home.state.value.health)
+    val problems by graph.problems.collectAsState()
     val gate by graph.gate.status.collectAsState()
-    val twitchHealth by graph.twitchSession.health.collectAsState()
-    val donationHealth by graph.donationSources.health.collectAsState()
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
     val caption = rememberWindowCaption(window, dark)
@@ -155,7 +151,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column {
                 TitleBar(
-                    problems = connectionProblems(health, twitchHealth, donationHealth),
+                    problems = problems,
                     captionInset = caption?.buttonsInset ?: 0.dp,
                     onHitTest = caption?.hitTest,
                     onConnectionsClick = { destination = Destination.Connections },

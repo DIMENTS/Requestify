@@ -84,7 +84,7 @@ import nl.diments.requestify.core.twitch.eventsub.EventSubSocket
 import nl.diments.requestify.core.twitch.eventsub.EventSubState
 import nl.diments.requestify.core.twitch.points.OutboxEntry
 import nl.diments.requestify.ui.Destination
-import nl.diments.requestify.ui.common.TwitchHealth
+import nl.diments.requestify.core.health.TwitchHealth
 import nl.diments.requestify.ui.startDestination
 
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalPathApi::class)

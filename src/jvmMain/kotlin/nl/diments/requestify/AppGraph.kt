@@ -11,6 +11,7 @@ import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.net.URI
+import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +61,11 @@ import nl.diments.requestify.core.log.LogStore
 import nl.diments.requestify.core.log.Logbook
 import nl.diments.requestify.core.playback.PlaybackController
 import nl.diments.requestify.core.playback.SpotifyHealth
-import nl.diments.requestify.ui.common.TwitchHealth
+import nl.diments.requestify.core.health.ConnectionProblem
+import nl.diments.requestify.core.health.TwitchHealth
+import nl.diments.requestify.core.health.clockTicks
+import nl.diments.requestify.core.health.connectionProblems
+import nl.diments.requestify.core.health.problemsOverTime
 import nl.diments.requestify.ui.log.LogViewModel
 import nl.diments.requestify.ui.setup.DonationsSetupViewModel
 import nl.diments.requestify.core.playback.RemoveReason
@@ -380,6 +385,21 @@ class AppGraph(
         clock = System::currentTimeMillis,
         openBrowser = { url -> browse(url) },
         restartSource = { donationSources.restartCurrent() },
+    )
+
+    /**
+     * Everything that needs the streamer's attention right now, most important first: the title-bar chip, the tray
+     * and the notifier. Looked at again as time passes (a DonoLink key counts down to its expiry by itself).
+     */
+    val problems: StateFlow<List<ConnectionProblem>> = problemsOverTime(
+        spotify = controller.health,
+        twitch = twitchSession.health,
+        donations = donationSources.health,
+        ticks = clockTicks(System::currentTimeMillis, ZoneId.systemDefault()),
+    ).stateIn(
+        scope,
+        SharingStarted.Eagerly,
+        connectionProblems(controller.health.value, twitchSession.health.value, donationSources.health.value),
     )
 
     /** Every file that cannot be saved right now: the one banner, the Log, the tray and the notifier. */

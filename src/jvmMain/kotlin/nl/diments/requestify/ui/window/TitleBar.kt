@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.ui.common.ConnectionChip
-import nl.diments.requestify.ui.common.ConnectionProblem
+import nl.diments.requestify.core.health.ConnectionProblem
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.app_name
 import nl.diments.requestify.ui.common.AppIcons
