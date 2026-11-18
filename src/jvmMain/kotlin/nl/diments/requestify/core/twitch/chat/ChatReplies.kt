@@ -12,6 +12,7 @@ import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.chat_added
 import nl.diments.requestify.resources.chat_added_soon
 import nl.diments.requestify.resources.chat_already_next
+import nl.diments.requestify.resources.chat_blacklist_failed
 import nl.diments.requestify.resources.chat_blacklisted
 import nl.diments.requestify.resources.chat_denied_followers
 import nl.diments.requestify.resources.chat_denied_moderators
@@ -148,6 +149,9 @@ class ChatReplies {
     /** A moderator's `!blacklist`: the song that was blocked and skipped. */
     suspend fun blacklisted(track: Track, mention: String?): String =
         mentioned(mention, getString(Res.string.chat_blacklisted, track.name, artistsOf(track)))
+
+    /** A moderator's `!blacklist` that could not be saved: nothing was blocked or skipped. */
+    suspend fun blacklistFailed(mention: String?): String = mentioned(mention, getString(Res.string.chat_blacklist_failed))
 
     /**
      * A moderator's `!remove`: the removed request, or "No position n". Without a number ([position] null) it says how

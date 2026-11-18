@@ -295,6 +295,21 @@ class PlaybackControllerTest {
     }
 
     @Test
+    fun skipIfPlayingSkipsOnlyTheTrackThatStillPlays() = runTest {
+        val player = fakePlayer()
+        player.plays(trackA, progressMs = 10_000)
+        val controller = controller(player)
+        controller.start()
+        runCurrent()
+
+        assertFalse(controller.skipIfPlaying("another-track"), "the song moved on meanwhile: nothing is skipped")
+        assertTrue(player.callsTo("skipNext").isEmpty())
+
+        assertTrue(controller.skipIfPlaying(trackA.id))
+        assertEquals(1, player.callsTo("skipNext").size)
+    }
+
+    @Test
     fun sameTrackTwiceOnlyFirstIsPlaying() = runTest {
         val shared = track("S")
         val first = request("r1", shared)

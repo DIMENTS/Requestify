@@ -244,6 +244,7 @@
     <string name="twitch_command_blacklist">Blacklist</string>
     <string name="twitch_command_blank">Vul een naam in</string>
     <string name="twitch_command_duplicate">Een ander commando gebruikt deze naam al</string>
+    <string name="twitch_command_whitespace">Eén woord, zonder spaties</string>
     <string name="twitch_section_points">Kanaalpunten</string>
     <string name="twitch_points_title">Kanaalpunten-beloning</string>
     <string name="twitch_points_default_title">Nummerverzoek</string>
@@ -318,7 +319,7 @@
     <!-- Chat replies (never start with an exclamation mark: the app's own messages are not read back as commands) -->
     <string name="chat_added">Toegevoegd: %1$s – %2$s op #%3$d (≈ %4$d min)</string>
     <string name="chat_added_soon">Toegevoegd: %1$s – %2$s op #%3$d (zo meteen)</string>
-    <string name="chat_already_next">%1$s – %2$s komt al zo</string>
+    <string name="chat_already_next">Komt al: %1$s – %2$s</string>
     <string name="chat_refunded">Je punten zijn teruggegeven.</string>
     <string name="chat_rejected_not_a_track">Alleen nummers kunnen worden aangevraagd, geen %1$s.</string>
     <string name="chat_rejected_not_a_track_generic">Alleen nummers kunnen worden aangevraagd.</string>
@@ -354,6 +355,7 @@
     <string name="chat_wrongsong_none">Je hebt geen nummer in de wachtrij.</string>
     <string name="chat_skipped">Overgeslagen: %1$s – %2$s</string>
     <string name="chat_blacklisted">Geblokkeerd en overgeslagen: %1$s – %2$s</string>
+    <string name="chat_blacklist_failed">Kon dat nummer nu niet blokkeren.</string>
     <string name="chat_remove_none">Geen positie %1$s.</string>
     <string name="chat_remove_usage">Gebruik: %1$s &lt;positie&gt;</string>
     <string name="bits_anonymous">Anoniem</string>

@@ -58,18 +58,22 @@ enum class CommandField(val get: (ChatCommandNames) -> String, val set: (ChatCom
     Blacklist({ it.blacklist }, { n, v -> n.copy(blacklist = v) }),
 }
 
-enum class CommandError { Blank, Duplicate }
+enum class CommandError { Blank, Duplicate, Whitespace }
 
 /** A command name as it is stored: without the `!`, trimmed and lower-case. */
 fun normalizeCommandName(raw: String): String = raw.trim().trimStart('!').trim().lowercase()
 
-/** What is wrong with [names] (as typed): blank names, and every name another command uses too. Empty when fine. */
+/**
+ * What is wrong with [names] (as typed): blank names, names with a space inside (a command is the first word of a
+ * message, so those could never match), and every name another command uses too. Empty when fine.
+ */
 fun commandNameErrors(names: ChatCommandNames): Map<CommandField, CommandError> {
     val normalized = CommandField.entries.associateWith { normalizeCommandName(it.get(names)) }
     val counts = normalized.values.groupingBy { it }.eachCount()
     return normalized.mapNotNull { (field, name) ->
         when {
             name.isEmpty() -> field to CommandError.Blank
+            name.any { it.isWhitespace() } -> field to CommandError.Whitespace
             counts.getValue(name) > 1 -> field to CommandError.Duplicate
             else -> null
         }

@@ -35,6 +35,7 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.settings.ChannelPointsSettings
+import nl.diments.requestify.core.settings.ChatCommandNames
 import nl.diments.requestify.core.settings.ChatPermission
 import nl.diments.requestify.core.settings.TwitchAccount
 import nl.diments.requestify.core.twitch.FakeTwitch
@@ -194,6 +195,15 @@ class TwitchSetupViewModelTest {
         p.vm.onCommandName { it.copy(skip = "next") } // fixed: saved, errors gone
         assertEquals("next", p.settings.settings.value.twitch.commands.skip)
         assertTrue(p.vm.commandErrors.value.isEmpty())
+    }
+
+    @Test
+    fun aCommandNameWithASpaceIsRefused() = runTest {
+        val p = parts(loggedIn = true, account = account)
+        p.vm.onCommandName { it.copy(request = "song request") } // could never match: a command is the first word
+        assertEquals("sr", p.settings.settings.value.twitch.commands.request, "not saved")
+        assertEquals(mapOf(CommandField.Request to CommandError.Whitespace), p.vm.commandErrors.value)
+        assertEquals(mapOf(CommandField.Song to CommandError.Whitespace), commandNameErrors(ChatCommandNames(song = "now\tplaying")))
     }
 
     @Test

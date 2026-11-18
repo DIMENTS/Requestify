@@ -83,6 +83,7 @@ import nl.diments.requestify.resources.twitch_code_title
 import nl.diments.requestify.resources.twitch_command_blacklist
 import nl.diments.requestify.resources.twitch_command_blank
 import nl.diments.requestify.resources.twitch_command_duplicate
+import nl.diments.requestify.resources.twitch_command_whitespace
 import nl.diments.requestify.resources.twitch_command_queue
 import nl.diments.requestify.resources.twitch_command_remove
 import nl.diments.requestify.resources.twitch_command_request
@@ -618,7 +619,14 @@ private fun CommandFieldInput(
         prefix = { Text("!") },
         isError = error != null,
         supportingText = error?.let {
-            { Text(stringResource(if (it == CommandError.Blank) Res.string.twitch_command_blank else Res.string.twitch_command_duplicate)) }
+            {
+                val text = when (it) {
+                    CommandError.Blank -> Res.string.twitch_command_blank
+                    CommandError.Duplicate -> Res.string.twitch_command_duplicate
+                    CommandError.Whitespace -> Res.string.twitch_command_whitespace
+                }
+                Text(stringResource(text))
+            }
         },
         modifier = modifier,
     )

@@ -62,13 +62,34 @@ class ChatReplySenderTest {
         sender.send("next", null)
 
         awaitUntil("first attempt") { twitch.sends.size == 1 }
-        repeat(2) { n -> // the waits between the three tries
-            settle()
-            advanceTimeBy(5_000)
-            awaitUntil("attempt ${n + 2}") { twitch.sends.size == n + 2 }
+        // The waits between the three tries start when Twitch answered, on the mock engine's own thread: virtual time
+        // moves on in steps until all is sent, so a late answer cannot leave a wait that never ends.
+        awaitUntil("three tries and the next reply") {
+            advanceTimeBy(1_000)
+            twitch.sends.size >= 4
         }
-        awaitUntil("next reply") { twitch.sends.size == 4 }
-        assertEquals(listOf("lost", "lost", "lost", "next"), twitch.sends.map { it.message })
+        assertEquals(listOf("lost", "lost", "lost", "next"), twitch.sends.take(4).map { it.message })
+    }
+
+    @Test
+    fun stopDropsTheRepliesNotSentYet() = runTest {
+        val twitch = RecordingTwitchApi()
+        twitch.sendStatuses.add(429) // the first reply waits 5 s for its next try
+        val sender = ChatReplySender(twitch.api, backgroundScope)
+        sender.start()
+        sender.send("first", "m1")
+        sender.send("second", "m2")
+        awaitUntil("first attempt") { twitch.sends.size == 1 }
+        settle()
+
+        sender.stop() // the session ended (a logout, or the login died)
+        sender.start() // logged in again later
+        settle() // a reply left over would go out now
+        assertEquals(listOf("first"), twitch.sends.map { it.message }, "nothing of the old session is posted")
+
+        sender.send("fresh", "m3")
+        awaitUntil("a new reply") { twitch.sends.size == 2 }
+        assertEquals("fresh", twitch.sends.last().message)
     }
 
     @Test

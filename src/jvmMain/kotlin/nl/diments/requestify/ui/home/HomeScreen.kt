@@ -62,7 +62,7 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
                         onAddSubmit = vm::onAddSubmit,
                         onAddTrack = vm::onAddTrack,
                         onRemove = vm::onRemove,
-                        onBlock = { _, target -> vm.onBlock(target) },
+                        onBlock = { request, target -> vm.onBlockFromRow(request, target) },
                         onAddAnyway = vm::onAddAnyway,
                         onDismiss = vm::onDismiss,
                         onMove = vm::onMove,

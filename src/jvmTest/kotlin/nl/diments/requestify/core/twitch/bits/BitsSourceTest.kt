@@ -156,11 +156,29 @@ class BitsSourceTest {
         assertEquals(Payment.Bits(50), entry.payment)
         assertEquals(RequestSource.BITS, entry.source)
         assertTrue(h.rig.queued.isEmpty())
-        assertTrue(h.rig.catalog.calls.isEmpty())
+        assertEquals("Alpha", entry.request?.track?.name, "listed with its track, so it can be added anyway")
         val reply = h.sends.single()
         assertNull(reply.replyTo)
         assertTrue(reply.message.startsWith("@Name u1 "), reply.message)
         assertTrue("100 Bits" in reply.message, reply.message)
+
+        h.rig.intake.addAnyway("c1")
+        awaitUntil("added anyway") { h.rig.queued.isNotEmpty() }
+        assertEquals(Payment.Bits(50), h.rig.queued.single().payment)
+        assertTrue(h.rig.rejectedEntries.isEmpty())
+    }
+
+    @Test
+    fun belowMinimumWhileSpotifyIsDownIsStillListed() = runTest {
+        val h = harness()
+        h.rig.catalog.failure = SpotifyResult.Failed("boom")
+        h.cheer("c1", "Cheer50 ${link(idA)}", bits = 50)
+
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        val entry = h.rig.rejectedEntries.single()
+        assertEquals(RejectReason.BelowMinimum(100), entry.reason)
+        assertNull(entry.request, "no track to add: the row offers Dismiss")
+        assertTrue("100 Bits" in h.sends.single().message, h.sends.single().message)
     }
 
     @Test

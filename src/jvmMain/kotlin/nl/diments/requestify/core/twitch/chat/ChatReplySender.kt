@@ -14,6 +14,7 @@ import nl.diments.requestify.core.twitch.TwitchResult
  * Sends the app's chat replies one at a time. A rate-limited send waits as long as Twitch says and tries again; a reply
  * that is still not sent after [maxTries] tries, or that Twitch refuses, is dropped (chat is ephemeral, and the
  * request itself is unaffected). It remembers the ids of the last 100 messages it sent, so the chat reader can skip them.
+ * Replies queued before the first [start] wait for it; [stop] drops what is still unsent.
  */
 class ChatReplySender(
     private val api: TwitchApi,
@@ -44,10 +45,14 @@ class ChatReplySender(
         }
     }
 
+    /** Stops sending and drops the replies not sent yet: after a new login they would answer an old session. */
     fun stop() {
         synchronized(lock) {
             job?.cancel()
             job = null
+            do {
+                val dropped = outbox.tryReceive().isSuccess
+            } while (dropped)
         }
     }
 

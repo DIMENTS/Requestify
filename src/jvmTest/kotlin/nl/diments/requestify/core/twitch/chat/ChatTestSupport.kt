@@ -30,6 +30,9 @@ class RecordingTwitchApi {
     val followerLookups = CopyOnWriteArrayList<String>()
     val followers: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /** The HTTP status the follower lookups answer. */
+    @Volatile var followersStatus = 200
+
     /** HTTP statuses for the next chat sends, in order; 200 once used up. */
     val sendStatuses = ConcurrentLinkedQueue<Int>()
     private val ids = AtomicInteger()
@@ -56,6 +59,7 @@ class RecordingTwitchApi {
                     request.url.encodedPath.endsWith("/channels/followers") -> {
                         val user = request.url.parameters["user_id"].orEmpty()
                         followerLookups += user
+                        if (followersStatus != 200) return@MockEngine respond("{}", HttpStatusCode.fromValue(followersStatus), json)
                         val data = if (user in followers) "[{\"user_id\":\"$user\"}]" else "[]"
                         respond("{\"data\":$data}", HttpStatusCode.OK, json)
                     }

@@ -261,7 +261,7 @@ internal fun TrackDetails(
 
 /**
  * A queue row's last column: the menu button with Remove, Block song, Block artist and (for a request from a Twitch
- * viewer) Block viewer. Blocking sweeps the queue, so the row may leave right after.
+ * viewer) Block viewer. Blocking sweeps the queue and takes this row's request out too (refunded when free).
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable

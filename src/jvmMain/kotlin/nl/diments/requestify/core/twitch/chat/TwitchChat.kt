@@ -34,9 +34,10 @@ import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
  * `sourceBroadcasterId` is not the broadcaster's), and the app's own replies.
  *
  * `!sr` needs the role of the permission level (a higher role always may). The Followers level also lets every
- * subscriber, VIP, moderator and the broadcaster in; a plain viewer is looked up once with [TwitchApi.follows], and a
- * follower stays a follower for the session. A failed lookup counts as not following and is asked again next time.
- * A refused viewer gets a short reply and no entry in the Rejected list.
+ * subscriber, VIP, moderator and the broadcaster in; a plain viewer is looked up with [TwitchApi.follows]. A follower
+ * stays a follower for the session; "not following" is believed for a minute (they may follow right after being
+ * told). A failed lookup says nothing and is asked again next time. A refused viewer gets a short reply and no entry
+ * in the Rejected list.
  */
 class TwitchChat(
     private val events: Flow<EventSubEvent>,
@@ -66,14 +67,18 @@ class TwitchChat(
     private val lock = Any()
     private var job: Job? = null
 
-    /** What the follower lookup answered per viewer id, for this session. */
-    private val followers = ConcurrentHashMap<String, Boolean>()
+    /** Viewer ids the follower lookup found following: a follower stays one for the session. */
+    private val followers = ConcurrentHashMap.newKeySet<String>()
+
+    /** When the lookup last found a viewer not following: asked again after [NOT_FOLLOWING_FOR_MS], they may follow. */
+    private val notFollowing = ConcurrentHashMap<String, Long>()
     private val followerCheck = Mutex()
 
     fun start() {
         synchronized(lock) {
             if (job?.isActive == true) return
             followers.clear()
+            notFollowing.clear()
             job = scope.launch {
                 // The collector only hands messages over, so the event source is never held up; one worker handles
                 // them one at a time in the order they came in (first come, first served, also for the replies).
@@ -131,9 +136,14 @@ class TwitchChat(
         permission: ChatPermission,
         commandName: String,
     ) {
-        if (!mayRequest(message, permission)) {
-            replies.denied(permission, null)?.let { reply(message, it) }
-            return
+        when (mayRequest(message, permission)) {
+            true -> Unit
+            false -> {
+                replies.denied(permission, null)?.let { reply(message, it) }
+                return
+            }
+            // The follower lookup failed: nothing is said (the viewer may well follow); the next !sr asks again.
+            null -> return
         }
         if (command.input.isBlank()) {
             reply(message, replies.usage(commandName, null))
@@ -154,26 +164,37 @@ class TwitchChat(
         replies.outcome(outcome, mention = null, refundedPoints = false)?.let { reply(message, it) }
     }
 
-    private suspend fun mayRequest(message: EventSubEvent.ChatMessage, permission: ChatPermission): Boolean {
+    /** Null when it cannot be told now (the follower lookup failed). */
+    private suspend fun mayRequest(message: EventSubEvent.ChatMessage, permission: ChatPermission): Boolean? {
         val role = roleOf(message.badges)
         return when (permission) {
             ChatPermission.Everyone -> true
-            ChatPermission.Followers -> role != ChatRole.Viewer || follows(message.chatterId)
+            ChatPermission.Followers -> if (role != ChatRole.Viewer) true else follows(message.chatterId)
             ChatPermission.Subscribers -> role >= ChatRole.Subscriber
             ChatPermission.Vips -> role >= ChatRole.Vip
             ChatPermission.Moderators -> role >= ChatRole.Moderator
         }
     }
 
-    private suspend fun follows(userId: String): Boolean {
-        followers[userId]?.let { return it }
+    /** Null when the lookup failed; it is asked again next time. */
+    private suspend fun follows(userId: String): Boolean? {
+        known(userId)?.let { return it }
         return followerCheck.withLock {
-            followers[userId]?.let { return@withLock it }
+            known(userId)?.let { return@withLock it }
             when (val answer = api.follows(userId)) {
-                is TwitchResult.Ok -> answer.value.also { followers[userId] = it }
-                else -> false // a failed lookup counts as not following, and is asked again next time
+                is TwitchResult.Ok -> answer.value.also { following ->
+                    if (following) followers += userId else notFollowing[userId] = clock()
+                }
+                else -> null
             }
         }
+    }
+
+    /** What the lookup said lately: true for good, false for [NOT_FOLLOWING_FOR_MS]; null when it has to ask. */
+    private fun known(userId: String): Boolean? = when {
+        userId in followers -> true
+        notFollowing[userId]?.let { clock() - it < NOT_FOLLOWING_FOR_MS } == true -> false
+        else -> null
     }
 
     /** Removes the asker's newest queued request (never one handed over: the controller offers only queued ones). */
@@ -212,13 +233,21 @@ class TwitchChat(
         reply(message, replies.removed(removed.firstOrNull(), position, commandName, null))
     }
 
-    /** Blocks the playing track (by the moderator's login) and skips it. */
+    /**
+     * Blocks the playing track (by the moderator's login) and skips it, while it is still the one playing. A block
+     * that cannot be saved skips nothing and says so.
+     */
     private suspend fun blacklist(message: EventSubEvent.ChatMessage) {
         val track = playingNow() ?: return reply(message, replies.song(controller.snapshot(), null))
-        intake.blockTrack(track, by = message.chatterLogin)
-        controller.skip()
+        if (!intake.blockTrack(track, by = message.chatterLogin)) return reply(message, replies.blacklistFailed(null))
+        controller.skipIfPlaying(track.id)
         reply(message, replies.blacklisted(track, null))
     }
 
     private fun reply(message: EventSubEvent.ChatMessage, text: String) = sender.send(text, message.messageId)
+
+    private companion object {
+        /** How long "not following" is believed: a viewer told "followers only" may follow right after. */
+        const val NOT_FOLLOWING_FOR_MS = 60_000L
+    }
 }

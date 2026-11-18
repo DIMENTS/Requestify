@@ -426,6 +426,47 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun blockFromNowPlayingNeverSkipsTheNextSong() = runTest {
+        val home = home()
+        home.player.plays(track("next"))
+        home.controller.start()
+        settle() // Spotify moved on to the next song; the menu was opened on the one before
+
+        home.vm.onBlockCurrentAndSkip(BlockTarget.Song(track("now")))
+        settle()
+
+        assertEquals(listOf("now"), home.parts.blacklist.blacklist.value.tracks.map { it.track.id })
+        assertEquals(0, home.player.callsTo("skipNext").size, "the song that plays now was not blocked")
+    }
+
+    @Test
+    fun blockingFromARowAlsoTakesThatRowOut() = runTest {
+        val home = home()
+        val own = Request("own", track("own"), Requester(""), RequestSource.MANUAL, null, createdAtEpochMs = 1L)
+        val freeAnyway = viewerRequest("free").copy(rulesWaived = true)
+        val paidAnyway = viewerRequest("paid").copy(
+            source = RequestSource.BITS,
+            payment = nl.diments.requestify.core.model.Payment.Bits(500),
+            rulesWaived = true,
+        )
+        val other = viewerRequest("other")
+        listOf(own, freeAnyway, paidAnyway, other).forEach(home.controller::enqueue)
+        settle()
+
+        home.vm.onBlockFromRow(own, BlockTarget.Song(own.track)) // the streamer's own add: the sweep leaves those
+        home.vm.onBlockFromRow(freeAnyway, BlockTarget.Artist(freeAnyway.track)) // let in anyway: left by the sweep too
+        home.vm.onBlockFromRow(paidAnyway, BlockTarget.Viewer(paidAnyway.requester))
+        settle()
+
+        assertEquals(listOf("other"), home.vm.state.value.queue.map { it.id })
+        assertEquals(listOf("own"), home.parts.blacklist.blacklist.value.tracks.map { it.track.id })
+        val paid = home.vm.state.value.rejected.single { it.id == "paid" }
+        assertEquals(nl.diments.requestify.core.model.RejectReason.ViewerBlocked, paid.reason)
+        assertEquals("paid", paid.request?.id, "a paid request is kept in the Rejected list, never just dropped")
+        assertTrue(home.vm.state.value.rejected.none { it.id == "own" }, "the streamer's own add is simply removed")
+    }
+
+    @Test
     fun rejectedEntriesAndThePaidBadgeFlowIntoState() = runTest {
         val home = home()
         settle()

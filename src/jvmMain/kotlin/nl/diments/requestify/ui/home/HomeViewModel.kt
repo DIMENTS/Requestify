@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import nl.diments.requestify.core.intake.RejectedEntry
 import nl.diments.requestify.core.intake.RejectedStore
 import nl.diments.requestify.core.intake.RequestIntake
+import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
@@ -191,12 +192,35 @@ class HomeViewModel(
     }
 
     /**
+     * A queue row's block menu: blocks [target] (the queue is swept of what it now matches) and takes that row's
+     * [request] out too, also the streamer's own add or one let in anyway, which the sweep leaves alone. Nothing is
+     * taken out when the block could not be saved.
+     */
+    fun onBlockFromRow(request: Request, target: BlockTarget) {
+        scope.launch {
+            if (!block(target)) return@launch
+            val reason = when (target) {
+                is BlockTarget.Song -> RejectReason.TrackBlocked
+                is BlockTarget.Artist -> RejectReason.ArtistBlocked
+                is BlockTarget.Viewer -> RejectReason.ViewerBlocked
+            }
+            intake.removeBlocked(request.id, reason)
+        }
+    }
+
+    /**
      * Now Playing's block menu: blocks [target], and skips the song when it is the song or its artist that was
-     * blocked. Blocking a viewer leaves what is playing alone. A block that could not be saved skips nothing.
+     * blocked, as long as that song is still the one playing. Blocking a viewer leaves what is playing alone. A block
+     * that could not be saved skips nothing.
      */
     fun onBlockCurrentAndSkip(target: BlockTarget) {
         scope.launch {
-            if (block(target) && target !is BlockTarget.Viewer) controller.skip()
+            if (!block(target)) return@launch
+            when (target) {
+                is BlockTarget.Song -> controller.skipIfPlaying(target.track.id)
+                is BlockTarget.Artist -> controller.skipIfPlaying(target.track.id)
+                is BlockTarget.Viewer -> Unit
+            }
         }
     }
 

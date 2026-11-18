@@ -5,7 +5,7 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import java.net.URI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
@@ -119,7 +119,7 @@ class KtorShortLinkResolver(http: HttpClient, private val timeoutMs: Long = 8_00
                 ?.let { ShortLinkAnswer.LeadsTo(it.toString()) }
                 ?: ShortLinkAnswer.Unresolvable
             status in 200..299 -> {
-                val page = response.bodyAsChannel().readRemaining(MAX_PAGE_BYTES).readString()
+                val page = response.bodyAsChannel().readBuffer(MAX_PAGE_BYTES).readString()
                 PAGE_LINK.findAll(page).map { it.value }.firstOrNull { isItemLink(classifySpotifyInput(it)) }
                     ?.let(ShortLinkAnswer::LeadsTo)
                     ?: ShortLinkAnswer.Unresolvable

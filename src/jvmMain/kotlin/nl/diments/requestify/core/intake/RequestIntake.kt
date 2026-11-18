@@ -13,6 +13,7 @@ import nl.diments.requestify.core.model.ChannelPointsRef
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
+import nl.diments.requestify.core.model.RequestSource
 import nl.diments.requestify.core.model.Requester
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.model.isViewerRequest
@@ -96,10 +97,13 @@ class RequestIntake(
         return process(incoming, track)
     }
 
-    /** Adds a rejection to the Rejected list (not for a free request of a blocked viewer). */
-    fun recordRejection(incoming: IncomingRequest, reason: RejectReason, track: Track? = null) {
-        record(incoming, reason, track)
-    }
+    /**
+     * Lists a request its source refuses before the rules (Bits below the minimum), with its track when the link
+     * resolves now, so the row can "Add anyway". When Spotify cannot be reached, or the link is no track, it is listed
+     * without one (the row then offers "Dismiss").
+     */
+    suspend fun rejectBeforeRules(incoming: IncomingRequest, reason: RejectReason): IntakeOutcome.Rejected =
+        reject(incoming, reason, (resolve(incoming) as? Resolved.Found)?.track)
 
     /**
      * True when the rejection is in the Rejected list, or is a paid one that will be (it is saved again on the retry
@@ -174,26 +178,41 @@ class RequestIntake(
 
     /** Moves the queued viewer requests that [matches] to the Rejected list. Own and "added anyway" ones stay. */
     private suspend fun sweep(reason: RejectReason, matches: (Request) -> Boolean) {
-        // The entry is written before the request leaves the queue (pick runs under the controller's lock): a
-        // request whose entry cannot be written stays queued, and a crash leaves a duplicate, never a loss.
         controller.removeMatching(RemoveReason.Blacklisted) { queue ->
-            queue.filter { it.isViewerRequest && matches(it) }.filter { request ->
-                !isListed(request.payment, request.requester) || rejected.add(
-                    RejectedEntry(
-                        id = request.id,
-                        request = request,
-                        input = "${request.track.artists.joinToString(", ")} - ${request.track.name}",
-                        requester = request.requester,
-                        source = request.source,
-                        payment = request.payment,
-                        reason = reason,
-                        atEpochMs = clock(),
-                        refunded = isManagedChannelPoints(request.sourceRef),
-                    ),
-                )
-            }
+            queue.filter { it.isViewerRequest && matches(it) }.filter { listedOrNeedNot(it, reason) }
         }
     }
+
+    /**
+     * The streamer blocked something from the queue row of [id]: that request leaves the queue too, also when the
+     * sweep left it (the streamer's own add, which simply goes, or one let in anyway, which is listed like a swept
+     * one: a paid request is never just dropped).
+     */
+    suspend fun removeBlocked(id: String, reason: RejectReason) {
+        controller.removeMatching(RemoveReason.Blacklisted) { queue ->
+            queue.filter { it.id == id }.filter { it.source == RequestSource.MANUAL || listedOrNeedNot(it, reason) }
+        }
+    }
+
+    /**
+     * Lists a request that leaves the queue for [reason]: true once it is listed or needs no entry (a free request of
+     * a blocked viewer). The entry is written before the request leaves the queue (this runs under the controller's
+     * lock): a request whose entry cannot be written stays queued, and a crash leaves a duplicate, never a loss.
+     */
+    private fun listedOrNeedNot(request: Request, reason: RejectReason): Boolean =
+        !isListed(request.payment, request.requester) || rejected.add(
+            RejectedEntry(
+                id = request.id,
+                request = request,
+                input = "${request.track.artists.joinToString(", ")} - ${request.track.name}",
+                requester = request.requester,
+                source = request.source,
+                payment = request.payment,
+                reason = reason,
+                atEpochMs = clock(),
+                refunded = isManagedChannelPoints(request.sourceRef),
+            ),
+        )
 
     private sealed interface Resolved {
         data class Found(val track: Track) : Resolved

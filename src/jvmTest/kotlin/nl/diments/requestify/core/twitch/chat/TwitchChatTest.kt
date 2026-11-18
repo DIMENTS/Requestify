@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
@@ -287,7 +288,7 @@ class TwitchChatTest {
         assertEquals(listOf("Alpha", "Bravo"), h.queued.map { it.track.name })
         assertEquals(listOf("u1"), h.twitch.followerLookups.toList())
 
-        // Not a follower: told so, no Rejected entry, and the answer is cached as well.
+        // Not a follower: told so, no Rejected entry; within a minute the answer is not asked again.
         h.message("m3", "!sr ${link(idC)}", viewer = "u2")
         awaitUntil("refusal") { h.twitch.sends.size == 3 }
         assertEquals("m3", h.twitch.sends.last().replyTo)
@@ -302,6 +303,47 @@ class TwitchChatTest {
         awaitUntil("subscriber reply") { h.twitch.sends.size == 5 }
         assertEquals(listOf("u1", "u2"), h.twitch.followerLookups.toList())
         assertEquals(listOf("Alpha", "Bravo", "Charlie"), h.queued.map { it.track.name })
+    }
+
+    @Test
+    fun aViewerToldFollowersOnlyWhoThenFollowsIsLetIn() = runTest {
+        val h = harness()
+        h.setPermission(ChatPermission.Followers)
+
+        h.message("m1", "!sr ${link(idA)}", viewer = "u2")
+        awaitUntil("refusal") { h.twitch.sends.size == 1 }
+        assertTrue("followers" in h.twitch.sends.single().message, h.twitch.sends.single().message)
+
+        h.twitch.followers += "u2" // follows the channel
+        advanceTimeBy(61_000)
+        h.message("m2", "!sr ${link(idA)}", viewer = "u2")
+        awaitUntil("accepted") { h.twitch.sends.size == 2 }
+        assertEquals(listOf("Alpha"), h.queued.map { it.track.name })
+        assertEquals(listOf("u2", "u2"), h.twitch.followerLookups.toList(), "asked again a minute later")
+
+        h.message("m3", "!sr ${link(idB)}", viewer = "u2")
+        awaitUntil("accepted again") { h.twitch.sends.size == 3 }
+        assertEquals(2, h.twitch.followerLookups.size, "a follower stays one for the session")
+    }
+
+    @Test
+    fun aFailedFollowerLookupSaysNothing() = runTest {
+        val h = harness()
+        h.setPermission(ChatPermission.Followers)
+        h.twitch.followersStatus = 503
+
+        h.message("m1", "!sr ${link(idA)}", viewer = "u2")
+        h.message("probe", "!song", viewer = "u3")
+        awaitUntil("probe reply") { h.twitch.sends.isNotEmpty() }
+        settle()
+        assertEquals(listOf("probe"), h.twitch.sends.map { it.replyTo }, "no \"followers only\" for a lookup that failed")
+        assertTrue(h.queued.isEmpty())
+        assertTrue(h.rejectedEntries.isEmpty())
+
+        h.twitch.followersStatus = 200
+        h.twitch.followers += "u2"
+        h.message("m2", "!sr ${link(idA)}", viewer = "u2")
+        awaitUntil("accepted") { h.queued.isNotEmpty() }
     }
 
     @Test

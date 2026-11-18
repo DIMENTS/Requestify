@@ -383,17 +383,30 @@ class PlaybackController(
      * queue cannot be read nothing is handed over, but the skip still happens. A refusal shows in [health].
      */
     suspend fun skip() {
-        spotifyMutex.withLock {
-            val head = if (syncState()) withState { pickForHandOver(liveTrackId()) } else null
-            if (head != null) {
-                val result = handOver(head)
-                if (result !is SpotifyResult.Ok) withState { _health.value = healthOf(result) }
-            }
-            val skipped = player.skipNext()
-            stateMutex.withLock { commandAnswered(skipped) }
-            upcomingBook.markStale()
-            wake.trySend(Unit)
+        spotifyMutex.withLock { skipLocked() }
+    }
+
+    /**
+     * [skip], but only while [trackId] is still the track playing (the last poll found it, and no tick can change that
+     * while this holds [spotifyMutex]): a block that took a moment never skips the song after it. True when it skipped.
+     */
+    suspend fun skipIfPlaying(trackId: String): Boolean = spotifyMutex.withLock {
+        if (liveTrackId() != trackId) return@withLock false
+        skipLocked()
+        true
+    }
+
+    /** Caller holds [spotifyMutex]. */
+    private suspend fun skipLocked() {
+        val head = if (syncState()) withState { pickForHandOver(liveTrackId()) } else null
+        if (head != null) {
+            val result = handOver(head)
+            if (result !is SpotifyResult.Ok) withState { _health.value = healthOf(result) }
         }
+        val skipped = player.skipNext()
+        stateMutex.withLock { commandAnswered(skipped) }
+        upcomingBook.markStale()
+        wake.trySend(Unit)
     }
 
     /**
