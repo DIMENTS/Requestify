@@ -1,7 +1,7 @@
 # Requestify plan 3 — donations and the Log (design)
 
 Date: 2026-11-18
-Status: written after the brainstorm in chat on 2026-11-18 (builder check done); awaiting the user's approval
+Status: approved by the user in chat on 2026-11-18 (after the builder check)
 
 Parent design: `docs/superpowers/specs/2026-11-16-requestify-design.md` (sections StreamElements,
 DonoLink, Missed events, Logboek). Plan 2 design: `docs/superpowers/specs/2026-11-17-requestify-plan-2-rules-twitch-design.md`.
