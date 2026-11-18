@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import nl.diments.requestify.core.storage.deleteTestDir
 import nl.diments.requestify.core.storage.inCallerSaveContext
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
@@ -60,7 +61,7 @@ class SpotifySetupScreenTest {
 
     @AfterTest fun tearDown() {
         scope.cancel()
-        dir.deleteRecursively()
+        dir.deleteTestDir()
         Locale.setDefault(originalLocale)
     }
 

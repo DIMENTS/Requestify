@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.storage.deleteTestDir
 import nl.diments.requestify.core.settings.ChannelPointsSettings
 import nl.diments.requestify.core.settings.ChatPermission
 import nl.diments.requestify.core.settings.TwitchAccount
@@ -48,7 +49,7 @@ class TwitchCardTest {
 
     @AfterTest fun tearDown() {
         scope.cancel()
-        dir.deleteRecursively()
+        dir.deleteTestDir()
         Locale.setDefault(originalLocale)
     }
 

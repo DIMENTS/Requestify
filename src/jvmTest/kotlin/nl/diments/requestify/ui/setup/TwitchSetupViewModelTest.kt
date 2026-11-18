@@ -33,6 +33,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonPrimitive
+import nl.diments.requestify.core.storage.deleteTestDir
 import nl.diments.requestify.core.secrets.SecretKeys
 import nl.diments.requestify.core.settings.ChannelPointsSettings
 import nl.diments.requestify.core.settings.ChatCommandNames
@@ -47,7 +48,7 @@ class TwitchSetupViewModelTest {
     private lateinit var dir: Path
 
     @BeforeTest fun setUp() { dir = createTempDirectory("requestify-twitch-setup") }
-    @AfterTest fun tearDown() { dir.deleteRecursively() }
+    @AfterTest fun tearDown() { dir.deleteTestDir() }
 
     private val account = TwitchAccount("42", "diments", "DIMENTS", "affiliate")
 
