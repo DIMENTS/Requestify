@@ -70,14 +70,23 @@ class StreamElementsSource(
         }
     }
 
+    /**
+     * Hands a tip over; when that fails it is tried again (5 s, doubling to 60 s) for as long as the source runs: a
+     * paid tip is never dropped, and StreamElements will not send it again. Later tips wait their turn.
+     */
     private suspend fun onTip(data: JsonObject) {
         val donation = parseStreamElementsTip(data, clock()) ?: return
-        try {
-            handle(donation)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // nothing to retry with: the Log shows the request did not come in
+        var attempt = 0
+        while (true) {
+            try {
+                handle(donation)
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                delay(RETRY_MS.getOrElse(attempt) { RETRY_MS.last() })
+                attempt++
+            }
         }
     }
 
@@ -131,5 +140,6 @@ class StreamElementsSource(
     private companion object {
         const val HEARTBEAT_MS = 60_000L
         const val MIN_GAP_MS = 60_000L
+        val RETRY_MS = listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L)
     }
 }

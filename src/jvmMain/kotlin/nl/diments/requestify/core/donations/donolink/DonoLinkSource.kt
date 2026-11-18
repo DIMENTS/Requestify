@@ -72,7 +72,7 @@ class DonoLinkSource(
         var failures = 0
         while (true) {
             if (clock() >= nextMeAt) {
-                when (val me = feed.me()) {
+                when (val me = guarded { feed.me() }) {
                     is DonoLinkResult.Ok -> {
                         _health.value = health.value.copy(keyExpiresAtEpochMs = me.value.keyExpiresAtEpochMs)
                         nextMeAt = clock() + DAY_MS
@@ -81,7 +81,14 @@ class DonoLinkSource(
                     else -> nextMeAt = clock() + HOUR_MS
                 }
             }
-            val (polled, moved) = poll(cursor)
+            // Whatever goes wrong unexpectedly is one more failure, tried again with the backoff: never the end.
+            val (polled, moved) = try {
+                poll(cursor)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Polled.Failed to (cursors.get(DonationSourceKind.DonoLink) ?: cursor)
+            }
             cursor = moved
             when (polled) {
                 Polled.Done -> {
@@ -106,13 +113,22 @@ class DonoLinkSource(
         _health.value = health.value.copy(status = DonationStatus.KeyRefused, retryingSinceMs = null)
     }
 
+    private suspend fun <T> guarded(call: suspend () -> DonoLinkResult<T>): DonoLinkResult<T> = try {
+        call()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        DonoLinkResult.Failed(e.message ?: e::class.simpleName ?: "error")
+    }
+
     /**
      * Reads every page recorded since [start]'s cursor and hands each new donation over; returns how it ended and the
      * cursor as far as it got (saved after each page).
      */
     private suspend fun poll(start: DonationCursor): Pair<Polled, DonationCursor> {
         var cursor = start
-        val startMs = Instant.parse(start.since).toEpochMilli()
+        // DonoLink's times may come with a space instead of the T: read leniently, like every other time from it.
+        val startMs = parseInstant(start.since) ?: clock()
         var pageCursor: String? = null
         while (true) {
             val page = when (val answer = feed.activity(start.since, pageCursor)) {

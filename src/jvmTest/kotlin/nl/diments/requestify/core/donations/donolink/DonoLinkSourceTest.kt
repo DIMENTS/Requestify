@@ -46,6 +46,7 @@ class DonoLinkSourceTest {
         val items = mutableListOf<JsonObject>()
         var pageSize = 100
         val scripted = ArrayDeque<DonoLinkResult<DonoLinkPage>>()
+        var throwNext: Exception? = null
         val calls = mutableListOf<Triple<Long, String, String?>>()
         var me: DonoLinkResult<DonoLinkMe> = DonoLinkResult.Ok(DonoLinkMe("DIMENTS", expiry))
         var meCalls = 0
@@ -56,9 +57,10 @@ class DonoLinkSourceTest {
         override suspend fun activity(since: String, cursor: String?): DonoLinkResult<DonoLinkPage> {
             calls += Triple(now(), since, cursor)
             scripted.removeFirstOrNull()?.let { return it }
-            val from = Instant.parse(since).toEpochMilli()
-            val matching = items.filter { Instant.parse(recordedAtOf(it)!!).toEpochMilli() >= from }
-                .sortedBy { Instant.parse(recordedAtOf(it)!!).toEpochMilli() }
+            throwNext?.let { throwNext = null; throw it }
+            val from = parseInstant(since)!!
+            val matching = items.filter { parseInstant(recordedAtOf(it)!!)!! >= from }
+                .sortedBy { parseInstant(recordedAtOf(it)!!)!! }
             val offset = cursor?.toInt() ?: 0
             val page = matching.drop(offset).take(pageSize)
             val more = offset + page.size < matching.size
@@ -66,13 +68,13 @@ class DonoLinkSourceTest {
         }
     }
 
-    private fun item(id: String, recordedAtMs: Long, message: String = "https://open.spotify.com/track/${"A".repeat(22)}") =
+    private fun item(id: String, recordedAtMs: Long, message: String = "https://open.spotify.com/track/${"A".repeat(22)}", spaced: Boolean = false) =
         buildJsonObject {
             put("id", id)
             put("type", "donation")
             put("platform", "donolink")
             put("occurred_at", iso(recordedAtMs))
-            put("recorded_at", iso(recordedAtMs))
+            put("recorded_at", if (spaced) iso(recordedAtMs).replace('T', ' ') else iso(recordedAtMs))
             put("actor", buildJsonObject { put("name", "Jan") })
             put("message", message)
             put("value", 300)
@@ -241,5 +243,34 @@ class DonoLinkSourceTest {
         assertTrue(sink.calls.isEmpty())
         assertNotNull(feed.calls.firstOrNull())
         assertEquals(iso(base), feed.calls.first().second)
+    }
+
+    @Test
+    fun aRecordedTimeWithASpaceKeepsPolling() = runTest {
+        val feed = FakeFeed()
+        val sink = Sink()
+        val src = source(feed, sink)
+        feed.items += item("don_a", base + 1_000, spaced = true) // DonoLink's own example writes times like this
+        wait(5_000)
+        feed.items += item("don_b", base + 6_000, spaced = true)
+        wait(5_000)
+        wait(5_000)
+
+        assertEquals(listOf("dl-don_a", "dl-don_b"), sink.calls)
+        assertEquals(DonationStatus.Connected, src.health.value.status)
+    }
+
+    @Test
+    fun anUnexpectedErrorIsRetriedNotFatal() = runTest {
+        val feed = FakeFeed()
+        val sink = Sink()
+        feed.throwNext = IllegalStateException("odd answer")
+        val src = source(feed, sink)
+        assertEquals(DonationStatus.Retrying, src.health.value.status)
+
+        feed.items += item("don_a", base + 1_000)
+        wait(5_000)
+        assertEquals(listOf("dl-don_a"), sink.calls)
+        assertEquals(DonationStatus.Connected, src.health.value.status)
     }
 }

@@ -26,8 +26,10 @@ class AstroClientTest {
     private class FakeSocket : AstroSocket {
         val toClient = Channel<String>(Channel.UNLIMITED)
         val sent = mutableListOf<String>()
+        var failSend = false
         override val incoming: ReceiveChannel<String> get() = toClient
         override suspend fun send(text: String) {
+            if (failSend) throw java.io.IOException("closed")
             sent += text
         }
         override suspend fun close() {
@@ -39,13 +41,14 @@ class AstroClientTest {
         val connects = mutableListOf<Pair<Long, String>>()
         val sockets = mutableListOf<FakeSocket>()
         var failing = 0
+        var failSends = 0
         override suspend fun connect(url: String): AstroSocket {
             connects += now() to url
             if (failing > 0) {
                 failing--
                 throw IOException("down")
             }
-            return FakeSocket().also { sockets += it }
+            return FakeSocket().also { it.failSend = failSends > 0; if (failSends > 0) failSends--; sockets += it }
         }
     }
 
@@ -145,5 +148,22 @@ class AstroClientTest {
         assertEquals(1, r.fresh.size, "a resumed session lost nothing")
         say(second, tip)
         assertEquals(1, r.tips.size)
+    }
+
+    @Test
+    fun aSubscribeThatCannotBeSentIsTriedAgain() = runTest {
+        val connector = FakeConnector { testScheduler.currentTime }
+        connector.failSends = 1 // the socket closes right after its welcome
+        val client = AstroClient(connector, jwt = { "tok" }, room = { "room1" }, scope = backgroundScope, clock = { testScheduler.currentTime })
+        client.start()
+        runCurrent()
+        say(connector.sockets.single(), welcome)
+        assertIs<AstroState.Disconnected>(client.state.value)
+
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(2, connector.connects.size, "tried again after the backoff")
+        say(connector.sockets.last(), welcome, subscribed)
+        assertEquals(AstroState.Connected, client.state.value)
     }
 }

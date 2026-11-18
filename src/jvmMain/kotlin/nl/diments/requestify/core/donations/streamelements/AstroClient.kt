@@ -159,7 +159,18 @@ class AstroClient(
             } catch (_: Exception) {
                 null
             }
-            val ended = if (socket == null) Ended.Broke(0) else session(socket, resumed = resumeToken != null)
+            // Anything unexpected in a session (a send on a socket that just closed) is a broken connection: tried again.
+            val ended = if (socket == null) {
+                Ended.Broke(0)
+            } else {
+                try {
+                    session(socket, resumed = resumeToken != null)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    Ended.Broke(0)
+                }
+            }
             resumeToken = null
             when (ended) {
                 Ended.Refused -> {

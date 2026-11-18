@@ -62,8 +62,13 @@ class StreamElementsSourceTest {
     private class Sink {
         val calls = mutableListOf<String>()
         val kept = mutableListOf<Donation>()
+        var failures = 0
         suspend fun handle(d: Donation) {
             calls += d.id
+            if (failures > 0) {
+                failures--
+                throw IllegalStateException("store busy")
+            }
             if (kept.none { it.id == d.id }) kept += d
         }
     }
@@ -188,5 +193,19 @@ class StreamElementsSourceTest {
         r.feed.state.value = AstroState.Refused
         runCurrent()
         assertEquals(DonationStatus.KeyRefused, r.source.health.value.status)
+    }
+
+    @Test
+    fun aTipTheHandlerFailsOnIsTriedAgain() = runTest {
+        val r = start()
+        r.sink.failures = 2
+        r.feed.state.value = AstroState.Connected
+        r.feed.tips.emit(tip("t1"))
+        runCurrent()
+        assertTrue(r.sink.kept.isEmpty())
+
+        wait(5_000 + 10_000)
+        assertEquals(listOf("se-t1"), r.sink.kept.map { it.id }, "a paid tip is never dropped")
+        assertEquals(3, r.sink.calls.size)
     }
 }
