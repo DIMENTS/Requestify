@@ -46,8 +46,8 @@ class SettingsScreenTest {
     private class FakeAutostart(var current: AutostartState) : Autostart {
         val calls = mutableListOf<String>()
         override fun state() = current
-        override fun enable() { calls += "enable"; current = AutostartState.On }
-        override fun disable() { calls += "disable"; current = AutostartState.Off }
+        override fun enable(): Boolean { calls += "enable"; current = AutostartState.On; return true }
+        override fun disable(): Boolean { calls += "disable"; current = AutostartState.Off; return true }
         override fun repairPath() {}
     }
 

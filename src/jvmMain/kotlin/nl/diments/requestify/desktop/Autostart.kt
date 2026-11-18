@@ -20,8 +20,11 @@ enum class AutostartState {
 /** Starting with Windows. One of the two places (with [Installation]) that know how Requestify is packaged. */
 interface Autostart {
     fun state(): AutostartState
-    fun enable()
-    fun disable()
+    /** False when Windows refused it (a policy or virus scanner can deny the registry): it never throws. */
+    fun enable(): Boolean
+
+    /** False when Windows refused it; it never throws. */
+    fun disable(): Boolean
 
     /** Points an existing entry at the launcher as it is installed now (after a reinstall elsewhere). */
     fun repairPath()
@@ -86,22 +89,34 @@ class RunKeyAutostart(
         }
     }
 
-    override fun enable() {
-        val command = command() ?: return
-        registry.setString(RUN_KEY, valueName, command)
-        registry.setBinary(APPROVED_KEY, valueName, ENABLED)
+    override fun enable(): Boolean {
+        val command = command() ?: return false
+        return tryWrite {
+            registry.setString(RUN_KEY, valueName, command)
+            registry.setBinary(APPROVED_KEY, valueName, ENABLED)
+        }
     }
 
-    override fun disable() {
-        if (!installation.isInstalled) return
-        registry.delete(RUN_KEY, valueName)
-        registry.delete(APPROVED_KEY, valueName)
+    override fun disable(): Boolean {
+        if (!installation.isInstalled) return false
+        return tryWrite {
+            registry.delete(RUN_KEY, valueName)
+            registry.delete(APPROVED_KEY, valueName)
+        }
     }
 
     override fun repairPath() {
         val command = command() ?: return
         val current = registry.getString(RUN_KEY, valueName) ?: return
-        if (current != command) registry.setString(RUN_KEY, valueName, command)
+        if (current != command) tryWrite { registry.setString(RUN_KEY, valueName, command) }
+    }
+
+    /** A registry write that Windows may refuse: false then, never an exception (it would end the app at start). */
+    private fun tryWrite(write: () -> Unit): Boolean = try {
+        write()
+        true
+    } catch (_: RuntimeException) {
+        false
     }
 
     /** The launcher in quotes (its path has spaces: Program Files) and the autostart argument. */
@@ -122,12 +137,10 @@ class RunKeyAutostart(
  * Settings or in Task Manager, is left alone.
  */
 fun applyAutostartAtStart(settings: SettingsStore, autostart: Autostart) {
-    if (autostart.state() == AutostartState.Unavailable) return
+    // The streamer's choice cannot be read yet: never undo it (a Task Manager disable included).
+    if (settings.loadFailed.value || autostart.state() == AutostartState.Unavailable) return
     when (settings.settings.value.startWithWindows) {
-        null -> {
-            autostart.enable()
-            settings.tryUpdate { it.copy(startWithWindows = true) }
-        }
+        null -> if (autostart.enable()) settings.tryUpdate { it.copy(startWithWindows = true) }
         true -> autostart.repairPath()
         false -> Unit
     }
@@ -136,7 +149,7 @@ fun applyAutostartAtStart(settings: SettingsStore, autostart: Autostart) {
 /** No starting with Windows here (tests, and builds that cannot): always [AutostartState.Unavailable]. */
 object NoAutostart : Autostart {
     override fun state() = AutostartState.Unavailable
-    override fun enable() {}
-    override fun disable() {}
+    override fun enable() = false
+    override fun disable() = false
     override fun repairPath() {}
 }

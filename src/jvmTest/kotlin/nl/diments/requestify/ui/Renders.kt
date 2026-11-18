@@ -106,8 +106,8 @@ class Renders {
                 )
                 val autostart = object : nl.diments.requestify.desktop.Autostart {
                     override fun state() = state
-                    override fun enable() {}
-                    override fun disable() {}
+                    override fun enable() = true
+                    override fun disable() = true
                     override fun repairPath() {}
                 }
                 runDesktopComposeUiTest(width = 900, height = 900) {

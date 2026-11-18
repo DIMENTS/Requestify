@@ -98,6 +98,35 @@ class AutostartTest {
     }
 
     @Test
+    fun aRefusedRegistryWriteNeverEndsTheApp() {
+        val refusing = object : RegistryPort by registry {
+            override fun setString(key: String, name: String, value: String) = throw com.sun.jna.platform.win32.Win32Exception(5) // access denied
+            override fun setBinary(key: String, name: String, value: ByteArray) = throw com.sun.jna.platform.win32.Win32Exception(5)
+            override fun delete(key: String, name: String) = throw com.sun.jna.platform.win32.Win32Exception(5)
+        }
+        val autostart = RunKeyAutostart(refusing, Installation(exe))
+        val settings = settings()
+        applyAutostartAtStart(settings, autostart) // the first installed start: must not throw (it would crash-loop)
+        assertEquals(null, settings.settings.value.startWithWindows, "not on: tried again next start")
+        assertEquals(false, autostart.enable())
+        assertEquals(false, autostart.disable())
+    }
+
+    @Test
+    fun unreadableSettingsNeverTurnItBackOn() {
+        registry.setString(run, "Requestify", """"C:\Program Files\Requestify\Requestify.exe" --autostart""")
+        registry.setBinary(approved, "Requestify", byteArrayOf(3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) // switched off in Task Manager
+        val file = dir.resolve("settings.json")
+        JsonFileStore(file, Settings.serializer()) { Settings() }.write(Settings(startWithWindows = false))
+        java.nio.file.Files.newByteChannel(file, java.nio.file.StandardOpenOption.READ, com.sun.nio.file.ExtendedOpenOption.NOSHARE_READ).use {
+            val unreadable = SettingsStore(JsonFileStore(file, Settings.serializer(), retryDelaysMs = emptyList()) { Settings() }, inCallerSaveContext())
+            val writes = registry.writes
+            applyAutostartAtStart(unreadable, autostart())
+            assertEquals(writes, registry.writes, "nothing is turned back on while the choice cannot be read")
+        }
+    }
+
+    @Test
     fun aMovedInstallUpdatesTheEntry() {
         registry.setString(run, "Requestify", "\"D:\\Old\\Requestify.exe\" --autostart")
         val settings = settings()
