@@ -68,7 +68,8 @@ class AwtTray(
         add(MenuItem(labels.quit).apply { addActionListener { onQuit() } })
     }).apply {
         isImageAutoSize = true
-        addActionListener { onMessageClick() }
+        // A click on a notification, or a double-click on the icon (Windows sends the same action for both).
+        addActionListener { if (clicks.isNoticeClick()) onMessageClick() else onOpen() }
         addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.button == MouseEvent.BUTTON1 && e.clickCount == 1) onOpen()
@@ -76,6 +77,8 @@ class AwtTray(
         })
     }
     private var added = false
+    private val pending = NoticeQueue()
+    private val clicks = NoticeClicks()
     private var warning: Boolean? = null
 
     override fun show(look: TrayLook) {
@@ -89,14 +92,18 @@ class AwtTray(
             try {
                 SystemTray.getSystemTray().add(icon)
                 added = true
+                pending.ready(::display)
             } catch (_: AWTException) {
                 // no tray right now (Explorer restarting): the next look tries again
             }
         }
     }
 
-    override fun notify(title: String, text: String) {
-        if (added) icon.displayMessage(title, text, TrayIcon.MessageType.INFO)
+    override fun notify(title: String, text: String) = pending.offer(title, text, ::display)
+
+    private fun display(title: String, text: String) {
+        clicks.shown()
+        icon.displayMessage(title, text, TrayIcon.MessageType.INFO)
     }
 
     override fun remove() {
@@ -115,4 +122,38 @@ class AwtTray(
 fun closeWindow(settings: SettingsStore, hide: () -> Unit, notify: (Notice) -> Unit) {
     hide()
     if (!settings.settings.value.closeHintShown && settings.tryUpdate { it.copy(closeHintShown = true) }) notify(Notice.CloseHint)
+}
+
+/** Notifications sent before the tray icon exists (at start) wait for it, so none is lost. */
+class NoticeQueue {
+    private val waiting = mutableListOf<Pair<String, String>>()
+    private var ready = false
+
+    @Synchronized
+    fun offer(title: String, text: String, show: (String, String) -> Unit) {
+        if (ready) show(title, text) else waiting += title to text
+    }
+
+    /** The icon is there: shows what waited, and everything from now on at once. */
+    @Synchronized
+    fun ready(show: (String, String) -> Unit) {
+        ready = true
+        waiting.forEach { (title, text) -> show(title, text) }
+        waiting.clear()
+    }
+}
+
+/**
+ * Windows reports a click on a notification and a double-click on the tray icon as the same action: it counts as a
+ * notification click only within [windowMs] after one was shown.
+ */
+class NoticeClicks(private val clock: () -> Long = System::currentTimeMillis, private val windowMs: Long = 30_000) {
+    @Volatile
+    private var lastShownAt: Long? = null
+
+    fun shown() {
+        lastShownAt = clock()
+    }
+
+    fun isNoticeClick(): Boolean = lastShownAt?.let { clock() - it <= windowMs } == true
 }

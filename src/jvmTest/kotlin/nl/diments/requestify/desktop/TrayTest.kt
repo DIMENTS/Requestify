@@ -56,6 +56,30 @@ class TrayTest {
     }
 
     @Test
+    fun aNoticeBeforeTheIconExistsWaitsForIt() {
+        val shown = mutableListOf<String>()
+        val queue = NoticeQueue()
+        queue.offer("Requestify is herstart", "…") { title, _ -> shown += title } // sent at start, before the icon
+        assertEquals(emptyList(), shown)
+        queue.ready { title, _ -> shown += title }
+        assertEquals(listOf("Requestify is herstart"), shown, "shown once the icon is there, not lost")
+        queue.offer("Later", "…") { title, _ -> shown += title }
+        assertEquals(listOf("Requestify is herstart", "Later"), shown)
+    }
+
+    @Test
+    fun onlyAClickSoonAfterANotificationCountsAsOne() {
+        var now = 0L
+        val clicks = NoticeClicks(clock = { now })
+        assertFalse(clicks.isNoticeClick(), "a double-click on the icon, no notification shown: just open")
+        clicks.shown()
+        now += 10_000
+        assertTrue(clicks.isNoticeClick())
+        now += 60_000
+        assertFalse(clicks.isNoticeClick(), "long after: a double-click on the icon again")
+    }
+
+    @Test
     fun theCloseHintIsShownOnceEver() {
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
         val sent = mutableListOf<Notice>()

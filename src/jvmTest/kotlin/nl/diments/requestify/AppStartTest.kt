@@ -42,6 +42,16 @@ class AppStartTest {
     }
 
     @Test
+    fun hidingNowHidesTheWindowItself() {
+        val shell = ShellState(visible = true)
+        var hidden = false
+        shell.hideWindow = { hidden = true } // the AWT window: Compose state alone does not repaint during the quit
+        shell.hideNow()
+        assertTrue(hidden)
+        assertFalse(shell.visible)
+    }
+
+    @Test
     fun aNoticeClickOpensItsTarget() {
         val shell = ShellState(visible = false)
         shell.noticeClicked(NoticeTarget.Connections)

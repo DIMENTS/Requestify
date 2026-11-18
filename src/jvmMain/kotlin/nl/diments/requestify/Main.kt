@@ -129,7 +129,7 @@ fun main(args: Array<String>) {
         onQuit = {
             quitApp(
                 hideTray = { tray.remove() },
-                hideWindow = { shell.visible = false },
+                hideWindow = shell::hideNow,
                 stopGracefully = graph::stopGracefully,
                 markOrderlyEnd = crashGuard::markOrderlyEnd,
                 exit = {
@@ -143,6 +143,8 @@ fun main(args: Array<String>) {
     appScope.launch {
         combine(graph.problems, graph.saveHealth.problems) { problems, saves -> trayLook(problems, saves) }.collect(tray::show)
     }
+    // The icon is there before anything is notified (a notice at start would otherwise find no icon to show it on).
+    tray.show(runBlocking { trayLook(graph.problems.value, graph.saveHealth.problems.value) })
     Notifier(graph.problems, graph.saveHealth.problems, graph.settings, appScope, System::currentTimeMillis, notify).start()
     if (mode == LaunchMode.AfterCrash) notify(Notice.RestartedAfterCrash)
     appScope.launch(Dispatchers.IO) {
@@ -168,7 +170,10 @@ fun main(args: Array<String>) {
             title = stringResource(Res.string.app_name),
             icon = windowIcon,
         ) {
-            SideEffect { window.iconImages = AppIconImages.windowIcons() }
+            SideEffect {
+                window.iconImages = AppIconImages.windowIcons()
+                shell.hideWindow = { window.isVisible = false }
+            }
             // Shown again (a second start, the tray, a notification): restored and brought to the front.
             LaunchedEffect(shell.raiseRequests) {
                 if (shell.raiseRequests > 0) {

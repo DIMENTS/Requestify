@@ -45,6 +45,18 @@ class ShellState(visible: Boolean) {
     fun opened() {
         openOn = null
     }
+
+    /** Hides the real (AWT) window; set by the window once it exists. */
+    var hideWindow: () -> Unit = {}
+
+    /**
+     * Hides the window at once, also while the UI thread is about to block (Quit waits for Twitch and the saves):
+     * Compose state alone would only repaint after that, leaving a frozen window on screen.
+     */
+    fun hideNow() {
+        hideWindow()
+        visible = false
+    }
 }
 
 /**
