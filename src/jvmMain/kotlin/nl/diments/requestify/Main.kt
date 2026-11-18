@@ -27,6 +27,7 @@ import nl.diments.requestify.core.secrets.DpapiSecretStore
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.SaveContext
+import nl.diments.requestify.core.update.AppVersion
 import nl.diments.requestify.desktop.AppIconImages
 import nl.diments.requestify.desktop.AwtTray
 import nl.diments.requestify.desktop.CrashGuard
@@ -58,7 +59,7 @@ import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 /** The app's version as the installed launcher reports it; "dev" under `gradlew run`. */
-private val APP_VERSION: String = System.getProperty("jpackage.app-version") ?: "dev"
+private val APP_VERSION: String = AppVersion.current()?.toString() ?: "dev"
 
 /** A test run sets this (seconds) to force a crash on the UI thread; never set for the streamer. */
 private const val TEST_CRASH_ENV = "REQUESTIFY_TEST_CRASH_AFTER_S"

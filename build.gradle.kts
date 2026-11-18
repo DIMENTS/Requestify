@@ -16,6 +16,32 @@ fun JavaToolchainSpec.jetBrainsRuntime() {
     vendor = JvmVendorSpec.JETBRAINS
 }
 
+/** Who publishes Requestify, as Windows shows it. */
+val REQUESTIFY_VENDOR = "DIMENTS"
+
+/** The product's upgrade code: fixed for good, so every release upgrades the one installed before it. */
+val REQUESTIFY_UPGRADE_UUID = "5df66373-1641-4856-80f2-f089f5d7fc7c"
+
+/**
+ * A local build's version, `0.0.<n>`: a new n every minute, so installing a fresh local build over an older one is an
+ * upgrade and never Windows Installer's error 1638 (same version, other package). A value source, so the configuration
+ * cache asks for it again on every build instead of keeping the first one.
+ */
+abstract class LocalBuildVersion : ValueSource<String, ValueSourceParameters.None> {
+    override fun obtain(): String = "0.0.${(System.currentTimeMillis() / 60_000) % 65_535 + 1}"
+}
+
+/**
+ * The version to package: `-Prequestify.version=0.2.0` (the release workflow passes the tag's), else a local one.
+ * Windows Installer takes MAJOR.MINOR.BUILD with MAJOR and MINOR at most 255 and BUILD at most 65535.
+ */
+val requestifyVersion: String = providers.gradleProperty("requestify.version").orNull?.also { version ->
+    val parts = Regex("""(\d{1,3})\.(\d{1,3})\.(\d{1,5})""").matchEntire(version)?.groupValues?.drop(1)?.map(String::toInt)
+    if (parts == null || parts[0] > 255 || parts[1] > 255 || parts[2] > 65_535) {
+        throw GradleException("requestify.version must be MAJOR.MINOR.BUILD (at most 255.255.65535), not \"$version\"")
+    }
+} ?: providers.of(LocalBuildVersion::class) {}.get()
+
 kotlin {
     jvmToolchain { jetBrainsRuntime() }
     jvm()
@@ -67,7 +93,19 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "Requestify"
-            packageVersion = "0.1.0"
+            packageVersion = requestifyVersion
+            vendor = REQUESTIFY_VENDOR
+            windows {
+                // Per user: no admin prompt, and the updater can install without one. Never switch this between
+                // releases: Windows Installer keeps per-user and per-machine installs apart.
+                perUserInstall = true
+                // Fixed for good: every release is an upgrade of the same product.
+                upgradeUuid = REQUESTIFY_UPGRADE_UUID
+                menu = true
+                menuGroup = "Requestify"
+                shortcut = true
+                iconFile.set(project.file("packaging/requestify.ico"))
+            }
             // From `./gradlew suggestRuntimeModules`. jdk.httpserver is the Spotify login's loopback receiver;
             // without it the installed app cannot log in. jdk.localedata formats Dutch amounts ("€2,50").
             modules("java.instrument", "java.management", "jdk.httpserver", "jdk.localedata", "jdk.unsupported")
