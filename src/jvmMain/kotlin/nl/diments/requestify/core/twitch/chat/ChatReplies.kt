@@ -23,6 +23,7 @@ import nl.diments.requestify.resources.chat_queue_next
 import nl.diments.requestify.resources.chat_queue_you
 import nl.diments.requestify.resources.chat_refunded
 import nl.diments.requestify.resources.chat_remove_none
+import nl.diments.requestify.resources.chat_remove_usage
 import nl.diments.requestify.resources.chat_rejected_artist_blocked
 import nl.diments.requestify.resources.chat_rejected_below_minimum
 import nl.diments.requestify.resources.chat_rejected_closed
@@ -147,13 +148,16 @@ class ChatReplies {
     suspend fun blacklisted(track: Track, mention: String?): String =
         mentioned(mention, getString(Res.string.chat_blacklisted, track.name, artistsOf(track)))
 
-    /** A moderator's `!remove`: the removed request, or "No position n" ([position] is null without a number). */
-    suspend fun removed(removed: Request?, position: Int?, mention: String?): String = mentioned(
+    /**
+     * A moderator's `!remove`: the removed request, or "No position n". Without a number ([position] null) it says how
+     * the command, configured as [commandName], is used.
+     */
+    suspend fun removed(removed: Request?, position: Int?, commandName: String, mention: String?): String = mentioned(
         mention,
-        if (removed == null) {
-            getString(Res.string.chat_remove_none, position?.toString() ?: "n")
-        } else {
-            getString(Res.string.chat_wrongsong_removed, removed.track.name, artistsOf(removed.track))
+        when {
+            removed != null -> getString(Res.string.chat_wrongsong_removed, removed.track.name, artistsOf(removed.track))
+            position == null -> getString(Res.string.chat_remove_usage, "!$commandName")
+            else -> getString(Res.string.chat_remove_none, position.toString())
         },
     )
 

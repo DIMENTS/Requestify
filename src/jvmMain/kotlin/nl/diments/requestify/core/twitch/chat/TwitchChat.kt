@@ -120,7 +120,7 @@ class TwitchChat(
             ChatCommand.WrongSong -> wrongSong(message)
             // Moderator commands: anyone else is ignored without a word.
             ChatCommand.Skip -> if (isModerator(message)) skip(message)
-            is ChatCommand.Remove -> if (isModerator(message)) remove(message, command.position)
+            is ChatCommand.Remove -> if (isModerator(message)) remove(message, command.position, twitch.commands.remove)
             ChatCommand.Blacklist -> if (isModerator(message)) blacklist(message)
         }
     }
@@ -200,13 +200,16 @@ class TwitchChat(
         reply(message, replies.skipped(track, null))
     }
 
-    /** Removes queue position [position], numbered as `!queue` does; the request handed over cannot be removed. */
-    private suspend fun remove(message: EventSubEvent.ChatMessage, position: Int?) {
+    /**
+     * Removes queue position [position], numbered as `!queue` does; the request handed over cannot be removed. Without
+     * a number it says how [commandName] is used.
+     */
+    private suspend fun remove(message: EventSubEvent.ChatMessage, position: Int?, commandName: String) {
         val removed = controller.removeMatching(RemoveReason.ModRemove) { offered ->
             val target = position?.let { controller.snapshot().queue.getOrNull(it - 1) }
             listOfNotNull(offered.firstOrNull { it.id == target?.id })
         }
-        reply(message, replies.removed(removed.firstOrNull(), position, null))
+        reply(message, replies.removed(removed.firstOrNull(), position, commandName, null))
     }
 
     /** Blocks the playing track (by the moderator's login) and skips it. */

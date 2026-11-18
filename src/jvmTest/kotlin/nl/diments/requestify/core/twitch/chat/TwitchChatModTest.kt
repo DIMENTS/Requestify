@@ -152,8 +152,21 @@ class TwitchChatModTest {
         awaitUntil("three replies") { h.sends.size == 4 }
         assertEquals(listOf("r1", "r2", "r3"), h.sends.drop(1).map { it.replyTo })
         assertTrue("No position 5" in h.sends[1].message, h.sends[1].message)
-        assertTrue(h.sends.drop(1).all { "No position" in it.message })
+        assertEquals("Usage: !remove <position>", h.sends[2].message, "without a number: how to use it, not a literal n")
+        assertTrue("No position 0" in h.sends[3].message, h.sends[3].message)
         assertEquals(listOf("Alpha"), h.rig.queued.map { it.track.name })
+    }
+
+    @Test
+    fun removeUsageNamesTheConfiguredCommandInTheAppLanguage() = runTest {
+        Locale.setDefault(Locale.forLanguageTag("nl-NL"))
+        val h = harness()
+        h.rig.settings.update { s -> s.copy(twitch = s.twitch.copy(commands = s.twitch.commands.copy(remove = "weg"))) }
+
+        h.message("r1", "!weg", viewer = "mod1", badges = setOf("moderator"))
+        awaitUntil("reply") { h.sends.isNotEmpty() }
+        assertEquals("Gebruik: !weg <positie>", h.sends.single().message)
+        assertEquals("r1", h.sends.single().replyTo)
     }
 
     @Test
