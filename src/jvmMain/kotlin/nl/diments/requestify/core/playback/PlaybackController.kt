@@ -264,6 +264,22 @@ class PlaybackController(
     }
 
     /**
+     * Returns once the state as of this call is saved in queue.json: while saving fails ([persistError]) it tries again
+     * every [SAVE_RETRY_MS]. A source that marks something as handled (a donation cursor) waits for this first.
+     */
+    suspend fun awaitSaved() {
+        awaitLoaded()
+        while (true) {
+            val saved = stateMutex.withLock {
+                persistAndEmit()
+                _persistError.value == null
+            }
+            if (saved) return
+            delay(SAVE_RETRY_MS)
+        }
+    }
+
+    /**
      * Adds [request] when [decide], given the state as it is now, returns no reason against it. Deciding and adding
      * are one step under [stateMutex], so two requests at once can never both pass a limit. A request whose id is
      * already queued, handed over or playing is not added again, nor decided on: it is accepted where it is. Waits
@@ -878,3 +894,6 @@ class PlaybackController(
         var removal: RemoveReason? = null
     }
 }
+
+/** How often [PlaybackController.awaitSaved] tries queue.json again while it cannot be saved. */
+private const val SAVE_RETRY_MS = 1_000L

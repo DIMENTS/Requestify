@@ -9,6 +9,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -20,6 +21,9 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import nl.diments.requestify.core.intake.IntakeOutcome
+import nl.diments.requestify.core.intake.RejectedEntry
+import nl.diments.requestify.core.storage.JsonFileStore
+import kotlinx.serialization.builtins.ListSerializer
 import nl.diments.requestify.core.model.Payment
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.RequestSource
@@ -115,6 +119,25 @@ class DonationHandlerTest {
         assertTrue(h.rig.queued.isEmpty())
         assertTrue(h.rig.rejectedEntries.isEmpty())
         assertTrue(h.sends.isEmpty())
+    }
+
+    @Test
+    fun handleReturnsOnlyAfterTheRejectionIsOnDisk() = runTest {
+        val h = harness()
+        h.rig.settings.tryUpdate { it.copy(donations = it.donations.copy(donoLinkMinimumCents = 500)) }
+        val blocker = dir.resolve("rejected.json.tmp").also { it.toFile().mkdirs() } // rejected.json cannot be written yet
+        val result = CompletableDeferred<IntakeOutcome?>()
+        backgroundScope.launch { result.complete(h.handler.handle(donation(cents = 300))) }
+
+        awaitUntil("listed") { h.rig.rejectedEntries.isNotEmpty() }
+        Thread.sleep(200)
+        settle()
+        assertFalse(result.isCompleted, "not handled while its entry is not on disk: the cursor must not move past it")
+
+        blocker.toFile().deleteRecursively()
+        awaitUntil("handled once saved") { result.isCompleted }
+        val onDisk = JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() }.read()
+        assertEquals(listOf("dl-1"), onDisk.map { it.id })
     }
 
     @Test

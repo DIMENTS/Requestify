@@ -126,6 +126,17 @@ class RequestIntake(
      * True when a request with [id] is already here: queued, handed over, playing, played, in the Rejected list or
      * waiting for Spotify. A source that may see the same item twice (a catch-up after a restart) checks this first.
      */
+    /**
+     * Returns once everything decided so far is on disk: the queue, the Rejected list and the requests waiting for
+     * Spotify. A source saves what it has handled (a donation cursor) only after this, so a crash in between makes it
+     * fetch the item again (and [isKnown] drops it), never skip it.
+     */
+    suspend fun awaitSaved() {
+        rejected.awaitSaved()
+        pending.awaitSaved()
+        controller.awaitSaved()
+    }
+
     suspend fun isKnown(id: String): Boolean {
         if (rejected.entries.value.any { it.id == id } || pending.pending.value.any { it.id == id }) return true
         val s = controller.loadedSnapshot()

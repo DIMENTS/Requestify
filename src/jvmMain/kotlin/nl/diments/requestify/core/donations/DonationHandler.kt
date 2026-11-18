@@ -65,8 +65,13 @@ class DonationHandler(
         }
     }
 
-    /** What became of [d]; null when it was here already. */
-    suspend fun handle(d: Donation): IntakeOutcome? {
+    /**
+     * What became of [d]; null when it was here already. Returns only once that is on disk, so the source saves its
+     * cursor past [d] only then ([RequestIntake.awaitSaved]).
+     */
+    suspend fun handle(d: Donation): IntakeOutcome? = decide(d).also { intake.awaitSaved() }
+
+    private suspend fun decide(d: Donation): IntakeOutcome? {
         if (intake.isKnown(d.id)) return null
         val currency = d.currency.uppercase()
         val incoming = IncomingRequest(

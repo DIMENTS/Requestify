@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -122,6 +123,26 @@ class DonoLinkSourceTest {
         assertEquals(iso(base), feed.calls.first().second)
         assertTrue(sink.calls.isEmpty(), "nothing from before the first link")
         assertEquals(DonationCursor(iso(base)), cursors().get(DonationSourceKind.DonoLink))
+    }
+
+    @Test
+    fun theCursorIsSavedOnlyAfterTheRequest() = runTest {
+        val feed = FakeFeed()
+        val onDisk = CompletableDeferred<Unit>() // the handler returns once the request is on disk
+        val handled = mutableListOf<String>()
+        DonoLinkSource(feed, { d -> onDisk.await(); handled += d.id }, cursors(), backgroundScope, clock = { now() }).also {
+            feed.now = { now() }
+            it.start()
+            runCurrent()
+        }
+        feed.items += item("don_a", base + 1_000)
+        wait(5_000)
+
+        assertEquals(DonationCursor(iso(base)), cursors().get(DonationSourceKind.DonoLink), "the cursor waits for the request")
+        onDisk.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("dl-don_a"), handled)
+        assertEquals(DonationCursor(iso(base + 1_000), setOf("don_a")), cursors().get(DonationSourceKind.DonoLink))
     }
 
     @Test
