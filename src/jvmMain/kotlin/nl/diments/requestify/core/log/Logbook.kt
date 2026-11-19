@@ -80,6 +80,7 @@ class Logbook(
     private val redemptionRows = HashMap<String, String>()
     private val connectionNow = HashMap<LogService, ConnectionSnapshot>()
     private val openOutage = HashMap<LogService, String>()
+    private val droppedDetail = HashMap<LogService, String?>()
 
     private val changed = MutableStateFlow(0L)
     private val _rows = MutableStateFlow<List<LogRow>>(emptyList())
@@ -241,8 +242,11 @@ class Logbook(
             openOutage[service]?.let { add(LogRecord.ConnectionChanged(it, clock(), service, LogConnectionState.SourceChanged)) }
             return
         }
-        if (connectionNow[service] == snapshot) return
+        // Held back for a new reason: the same row says so too (one row per stretch, each reason in it).
+        val newReason = snapshot == ConnectionSnapshot.MessagesDropped && detail != droppedDetail[service]
+        if (connectionNow[service] == snapshot && !newReason) return
         connectionNow[service] = snapshot
+        if (snapshot == ConnectionSnapshot.MessagesDropped) droppedDetail[service] = detail else droppedDetail.remove(service)
         val now = clock()
         val open = openOutage[service]
         if (snapshot == ConnectionSnapshot.Up) {

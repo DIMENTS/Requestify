@@ -363,4 +363,19 @@ class LogbookTest {
         val bot = log.rows.value.single { (it.records.first() as LogRecord.ConnectionChanged).service == LogService.TwitchBot }
         assertEquals(listOf(LogConnectionState.LoginExpired, LogConnectionState.Restored), bot.records.map { (it as LogRecord.ConnectionChanged).state })
     }
+
+    @Test
+    fun aNewReasonIsAddedToTheSameRow() = runTest {
+        val log = logbook()
+        reports.tryEmit(ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.MessagesDropped, "Slow mode"))
+        runCurrent()
+        reports.tryEmit(ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.MessagesDropped, "Followers only"))
+        runCurrent()
+        reports.tryEmit(ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.Up))
+        runCurrent()
+        val row = log.rows.value.single()
+        val changes = row.records.map { it as LogRecord.ConnectionChanged }
+        assertEquals(listOf(LogConnectionState.MessagesDropped, LogConnectionState.MessagesDropped, LogConnectionState.Restored), changes.map { it.state })
+        assertEquals(listOf("Slow mode", "Followers only", null), changes.map { it.detail })
+    }
 }

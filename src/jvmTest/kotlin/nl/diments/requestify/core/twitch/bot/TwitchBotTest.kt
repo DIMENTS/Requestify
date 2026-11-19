@@ -194,4 +194,13 @@ class TwitchBotTest {
         val STREAMER = TwitchAccount("42", "diments", "DIMENTS")
         val BOT = TwitchAccount("7", "mybot", "MyBot")
     }
+
+    @Test
+    fun theBlockedReasonIsNeverAnAutoModHold() = runTest {
+        val h = Harness(this)
+        repeat(3) { h.bot.onDropped(followersOnly) }
+        h.bot.onDropped(DropReason("automod_held", "Held for review"))
+        runCurrent()
+        assertEquals("Followers only", h.bot.health.value.blockedReason)
+    }
 }

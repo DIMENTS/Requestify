@@ -47,4 +47,15 @@ class DropTrackerTest {
         assertFalse(isHeldByModeration(followersOnly))
         assertFalse(isHeldByModeration(DropReason("msg_duplicate", "Duplicate message.")))
     }
+
+    @Test
+    fun aHoldDoesNotChangeTheCountedReason() {
+        val drops = DropTracker()
+        drops.dropped(followersOnly)
+        drops.dropped(DropReason("automod_held", "Held for review"))
+        assertEquals("Held for review", drops.dropping.value, "the Log shows the latest")
+        assertEquals("Followers only", drops.countedReason.value, "a block names what the channel holds the bot back for")
+        drops.sent()
+        assertEquals(null, drops.countedReason.value)
+    }
 }

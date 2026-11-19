@@ -56,19 +56,20 @@ class TwitchBot(
     val moderator: StateFlow<Boolean?> = _moderator.asStateFlow()
 
     val health: StateFlow<TwitchBotHealth> =
-        combine(auth.status, settings.settings, forbidden, drops.dropping, drops.inARow) { status, s, refused, dropping, inARow ->
-            healthOf(status, s, refused, dropping, inARow)
+        combine(auth.status, settings.settings, forbidden, drops.countedReason, drops.inARow) { status, s, refused, counted, inARow ->
+            healthOf(status, s, refused, counted, inARow)
         }.stateIn(
             scope,
             SharingStarted.Eagerly,
-            healthOf(auth.status.value, settings.settings.value, null, drops.dropping.value, drops.inARow.value),
+            healthOf(auth.status.value, settings.settings.value, null, drops.countedReason.value, drops.inARow.value),
         )
 
-    private fun healthOf(status: TwitchAuthStatus, s: Settings, refused: String?, dropping: String?, inARow: Int): TwitchBotHealth {
+    /** [counted]: the reason of the latest drop that counts towards a block (never a moderation hold). */
+    private fun healthOf(status: TwitchAuthStatus, s: Settings, refused: String?, counted: String?, inARow: Int): TwitchBotHealth {
         if (s.twitch.bot == null || s.twitch.account == null) return TwitchBotHealth()
         return TwitchBotHealth(
             loginNeeded = status != TwitchAuthStatus.LoggedIn,
-            blockedReason = refused ?: dropping?.takeIf { inARow >= blockedAfter },
+            blockedReason = refused ?: counted?.takeIf { inARow >= blockedAfter },
         )
     }
 

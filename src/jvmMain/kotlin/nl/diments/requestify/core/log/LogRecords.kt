@@ -174,10 +174,10 @@ enum class LogConnectionState {
     /** The streamer switched to another donation source: the old one's outage is over. */
     @SerialName("source_changed") SourceChanged,
 
-    /** Still open when Requestify last closed: over with that run (the next one does not "restore" it). */
     /** Twitch did not send a chat message ([LogRecord.ConnectionChanged.detail] says why); open until one is sent. */
     @SerialName("messages_dropped") MessagesDropped,
 
+    /** Still open when Requestify last closed: over with that run (the next one does not "restore" it). */
     @SerialName("ended_with_app") EndedWithApp;
 
     /** Whether this ends an outage row. */

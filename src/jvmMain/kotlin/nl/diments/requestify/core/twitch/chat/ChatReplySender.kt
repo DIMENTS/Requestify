@@ -90,6 +90,7 @@ class ChatReplySender(
                 if (sent.isSent) {
                     remember(sent.messageId)
                     bot.onSent()
+                    streamerDrops.sent() // replies get through again: the streamer's held-back row closes too
                     false
                 } else {
                     val reason = sent.dropReason ?: UNKNOWN_DROP

@@ -240,4 +240,17 @@ class ChatReplySenderTest {
         val STREAMER = TwitchAccount(RecordingTwitchApi.BROADCASTER_ID, "diments", "DIMENTS")
         val BOT = TwitchAccount("7", "mybot", "MyBot")
     }
+
+    @Test
+    fun aReplyTheBotSendsClosesTheStreamersHeldBackRow() = runTest {
+        val p = BotParts(this)
+        p.botApi.sendStatuses.add(403) // the bot is held back: the reply goes out as the streamer...
+        p.streamer.drops.add(DropReason("slow_mode", "Slow mode")) // ...and the streamer's own is held back too
+        p.sender.send("one", null)
+        awaitUntil("the streamer's drop") { p.sender.streamerDrops.dropping.value == "Slow mode" }
+
+        p.sender.send("two", null) // the bot gets through again
+        awaitUntil("the bot's reply") { p.botApi.sends.size == 2 }
+        awaitUntil("replies get through: the streamer's row closes") { p.sender.streamerDrops.dropping.value == null }
+    }
 }
