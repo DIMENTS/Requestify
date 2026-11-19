@@ -43,6 +43,7 @@ import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.settings.ChatPermission
 import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
+import nl.diments.requestify.core.settings.TwitchAccount
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
 
@@ -227,6 +228,19 @@ class TwitchChatTest {
         assertEquals(RejectReason.ShortLinkUnresolved, h.rejectedEntries.single().reason)
         assertEquals("Use the open.spotify.com link.", h.twitch.sends.single().message)
         assertEquals("msg1", h.twitch.sends.single().replyTo)
+    }
+
+    @Test
+    fun messagesOfTheBotAreNotCommands() = runTest {
+        val h = harness()
+        h.settings.update { it.copy(twitch = it.twitch.copy(bot = TwitchAccount("7", "mybot", "MyBot"))) }
+        h.message("fromBot", "!sr ${link(idA)}", viewer = "7")
+        h.message("probe", "!song", viewer = "u2")
+
+        awaitUntil("probe reply") { h.twitch.sends.isNotEmpty() }
+        settle()
+        assertEquals(listOf("probe"), h.twitch.sends.map { it.replyTo })
+        assertTrue(h.queued.isEmpty())
     }
 
     @Test

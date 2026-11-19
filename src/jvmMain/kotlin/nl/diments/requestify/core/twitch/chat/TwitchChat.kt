@@ -116,6 +116,8 @@ class TwitchChat(
         val twitch = settings.settings.value.twitch
         if (!twitch.chatEnabled) return
         if (message.sourceBroadcasterId != null && message.sourceBroadcasterId != broadcasterId()) return
+        // The bot's own replies come back through the streamer's chat subscription too.
+        if (twitch.bot != null && message.chatterId == twitch.bot.userId) return
         if (sender.isOwnMessage(message.messageId)) return
         val command = parseChatCommand(message.text, twitch.commands) ?: return
         when (command) {
