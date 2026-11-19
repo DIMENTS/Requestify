@@ -142,9 +142,7 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
     val login by vm.login.collectAsState()
     val status by vm.authStatus.collectAsState()
     val settings by vm.settings.collectAsState()
-    val saveFailed by vm.saveFailed.collectAsState()
     val account = settings.twitch.account
-    val motion = MaterialTheme.motionScheme
     val phase = when {
         login is TwitchLoginState.Requesting || login is TwitchLoginState.ShowingCode -> Phase.LoggingIn
         // An account that is set up keeps its card even when the login is dead, so it can still be logged out.
@@ -174,23 +172,59 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
                     },
                 )
             }
-            AnimatedContent(
-                targetState = phase,
-                transitionSpec = {
-                    (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
-                        .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                        .using(SizeTransform(clip = false))
-                },
-            ) { shown ->
-                when (shown) {
-                    Phase.LoggedOut -> LoggedOutContent(login, status, vm)
-                    Phase.LoggingIn -> CodePanel(login, vm)
-                    Phase.LoggedIn -> if (account != null) LoggedInContent(account, login, status != TwitchAuthStatus.LoggedIn, vm) else Box(Modifier)
-                }
+            TwitchSetupContent(vm)
+        }
+    }
+}
+
+/** How the device code is drawn: large, monospaced, selectable. The wizard draws it its own way. */
+@Composable
+internal fun TwitchCode(code: String) {
+    SelectionContainer {
+        Text(
+            code,
+            style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace, letterSpacing = 6.sp),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(vertical = Spacing.xs),
+        )
+    }
+}
+
+/**
+ * The Twitch setup under its header: log in (with the device code, drawn by [code]), and once logged in the sources
+ * and the Channel Points reward. Shared by the Connections card and the welcome wizard.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun TwitchSetupContent(vm: TwitchSetupViewModel, code: @Composable (String) -> Unit = { TwitchCode(it) }) {
+    val login by vm.login.collectAsState()
+    val status by vm.authStatus.collectAsState()
+    val settings by vm.settings.collectAsState()
+    val saveFailed by vm.saveFailed.collectAsState()
+    val account = settings.twitch.account
+    val motion = MaterialTheme.motionScheme
+    val phase = when {
+        login is TwitchLoginState.Requesting || login is TwitchLoginState.ShowingCode -> Phase.LoggingIn
+        account != null -> Phase.LoggedIn
+        else -> Phase.LoggedOut
+    }
+    Column {
+        AnimatedContent(
+            targetState = phase,
+            transitionSpec = {
+                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
+                    .togetherWith(fadeOut(motion.fastEffectsSpec()))
+                    .using(SizeTransform(clip = false))
+            },
+        ) { shown ->
+            when (shown) {
+                Phase.LoggedOut -> LoggedOutContent(login, status, vm)
+                Phase.LoggingIn -> CodePanel(login, vm, code)
+                Phase.LoggedIn -> if (account != null) LoggedInContent(account, login, status != TwitchAuthStatus.LoggedIn, vm) else Box(Modifier)
             }
-            if (saveFailed) {
-                ErrorText(stringResource(Res.string.save_failed), Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.s))
-            }
+        }
+        if (saveFailed) {
+            ErrorText(stringResource(Res.string.save_failed), Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.s))
         }
     }
 }
@@ -251,7 +285,7 @@ private fun DeadLoginBanner(account: TwitchAccount, login: TwitchLoginState, vm:
 /** The device code: big, with Copy and Open browser, and a loading shape until the user confirms at Twitch. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel) {
+private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel, codeText: @Composable (String) -> Unit) {
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -276,14 +310,7 @@ private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            SelectionContainer {
-                Text(
-                    code.userCode,
-                    style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace, letterSpacing = 6.sp),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(vertical = Spacing.xs),
-                )
-            }
+            codeText(code.userCode)
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
                 CopyCodeButton(onCopy = vm::onCopyCode)
                 Button(onClick = vm::onOpenBrowser, shapes = ButtonDefaults.shapes()) {

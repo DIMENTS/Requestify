@@ -478,7 +478,7 @@ class AppGraph(
     }
 
     /** Settings → Over Requestify. */
-    val about = AboutViewModel(updates, version = runningVersion?.toString() ?: "dev", openUrl = { url -> browse(url) })
+    val about = AboutViewModel(updates, version = runningVersion?.toString() ?: "dev", openUrl = { url -> browse(url) }, openWizard = welcome::reopen)
 
     /** The Log: it listens to what the app already reports. */
     val logbook = Logbook(

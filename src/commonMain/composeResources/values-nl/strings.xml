@@ -520,4 +520,23 @@
     <string name="about_open_wizard">Welkomstwizard openen</string>
     <string name="updated_title">Bijgewerkt naar %1$s</string>
     <string name="updated_close">Sluiten</string>
+    <string name="wizard_welcome_title">Hé! Welkom bij Requestify</string>
+    <string name="wizard_welcome_body">Je kijkers vragen nummers aan via chat, Kanaalpunten en donaties; Requestify zet ze in je Spotify-wachtrij. Eerst even je accounts koppelen — zo gepiept.</string>
+    <string name="wizard_lets_go">Let's go</string>
+    <string name="wizard_skip">Overslaan</string>
+    <string name="wizard_later">Later doen</string>
+    <string name="wizard_connect_spotify">Spotify koppelen</string>
+    <string name="wizard_connect_twitch">Twitch koppelen</string>
+    <string name="wizard_connect_donations">Donaties koppelen</string>
+    <string name="wizard_platform_donations">Donaties</string>
+    <string name="wizard_connected">Yes! %1$s doet mee</string>
+    <string name="wizard_connected_as">als %1$s</string>
+    <string name="wizard_remaining">Nog %1$d te gaan</string>
+    <string name="wizard_last_one">Dat was de laatste!</string>
+    <string name="wizard_done_title">Klaar om te knallen!</string>
+    <string name="wizard_done_connected">Verbonden als %1$s</string>
+    <string name="wizard_done_connected_plain">Verbonden</string>
+    <string name="wizard_done_later">Kan later, in Koppelingen</string>
+    <string name="wizard_done_tray">Requestify start voortaan met Windows en wacht in het systeemvak tot je live gaat.</string>
+    <string name="wizard_open">Requestify openen</string>
 </resources>

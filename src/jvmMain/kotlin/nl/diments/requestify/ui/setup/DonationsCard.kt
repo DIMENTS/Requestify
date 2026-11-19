@@ -94,14 +94,22 @@ fun DonationsCard(vm: DonationsSetupViewModel) {
                     )
                 }
             }
-            Text(
-                stringResource(Res.string.donations_intro),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SourceChoice(state.kind, vm::choose)
-            if (state.kind != DonationSourceKind.None) Setup(state, vm)
+            DonationsSetupContent(state, vm)
         }
+    }
+}
+
+/** What the donations setup asks (the platform, its key, the minimum), shared by the card and the welcome wizard. */
+@Composable
+internal fun DonationsSetupContent(state: DonationsCardState, vm: DonationsSetupViewModel) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
+        Text(
+            stringResource(Res.string.donations_intro),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SourceChoice(state.kind, vm::choose)
+        if (state.kind != DonationSourceKind.None) Setup(state, vm)
     }
 }
 

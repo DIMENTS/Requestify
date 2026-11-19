@@ -84,6 +84,7 @@ import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.blacklist.BlacklistScreen
 import nl.diments.requestify.ui.home.HomeScreen
 import nl.diments.requestify.ui.home.UpdatedCard
+import nl.diments.requestify.ui.welcome.WelcomeWizard
 import nl.diments.requestify.ui.home.showUpdatedCard
 import nl.diments.requestify.core.update.UpdateState
 import nl.diments.requestify.ui.log.LogScreen
@@ -146,6 +147,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
     val gate by graph.gate.status.collectAsState()
     val updateState by graph.updates.state.collectAsState()
     val justUpdated by graph.updates.justUpdated.collectAsState()
+    val welcomeVisible by remember(graph) { graph.welcome.state.map { it.visible }.distinctUntilChanged() }
+        .collectAsState(graph.welcome.state.value.visible)
     val albumSeed = rememberAlbumSeed(track)
     val dark = resolveDark(settings.darkMode, isSystemInDarkTheme())
     val caption = rememberWindowCaption(window, dark)
@@ -172,6 +175,13 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                     onConnectionsClick = { destination = Destination.Connections },
                     requestsSwitch = { RequestsToggle(gate, onToggle = graph.gate::toggle) },
                 )
+                // A new streamer first gets the welcome wizard, in place of the rail and the screens; the title bar stays.
+                if (welcomeVisible) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        WelcomeWizard(graph.welcome, graph.spotifySetup, graph.twitchSetup, graph.donationsSetup)
+                    }
+                    return@Column
+                }
                 Row(Modifier.weight(1f)) {
                     AppRail(
                         selected = destination,

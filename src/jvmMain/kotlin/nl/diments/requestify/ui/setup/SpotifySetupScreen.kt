@@ -136,7 +136,6 @@ fun SpotifySetupScreen(vm: SpotifySetupViewModel, twitch: TwitchSetupViewModel, 
 
 @Composable
 private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
-    val loggedIn = state.auth == SpotifyAuthStatus.LoggedIn
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -149,6 +148,16 @@ private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
                 Spacer(Modifier.weight(1f))
                 ConnectionBadge(state.auth)
             }
+            SpotifySetupContent(state, vm)
+        }
+    }
+}
+
+/** The Spotify setup's numbered steps, shared by the Connections card and the welcome wizard. */
+@Composable
+internal fun SpotifySetupContent(state: SpotifySetupState, vm: SpotifySetupViewModel) {
+    val loggedIn = state.auth == SpotifyAuthStatus.LoggedIn
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
             Step(1, Res.string.setup_step_dashboard_title, Res.string.setup_step_dashboard_body, done = loggedIn) {
                 val uriHandler = LocalUriHandler.current
                 FilledTonalButton(
@@ -173,7 +182,6 @@ private fun SpotifyCard(state: SpotifySetupState, vm: SpotifySetupViewModel) {
             Step(5, Res.string.setup_step_check_title, body = null, done = loggedIn && state.premium == PremiumCheck.Premium) {
                 CheckResult(state)
             }
-        }
     }
 }
 

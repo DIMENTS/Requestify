@@ -286,4 +286,43 @@ class Renders {
             }
         }
     }
+
+    /** Every welcome-wizard card, Dutch, dark and light, at the default and the minimum window size. */
+    @Test
+    fun wizardCards() {
+        if (out == null) return
+        dutch {
+            for (dark in listOf(true, false)) for ((width, height) in listOf(1180 to 760, 720 to 640)) {
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val dir = createTempDirectory("requestify-render")
+                try {
+                    runDesktopComposeUiTest(width = width, height = height) {
+                        val graph = AppGraph(
+                            AppPaths(dir, updatesDir = dir.resolve("updates")), InMemorySecretStore(),
+                            MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope, welcomeWizard = true,
+                        )
+                        graph.settings.tryUpdate { it.copy(darkMode = if (dark) DarkMode.Dark else DarkMode.Light) }
+                        setContent { AppScaffold(graph) }
+                        val suffix = "${if (dark) "dark" else "light"}-$width"
+                        fun shot(name: String) {
+                            Thread.sleep(400)
+                            waitForIdle()
+                            capture("wizard-$name-$suffix")
+                        }
+                        shot("1-welcome")
+                        graph.welcome.begin()
+                        shot("2-spotify")
+                        graph.welcome.later()
+                        shot("3-twitch")
+                        graph.welcome.later()
+                        shot("4-donations")
+                        graph.welcome.later()
+                        shot("5-done")
+                    }
+                } finally {
+                    scope.cancel()
+                }
+            }
+        }
+    }
 }

@@ -520,4 +520,23 @@
     <string name="about_open_wizard">Open the welcome wizard</string>
     <string name="updated_title">Updated to %1$s</string>
     <string name="updated_close">Close</string>
+    <string name="wizard_welcome_title">Hey! Welcome to Requestify</string>
+    <string name="wizard_welcome_body">Your viewers request songs through chat, Channel Points and donations; Requestify puts them in your Spotify queue. First, let's connect your accounts — it's quick.</string>
+    <string name="wizard_lets_go">Let's go</string>
+    <string name="wizard_skip">Skip</string>
+    <string name="wizard_later">Later</string>
+    <string name="wizard_connect_spotify">Connect Spotify</string>
+    <string name="wizard_connect_twitch">Connect Twitch</string>
+    <string name="wizard_connect_donations">Connect donations</string>
+    <string name="wizard_platform_donations">Donations</string>
+    <string name="wizard_connected">Yes! %1$s is in</string>
+    <string name="wizard_connected_as">as %1$s</string>
+    <string name="wizard_remaining">%1$d to go</string>
+    <string name="wizard_last_one">That was the last one!</string>
+    <string name="wizard_done_title">Ready to rock!</string>
+    <string name="wizard_done_connected">Connected as %1$s</string>
+    <string name="wizard_done_connected_plain">Connected</string>
+    <string name="wizard_done_later">You can do this later, in Connections</string>
+    <string name="wizard_done_tray">Requestify now starts with Windows and waits in the system tray until you go live.</string>
+    <string name="wizard_open">Open Requestify</string>
 </resources>
