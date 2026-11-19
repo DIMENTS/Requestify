@@ -352,6 +352,28 @@ class AppGraphTest {
     }
 
     @Test
+    fun aConnectedBotSendsTheReplies() = runBlocking {
+        val services = Services()
+        val secrets = loggedInToBoth().apply { put(SecretKeys.TWITCH_BOT_REFRESH_TOKEN, "b1") }
+        JsonFileStore(AppPaths(dir).settingsFile, Settings.serializer()) { Settings() }.write(
+            Settings(
+                spotifyClientId = "0123456789abcdef0123456789abcdef",
+                twitch = TwitchSettings(
+                    account = TwitchAccount("42", "diments", "DIMENTS", "affiliate"),
+                    bot = TwitchAccount("700", "mybot", "MyBot"), // not the test viewer (7)
+                ),
+            ),
+        )
+        withGraph(services, secrets) { graph ->
+            awaitTwitch(graph, services, sockets = 1)
+            await("requests open") { graph.gate.open.value }
+            services.lastSocket.push(chat("msg-1", "!sr https://open.spotify.com/track/$TRACK_A"))
+            await("the reply") { services.sends.isNotEmpty() }
+            assertEquals("700", services.sends.single().senderId, "the bot answers, in the streamer's channel")
+        }
+    }
+
+    @Test
     fun aChatRequestEndsUpInTheLog() = runBlocking {
         val services = Services()
         withGraph(services, loggedInToBoth()) { graph ->
@@ -639,7 +661,7 @@ class AppGraphTest {
      * whole graph, plus the fake EventSub. Records the calls and the chat messages sent.
      */
     private class Services {
-        data class Sent(val message: String, val replyTo: String?)
+        data class Sent(val message: String, val replyTo: String?, val senderId: String? = null)
 
         val connector = FakeConnector()
         val sends = CopyOnWriteArrayList<Sent>()
@@ -711,6 +733,7 @@ class AppGraphTest {
                     sends += Sent(
                         body.getValue("message").jsonPrimitive.content,
                         body["reply_parent_message_id"]?.jsonPrimitive?.content,
+                        body["sender_id"]?.jsonPrimitive?.content,
                     )
                     respond(
                         """{"data":[{"message_id":"own-${sentIds.incrementAndGet()}","is_sent":true}]}""",
