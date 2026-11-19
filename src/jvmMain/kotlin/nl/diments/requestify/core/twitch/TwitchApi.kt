@@ -45,8 +45,14 @@ data class TwitchChannel(val id: String, val login: String, val displayName: Str
 
 data class TwitchUserRef(val id: String, val login: String, val displayName: String)
 
-/** [isSent] is false when Twitch accepted the call but dropped the message (duplicate, slow mode, AutoMod, ...). */
-data class SentChat(val messageId: String, val isSent: Boolean)
+/** Why Twitch did not send a chat message, in Twitch's own words ([code] is stable, [message] is for people). */
+data class DropReason(val code: String, val message: String)
+
+/**
+ * [isSent] is false when Twitch accepted the call but dropped the message (duplicate, slow mode, AutoMod, ...);
+ * [dropReason] then says why, when Twitch does.
+ */
+data class SentChat(val messageId: String, val isSent: Boolean, val dropReason: DropReason? = null)
 
 data class Reward(
     val id: String,
@@ -134,17 +140,50 @@ class TwitchApi(
         ) { body -> json.decodeFromString<FollowersDto>(body).data.isNotEmpty() }
     }
 
-    suspend fun sendChat(message: String, replyTo: String?): TwitchResult<SentChat> = withBroadcaster { id ->
+    /**
+     * Sends [message] in the broadcaster's chat as [senderId] (the bot, whose token this client then carries), or as
+     * the broadcaster when null.
+     */
+    suspend fun sendChat(message: String, replyTo: String?, senderId: String? = null): TwitchResult<SentChat> = withBroadcaster { id ->
         val body = buildJsonObject {
             put("broadcaster_id", id)
-            put("sender_id", id)
+            put("sender_id", senderId ?: id)
             put("message", message.take(MAX_CHAT_LENGTH))
             if (replyTo != null) put("reply_parent_message_id", replyTo)
         }
         execute(HttpMethod.Post, "chat", "messages", body = body) { response ->
             val sent = json.decodeFromString<SentChatDto>(response).data.firstOrNull() ?: error("no message in response")
-            SentChat(sent.messageId, sent.isSent)
+            SentChat(sent.messageId, sent.isSent, sent.dropReason?.let { DropReason(it.code, it.message) })
         }
+    }
+
+    /**
+     * Whether [userId] (the bot, whose token this client carries) is a moderator in the broadcaster's channel; needs
+     * `user:read:moderated_channels`. Reads every page of the channels the user moderates.
+     */
+    suspend fun moderates(userId: String): TwitchResult<Boolean> = withBroadcaster { id ->
+        var cursor: String? = null
+        var pages = 0
+        while (true) {
+            val params = buildList {
+                add("user_id" to userId)
+                add("first" to MODERATED_PAGE_SIZE.toString())
+                if (cursor != null) add("after" to cursor)
+            }
+            val page = execute(HttpMethod.Get, "moderation", "channels", params = params) { body ->
+                json.decodeFromString<ModeratedChannelsDto>(body)
+            }
+            val dto = when (page) {
+                is TwitchResult.Ok -> page.value
+                else -> @Suppress("UNCHECKED_CAST") return@withBroadcaster (page as TwitchResult<Boolean>)
+            }
+            if (dto.data.any { it.broadcasterId == id }) return@withBroadcaster TwitchResult.Ok(true)
+            val next = dto.pagination?.cursor?.takeIf { it.isNotBlank() && it != cursor }
+            pages++
+            if (next == null || pages >= MAX_PAGES) break
+            cursor = next
+        }
+        TwitchResult.Ok(false)
     }
 
     suspend fun rewards(onlyManageable: Boolean): TwitchResult<List<Reward>> = withBroadcaster { id ->
@@ -362,6 +401,7 @@ class TwitchApi(
         const val MAX_CHAT_LENGTH = 500
         const val PAGE_SIZE = 50
         const val MAX_PAGES = 100
+        const val MODERATED_PAGE_SIZE = 100
         const val DEFAULT_RETRY_AFTER_MS = 5_000L
         const val MAX_RETRY_AFTER_MS = 60_000L
         const val TOKEN_UNAVAILABLE = "token unavailable"
@@ -398,9 +438,19 @@ class TwitchApi(
 
     @Serializable
     private class SentDto(
-        @SerialName("message_id") val messageId: String,
+        @SerialName("message_id") val messageId: String = "",
         @SerialName("is_sent") val isSent: Boolean = false,
+        @SerialName("drop_reason") val dropReason: DropReasonDto? = null,
     )
+
+    @Serializable
+    private class DropReasonDto(val code: String = "", val message: String = "")
+
+    @Serializable
+    private class ModeratedChannelsDto(val data: List<ModeratedChannelDto> = emptyList(), val pagination: PaginationDto? = null)
+
+    @Serializable
+    private class ModeratedChannelDto(@SerialName("broadcaster_id") val broadcasterId: String = "")
 
     @Serializable
     private class RewardsDto(val data: List<RewardDto> = emptyList())

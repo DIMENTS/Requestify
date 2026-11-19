@@ -20,11 +20,15 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import nl.diments.requestify.core.auth.TokenResult
+import nl.diments.requestify.core.twitch.DropReason
 import nl.diments.requestify.core.twitch.TwitchApi
 
 /** A [TwitchApi] on a mock engine that records the chat messages sent and the follower lookups. */
-class RecordingTwitchApi {
-    data class Sent(val message: String, val replyTo: String?)
+class RecordingTwitchApi(
+    private val token: suspend (Boolean) -> TokenResult = { TokenResult.Ok("tok") },
+) {
+    /** [senderId]: the body's `sender_id` (the broadcaster unless sent as the bot). */
+    data class Sent(val message: String, val replyTo: String?, val senderId: String = BROADCASTER_ID)
 
     val sends = CopyOnWriteArrayList<Sent>()
     val followerLookups = CopyOnWriteArrayList<String>()
@@ -35,6 +39,9 @@ class RecordingTwitchApi {
 
     /** HTTP statuses for the next chat sends, in order; 200 once used up. */
     val sendStatuses = ConcurrentLinkedQueue<Int>()
+
+    /** Why the next 200-answers drop their message (`is_sent: false`), in order; sent once used up. */
+    val drops = ConcurrentLinkedQueue<DropReason>()
     private val ids = AtomicInteger()
     private val json = headersOf(HttpHeaders.ContentType, "application/json")
 
@@ -47,11 +54,18 @@ class RecordingTwitchApi {
                         sends += Sent(
                             body.getValue("message").jsonPrimitive.content,
                             body["reply_parent_message_id"]?.jsonPrimitive?.content,
+                            body.getValue("sender_id").jsonPrimitive.content,
                         )
                         val status = sendStatuses.poll() ?: 200
                         if (status == 200) {
                             val id = ids.incrementAndGet()
-                            respond("{\"data\":[{\"message_id\":\"own-$id\",\"is_sent\":true}]}", HttpStatusCode.OK, json)
+                            val drop = drops.poll()
+                            val answer = if (drop == null) {
+                                "{\"data\":[{\"message_id\":\"own-$id\",\"is_sent\":true}]}"
+                            } else {
+                                "{\"data\":[{\"message_id\":\"\",\"is_sent\":false,\"drop_reason\":{\"code\":\"${drop.code}\",\"message\":\"${drop.message}\"}}]}"
+                            }
+                            respond(answer, HttpStatusCode.OK, json)
                         } else {
                             respond("{}", HttpStatusCode.fromValue(status), json)
                         }
@@ -67,7 +81,7 @@ class RecordingTwitchApi {
                 }
             },
         ),
-        token = { TokenResult.Ok("tok") },
+        token = token,
         broadcasterId = { BROADCASTER_ID },
         baseUrl = "https://twitch.test/helix",
     )

@@ -14,6 +14,7 @@ import io.ktor.http.headersOf
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -143,7 +144,53 @@ class TwitchApiTest {
     @Test
     fun sendChatReportsDroppedMessages() = runBlocking<Unit> {
         val sent = api { fixtureOk("chat-dropped.json") }.sendChat("hello", null).ok()
-        assertEquals(SentChat("def-456", false), sent)
+        assertEquals(SentChat("def-456", false, DropReason("msg_duplicate", "Duplicate message.")), sent)
+    }
+
+    @Test
+    fun sendChatSendsAsTheGivenSender() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        api(broadcasterId = "b1") { req -> seen = req; fixtureOk("chat-sent.json") }.sendChat("hi", null, senderId = "bot1").ok()
+        val body = seen!!.bodyJson()
+        assertEquals("b1", body["broadcaster_id"]!!.jsonPrimitive.content)
+        assertEquals("bot1", body["sender_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun sendChatReadsWhyAMessageWasNotSent() = runBlocking<Unit> {
+        val sent = api {
+            respond(
+                """{"data":[{"message_id":"","is_sent":false,"drop_reason":{"code":"followers_only_mode","message":"Followers only"}}]}""",
+                HttpStatusCode.OK,
+                json,
+            )
+        }.sendChat("hi", null).ok()
+        assertEquals(SentChat("", false, DropReason("followers_only_mode", "Followers only")), sent)
+    }
+
+    @Test
+    fun moderatesFindsTheChannelOnALaterPage() = runBlocking<Unit> {
+        val seen = mutableListOf<HttpRequestData>()
+        val moderates = api(broadcasterId = "b1") { req ->
+            seen += req
+            if (req.url.parameters["after"] == null) {
+                respond("""{"data":[{"broadcaster_id":"x","broadcaster_login":"x","broadcaster_name":"X"}],"pagination":{"cursor":"c1"}}""", HttpStatusCode.OK, json)
+            } else {
+                respond("""{"data":[{"broadcaster_id":"b1","broadcaster_login":"b","broadcaster_name":"B"}],"pagination":{}}""", HttpStatusCode.OK, json)
+            }
+        }.moderates("bot1").ok()
+        assertTrue(moderates)
+        assertEquals("/helix/moderation/channels", seen.first().url.encodedPath)
+        assertEquals("bot1", seen.first().url.parameters["user_id"])
+        assertEquals("c1", seen.last().url.parameters["after"])
+    }
+
+    @Test
+    fun moderatesIsFalseWhenTheChannelIsNotListed() = runBlocking<Unit> {
+        val moderates = api(broadcasterId = "b1") {
+            respond("""{"data":[{"broadcaster_id":"x"}],"pagination":{}}""", HttpStatusCode.OK, json)
+        }.moderates("bot1").ok()
+        assertFalse(moderates)
     }
 
     @Test
