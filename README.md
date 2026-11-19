@@ -21,7 +21,8 @@ blacklist en een logboek van alles wat er binnenkwam. Gratis en open source (MIT
 
 1. **Eerst even checken: Slimme app-beheer** (alleen Windows 11). Open *Windows-beveiliging* → *App- en browserbeheer* →
    *Slimme app-beheer*. Staat dat op **Aan**, dan blokkeert Windows Requestify, omdat het nog niet ondertekend is. Staat
-   het op **Uit** of **Evaluatie**, dan kun je verder. Staat het aan? Laat het even weten.
+   het op **Uit** of **Evaluatie**, dan kun je verder. Staat het aan? Laat het even weten. Staat het op *Evaluatie*,
+   dan kan Windows het later zelf aanzetten; kijk dan opnieuw.
 2. Download **Requestify-Setup-*versie*.exe** bij de [nieuwste release](https://github.com/DIMENTS/Requestify/releases/latest).
 3. Open het bestand. Windows laat eerst **"Windows heeft uw pc beschermd"** zien: klik op **Meer info** en daarna op
    **Toch uitvoeren**. Dat komt doordat Requestify nog niet ondertekend is, en gebeurt alleen bij deze eerste installatie.
@@ -74,7 +75,8 @@ blacklist and a log of everything that came in. Free and open source (MIT).
 
 1. **First, check Smart App Control** (Windows 11 only). Open *Windows Security* → *App & browser control* →
    *Smart App Control*. If it is **On**, Windows blocks Requestify, because it is not signed yet. If it is **Off** or
-   **Evaluation**, you're good to go. Is it on? Let us know.
+   **Evaluation**, you're good to go. Is it on? Let us know. If it is set to *Evaluation*, Windows may switch it on
+   by itself later; check again then.
 2. Download **Requestify-Setup-*version*.exe** from the [latest release](https://github.com/DIMENTS/Requestify/releases/latest).
 3. Open it. Windows first shows **"Windows protected your PC"**: click **More info**, then **Run anyway**. That is
    because Requestify is not signed yet, and only happens on this first install.

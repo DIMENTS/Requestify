@@ -1,7 +1,8 @@
 # Plan 5 — handmatige checks (uitbrengen aan vrienden)
 
 Deze checks gaan over wat alleen een geïnstalleerde versie kan laten zien: installeren, de welkomstwizard, bijwerken via
-GitHub en verwijderen. Doe ze in deze volgorde. Kloppen een stap niet, noteer dan wat je zag en ga door met de rest.
+GitHub, verwijderen en (sinds plan 6) het bot-account. Doe ze in deze volgorde. Kloppen een stap niet, noteer dan wat
+je zag en ga door met de rest.
 
 Alle commando's zijn voor PowerShell, vanuit de projectmap.
 
@@ -18,13 +19,17 @@ Alle commando's zijn voor PowerShell, vanuit de projectmap.
 ## B. Een lokale installatie
 
 3. **Bouwen:** `.\gradlew.bat packageRequestifyExe`. Het bestand staat in `build\installer\exe\`.
-   - [ ] De naam is `Requestify-0.0.<getal>.exe`; een tweede build later heeft een ander getal.
+   - [ ] De naam is `Requestify-0.0.<getal>.exe`; een tweede build, ook binnen dezelfde minuut, heeft een hoger getal.
 4. **Installeren:** dubbelklik het bestand.
    - [ ] Geen beheerdersvraag (UAC) en geen keuzes.
    - [ ] Requestify start na de installatie vanzelf.
    - [ ] Geïnstalleerd in `%LOCALAPPDATA%\Requestify`; Start-menu en bureaublad hebben een snelkoppeling.
    - [ ] Je bestaande koppelingen zijn er nog (je data in `%APPDATA%\Requestify` bleef staan) en je krijgt **geen**
      welkomstwizard, want je had Requestify al ingesteld.
+   - [ ] Ook als er tegelijk iemand anders op de pc is aangemeld (*Gebruiker wisselen*): de installatie lukt en komt
+     alleen bij jou terecht.
+   - [ ] Installeer een tweede lokale build vlak nadat je bij Windows bent aangemeld (Requestify start dan net met
+     Windows mee): de installatie lukt en Requestify draait daarna één keer, niet twee keer.
 5. **Over Requestify:** *Instellingen* → onderaan.
    - [ ] Versie `0.0.<getal>`, en geen "Zoeken naar updates" (een lokale build werkt zichzelf nooit bij).
 
@@ -33,7 +38,11 @@ Alle commando's zijn voor PowerShell, vanuit de projectmap.
 6. Sluit Requestify af (systeemvak → *Afsluiten*). Hernoem `%APPDATA%\Requestify` naar `Requestify-bewaard` en start
    Requestify opnieuw.
    - [ ] De welkomstwizard verschijnt: "Hé! Welkom bij Requestify".
+   - [ ] De titelbalk zegt "Nog niets gekoppeld" (niet "Alles verbonden").
    - [ ] Spotify koppelen werkt vanuit de wizard; na het inloggen: vinkje, confetti, het Spotify-logo vliegt naar boven.
+   - [ ] Twitch koppelen: na het feestje blijft de Twitch-kaart staan, met "Optioneel: laat je bot de antwoorden
+     sturen." en *Verder*.
+   - [ ] Bij Donaties gaat "Geen" meteen door naar de volgende kaart; een sleutel plakken viert pas als de test lukt.
    - [ ] "Later doen" gaat door naar de volgende kaart; de Klaar-kaart laat zien wat er nog kan.
    - [ ] Venster halverwege sluiten en Requestify opnieuw openen: de wizard gaat verder waar hij was.
    - [ ] Zet in Windows *Instellingen* → *Toegankelijkheid* → *Visuele effecten* → *Animatie-effecten* uit, start
@@ -52,36 +61,70 @@ Alle commando's zijn voor PowerShell, vanuit de projectmap.
     - [ ] Eerst "Windows heeft uw pc beschermd" → *Meer info* → *Toch uitvoeren*; daarna installeert hij zonder vragen.
     - [ ] Starten met Windows staat weer zoals het was (het verwijderen had het opgeruimd en onthouden).
 
-## E. Bijwerken van 0.2.0 naar 0.2.1
+## E. Bijwerken van 0.2.0 naar 0.3.0
 
-11. Maak een kleine wijziging, zet tag `v0.2.1`, publiceer die release.
+11. Zet tag `v0.3.0` (plan 6: het bot-account) en publiceer die release, met wat er nieuw is.
 12. Start Requestify (0.2.0) en wacht ruim 2 minuten.
-    - [ ] *Over Requestify*: "Versie 0.2.1 staat klaar", en een stipje bij *Instellingen*. Geen melding, geen balk.
+    - [ ] *Over Requestify*: "Versie 0.3.0 staat klaar", en een stipje bij *Instellingen*. Geen melding, geen balk.
 13. **Niet tijdens een stream:** ga live (of open de verzoeken).
     - [ ] "Nu bijwerken" is uitgeschakeld, met de uitleg eronder.
 14. **Herstart midden in een stream:** sluit Requestify af terwijl je live bent en start hem binnen 10 minuten opnieuw.
     - [ ] Hij installeert de update níet bij die start (Requestify blijft 0.2.0).
-15. Ga offline, sluit de verzoeken en klik op **Nu bijwerken**.
+15. Ga offline, sluit de verzoeken en klik op **Nu bijwerken** (dubbelklikken mag: het telt als één poging).
     - [ ] Requestify sluit, installeert zonder vragen en start vanzelf weer op.
-    - [ ] Het kaartje "Bijgewerkt naar 0.2.1" staat op Home met de tekst van de release; na sluiten komt het niet terug.
-    - [ ] Het Logboek heeft "Bijgewerkt van 0.2.0 naar 0.2.1".
+    - [ ] Het kaartje "Bijgewerkt naar 0.3.0" staat op Home met de tekst van de release; na sluiten komt het niet terug.
+    - [ ] Het Logboek heeft "Bijgewerkt van 0.2.0 naar 0.3.0".
     - [ ] Starten met Windows staat nog aan (een update laat dat met rust).
-16. **Een mislukte installatie** (de oude versie moet blijven): sluit Requestify af en installeer de nieuwste MSI met
-    een installatiemap die niet kan bestaan:
-    `msiexec /i "<pad>\Requestify-0.2.1.msi" /qb INSTALLDIR="Q:\Bestaat-niet\\"` (kies een schijfletter die je niet hebt).
+    - [ ] *Over Requestify* heeft een knop *Wat is er nieuw* die de releasepagina van 0.3.0 opent.
+16. **Een mislukte installatie** (de oude versie moet blijven): sluit Requestify af via het systeemvak (*Afsluiten*) en
+    installeer de nieuwste MSI met een installatiemap die niet kan bestaan:
+    `msiexec /i "<pad>\Requestify-0.3.0.msi" /qb INSTALLDIR="Q:\Bestaat-niet\\"` (kies een schijfletter die je niet hebt).
     - [ ] De installatie mislukt met een foutmelding.
     - [ ] `%LOCALAPPDATA%\Requestify\Requestify.exe` bestaat nog en Requestify start gewoon (de oude versie is terug).
     - [ ] Kijk in *Windows-beveiliging* → *Beveiligingsgeschiedenis*: Defender heeft de update-helper van Requestify
-      niet tegengehouden.
-17. **Pre-release:** publiceer `v0.2.2` als *pre-release*.
+      niet tegengehouden (vanaf 0.3.0 een leesbaar PowerShell-commando, geen versleuteld).
+17. **Pre-release:** publiceer `v0.3.1` als *pre-release*.
     - [ ] Requestify biedt hem niet aan ("Je hebt de nieuwste versie" na *Zoeken naar updates*).
     - [ ] Met `$env:REQUESTIFY_UPDATE_PRERELEASES = "1"` en Requestify vanuit die PowerShell gestart, wordt hij wél
       aangeboden. (Sluit die Requestify daarna af.)
+    - [ ] Opruimen: verwijder de pre-release `v0.3.1` op GitHub, en daarna `%LOCALAPPDATA%\Requestify-updates\pending.json`
+      en de `.msi` ernaast, zodat er geen pre-release blijft klaarstaan.
 
 ## F. Verwijderen en opnieuw installeren
 
-18. Verwijder Requestify via *Instellingen* → *Apps*.
+18. Verwijder Requestify via *Instellingen* → *Apps*, **terwijl Requestify draait**.
+    - [ ] Het verwijderen vraagt Requestify te sluiten, of sluit hem zelf; het lukt.
     - [ ] In *Taakbeheer* → *Opstart-apps* staat Requestify niet meer.
     - [ ] `%APPDATA%\Requestify` bestaat nog (met je koppelingen).
+    - [ ] `%LOCALAPPDATA%\Requestify-updates` (de gedownloade updates) is weg.
 19. Installeer de nieuwste release opnieuw.
     - [ ] Alle koppelingen en instellingen zijn terug, geen wizard, en starten met Windows staat weer zoals voorheen.
+
+## G. Bot-account
+
+Je hebt een tweede Twitch-account nodig voor de bot (bijvoorbeeld `jouwnaambot`).
+
+20. *Koppelingen* → Twitch → *Bot-account (optioneel)* → **Bot koppelen**. Klik *Link kopiëren*, open een
+    **privévenster**, plak de link en log daar in met het bot-account.
+    - [ ] Het blokje zegt "Antwoorden komen van @…" met de naam van je bot.
+21. **Je eigen account per ongeluk:** *Ontkoppelen*, dan opnieuw *Bot koppelen*, maar open de link in je gewone browser
+    (waar je als jezelf bent ingelogd).
+    - [ ] Het blokje zegt "Dat is je eigen account. Log in met je bot, bijvoorbeeld in een privévenster."
+    - [ ] Je eigen Twitch-koppeling werkt gewoon door (chat, Kanaalpunten).
+    - [ ] Koppel de bot daarna weer goed (stap 20).
+22. Typ `!song` in je chat.
+    - [ ] Het antwoord komt van de bot, niet van jou.
+23. **De bot valt weg:** ga op twitch.tv als de bot naar *Instellingen* → *Connecties* en verbreek Requestify. Typ
+    daarna `!song`.
+    - [ ] Het antwoord komt nu van jou.
+    - [ ] Eén melding "De bot moet opnieuw inloggen"; de titelbalk zegt "Twitch-bot: log opnieuw in".
+    - [ ] Het Logboek heeft een regel bij *Twitch-bot*.
+    - [ ] *Opnieuw inloggen* in het bot-blokje (privévenster) en weer `!song`: het antwoord komt weer van de bot, zonder
+      Requestify te herstarten.
+24. **Moderator:** typ in je chat `/mod <botnaam>` (de knop *Kopiëren* naast de tip zet het klaar) en klik
+    *Opnieuw kijken*.
+    - [ ] Het blokje zegt "Moderator ✓".
+25. *Ontkoppelen*.
+    - [ ] Antwoorden komen weer van jou, zonder waarschuwing.
+26. Heb je ooit een StreamElements-account bij de hand: kijk of de valuta bij *Donaties* klopt (de app las hem zonder
+    live voorbeeld).
