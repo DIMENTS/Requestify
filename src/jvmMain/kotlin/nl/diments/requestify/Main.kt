@@ -1,5 +1,6 @@
 package nl.diments.requestify
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -31,6 +32,8 @@ import nl.diments.requestify.core.update.AppVersion
 import nl.diments.requestify.core.update.installAtStart
 import nl.diments.requestify.core.update.streamAtStart
 import nl.diments.requestify.desktop.UpdateLauncher
+import nl.diments.requestify.desktop.windowsAnimationsOff
+import nl.diments.requestify.ui.theme.LocalReducedMotion
 import nl.diments.requestify.desktop.AppIconImages
 import nl.diments.requestify.desktop.AwtTray
 import nl.diments.requestify.desktop.CrashGuard
@@ -218,6 +221,8 @@ fun main(args: Array<String>) {
     }
 
     val windowIcon = BitmapPainter(AppIconImages.awt(256).toComposeImageBitmap())
+    // Windows' "Animation effects", read once: off means the welcome wizard's play stays still.
+    val reducedMotion = windowsAnimationsOff()
     application(exitProcessOnExit = false) {
         val windowState = rememberWindowState(size = DpSize(1180.dp, 760.dp))
         Window(
@@ -252,7 +257,9 @@ fun main(args: Array<String>) {
                 window.addPropertyChangeListener("graphicsConfiguration", listener)
                 onDispose { window.removePropertyChangeListener("graphicsConfiguration", listener) }
             }
-            AppScaffold(graph, window, openOn = shell.openOn, onOpened = shell::opened)
+            CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
+                AppScaffold(graph, window, openOn = shell.openOn, onOpened = shell::opened)
+            }
         }
     }
 }

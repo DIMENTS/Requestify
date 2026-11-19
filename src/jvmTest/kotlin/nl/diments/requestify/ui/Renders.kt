@@ -325,4 +325,53 @@ class Renders {
             }
         }
     }
+
+    /** Moments of the wizard's motion on a paused clock: a card coming in, the confetti, the logo landing, Klaar. */
+    @Test
+    fun wizardMotionFrames() {
+        if (out == null) return
+        dutch {
+            for (dark in listOf(true, false)) {
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                val dir = createTempDirectory("requestify-render")
+                val spotify = kotlinx.coroutines.flow.MutableStateFlow(false)
+                val twitch = kotlinx.coroutines.flow.MutableStateFlow(false)
+                val donations = kotlinx.coroutines.flow.MutableStateFlow(false)
+                try {
+                    runDesktopComposeUiTest(width = 1180, height = 760) {
+                        val graph = AppGraph(AppPaths(dir, updatesDir = dir.resolve("updates")), InMemorySecretStore(), MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope)
+                        graph.settings.tryUpdate { it.copy(darkMode = if (dark) DarkMode.Dark else DarkMode.Light) }
+                        val vm = nl.diments.requestify.ui.welcome.WelcomeWizardViewModel(graph.settings, spotify, twitch, donations, scope)
+                        mainClock.autoAdvance = false
+                        setContent {
+                            nl.diments.requestify.ui.theme.RequestifyTheme(nl.diments.requestify.ui.theme.BrandSeed, dark) {
+                                androidx.compose.material3.Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.surface) {
+                                    nl.diments.requestify.ui.welcome.WelcomeWizard(vm, graph.spotifySetup, graph.twitchSetup, graph.donationsSetup)
+                                }
+                            }
+                        }
+                        val suffix = if (dark) "dark" else "light"
+                        fun at(ms: Long, name: String) {
+                            mainClock.advanceTimeBy(ms)
+                            capture("motion-$name-$suffix")
+                        }
+                        at(1_500, "1-welcome")
+                        vm.begin()
+                        at(120, "2-card-coming-in")
+                        at(1_000, "3-spotify")
+                        spotify.value = true
+                        at(350, "4-confetti")
+                        at(500, "5-logo-landing")
+                        at(2_000, "6-twitch")
+                        twitch.value = true
+                        at(2_200, "7-donations")
+                        vm.later()
+                        at(600, "8-done")
+                    }
+                } finally {
+                    scope.cancel()
+                }
+            }
+        }
+    }
 }
