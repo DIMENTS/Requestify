@@ -20,6 +20,6 @@ Get-Rows "SELECT Property, Value FROM Property WHERE Property='ProductName' OR P
 '== CustomAction (Requestify)'
 Get-Rows "SELECT Action, Type, Source, Target FROM CustomAction WHERE Action='RequestifyUninstallCleanup' OR Action='RequestifyLaunch'" 4
 '== InstallExecuteSequence (Requestify, RemoveFiles)'
-Get-Rows "SELECT Action, Condition, Sequence FROM InstallExecuteSequence WHERE Action='RequestifyUninstallCleanup' OR Action='RemoveFiles' OR Action='InstallInitialize' OR Action='InstallFinalize'" 3
+Get-Rows "SELECT Action, Condition, Sequence FROM InstallExecuteSequence WHERE Action='RequestifyUninstallCleanup' OR Action='RemoveFiles' OR Action='InstallInitialize' OR Action='RemoveExistingProducts' OR Action='InstallFinalize'" 3
 '== InstallUISequence (Requestify, ExecuteAction)'
 Get-Rows "SELECT Action, Condition, Sequence FROM InstallUISequence WHERE Action='RequestifyLaunch' OR Action='ExecuteAction'" 3

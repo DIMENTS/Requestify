@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  jpackage 21's main.wxs (JetBrains Runtime 21), with two Requestify additions marked "Requestify:" below.
+  jpackage 21's main.wxs (JetBrains Runtime 21), with Requestify's changes marked "Requestify:" below.
   The build passes this folder to jpackage as its resource dir (build.gradle.kts, packageRequestifyMsi/Exe).
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
@@ -145,7 +145,11 @@
       <?ifndef JpAllowDowngrades ?>
       <Custom Action="JpDisallowDowngrade" After="JpFindRelatedProducts">JP_DOWNGRADABLE_FOUND</Custom>
       <?endif?>
-      <RemoveExistingProducts Before="CostInitialize"/>
+      <!--
+        Requestify: inside the install transaction (jpackage puts it before CostInitialize, which commits the removal on
+        its own). If the new version fails to install, Windows Installer rolls the removal back: the old version stays.
+      -->
+      <RemoveExistingProducts After="InstallInitialize"/>
       <Custom Action="JpFindRelatedProducts" After="FindRelatedProducts"/>
       <!-- Requestify: see RequestifyUninstallCleanup. -->
       <Custom Action="RequestifyUninstallCleanup" Before="RemoveFiles">REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>

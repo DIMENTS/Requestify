@@ -50,6 +50,7 @@ Success looks like this:
 **Installer (jpackage through Compose):**
 - jpackage derives the MSI ProductCode from a hash of vendor, name and version. A rebuilt installer with the same version therefore cannot install over an installed copy (error 1638). **Every installer needs a new version.** Windows limits the parts to MAJOR ≤ 255, MINOR ≤ 255, BUILD ≤ 65535.
 - jpackage's MSI always does a major upgrade, and allows downgrades. It removes the old version completely before installing the new one (`RemoveExistingProducts` before `CostInitialize`).
+  - *Correction after the final review:* that removal is committed on its own, so a failed install of the new version left no Requestify at all. Requestify's `main.wxs` moves it to right after `InstallInitialize`, inside the install transaction, so a failed install rolls the removal back and the old version stays (section 3).
 - `perUserInstall` installs to `%LOCALAPPDATA%\Requestify` with no admin prompt. Per-user and per-machine installs are separate to Windows Installer, so the choice must not change between releases.
 - Compose 1.12.2's Windows DSL has `perUserInstall`, `upgradeUuid`, `menu`, `menuGroup`, `shortcut`, `dirChooser`, `console`, `iconFile`, `msiPackageVersion` and `exePackageVersion`.
   - Its jpackage task has a `jpackageResources` input that it passes as `--resource-dir`. This was seen in the plugin's classes.

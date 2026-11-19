@@ -66,15 +66,22 @@ Alle commando's zijn voor PowerShell, vanuit de projectmap.
     - [ ] Het kaartje "Bijgewerkt naar 0.2.1" staat op Home met de tekst van de release; na sluiten komt het niet terug.
     - [ ] Het Logboek heeft "Bijgewerkt van 0.2.0 naar 0.2.1".
     - [ ] Starten met Windows staat nog aan (een update laat dat met rust).
-16. **Pre-release:** publiceer `v0.2.2` als *pre-release*.
+16. **Een mislukte installatie** (de oude versie moet blijven): sluit Requestify af en installeer de nieuwste MSI met
+    een installatiemap die niet kan bestaan:
+    `msiexec /i "<pad>\Requestify-0.2.1.msi" /qb INSTALLDIR="Q:\Bestaat-niet\\"` (kies een schijfletter die je niet hebt).
+    - [ ] De installatie mislukt met een foutmelding.
+    - [ ] `%LOCALAPPDATA%\Requestify\Requestify.exe` bestaat nog en Requestify start gewoon (de oude versie is terug).
+    - [ ] Kijk in *Windows-beveiliging* → *Beveiligingsgeschiedenis*: Defender heeft de update-helper van Requestify
+      niet tegengehouden.
+17. **Pre-release:** publiceer `v0.2.2` als *pre-release*.
     - [ ] Requestify biedt hem niet aan ("Je hebt de nieuwste versie" na *Zoeken naar updates*).
     - [ ] Met `$env:REQUESTIFY_UPDATE_PRERELEASES = "1"` en Requestify vanuit die PowerShell gestart, wordt hij wél
       aangeboden. (Sluit die Requestify daarna af.)
 
 ## F. Verwijderen en opnieuw installeren
 
-17. Verwijder Requestify via *Instellingen* → *Apps*.
+18. Verwijder Requestify via *Instellingen* → *Apps*.
     - [ ] In *Taakbeheer* → *Opstart-apps* staat Requestify niet meer.
     - [ ] `%APPDATA%\Requestify` bestaat nog (met je koppelingen).
-18. Installeer de nieuwste release opnieuw.
+19. Installeer de nieuwste release opnieuw.
     - [ ] Alle koppelingen en instellingen zijn terug, geen wizard, en starten met Windows staat weer zoals voorheen.
