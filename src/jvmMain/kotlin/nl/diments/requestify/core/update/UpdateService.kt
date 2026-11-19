@@ -130,8 +130,16 @@ class UpdateService(
             store.clearExitCode()
             return
         }
+        val exitCode = store.lastExitCode()
+        if (pending.attempts > 0 && exitCode == 0) {
+            // msiexec succeeded (3010/1641 count as success), yet the old version runs: Windows finishes it at its next
+            // restart. No failure; the update stays ready.
+            store.clearExitCode()
+            _state.value = UpdateState.Ready(target, pending.notes, pending.pageUrl)
+            return
+        }
         if (pending.attempts > 0) {
-            val failure = UpdateEvent.InstallFailed(target, store.lastExitCode())
+            val failure = UpdateEvent.InstallFailed(target, exitCode)
             startFailure = failure
             _events.tryEmit(failure)
             store.clearExitCode()

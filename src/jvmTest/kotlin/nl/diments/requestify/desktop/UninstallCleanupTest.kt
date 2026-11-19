@@ -103,4 +103,14 @@ class UninstallCleanupTest {
         }
         cleanUpForUninstall(refusing, dir.resolve("missing").resolve("deeper"))
     }
+
+    @Test
+    fun theUpdatesFolderIsRemoved() {
+        val updates = dir.resolve("Requestify-updates").also { it.toFile().mkdirs() }
+        updates.resolve("pending.json").writeText("{}")
+        updates.resolve("Requestify-0.3.0.msi").writeText("msi")
+        cleanUpForUninstall(registry, dir, updatesDir = updates) // also without an autostart entry
+        assertFalse(updates.toFile().exists(), "up to ~90 MB of downloads go with the app")
+        cleanUpForUninstall(registry, dir, updatesDir = updates) // gone already: fine
+    }
 }

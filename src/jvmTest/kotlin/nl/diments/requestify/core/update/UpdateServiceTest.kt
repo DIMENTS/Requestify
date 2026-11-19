@@ -351,4 +351,14 @@ class UpdateServiceTest {
         assertEquals(1, downloads)
         assertIs<UpdateState.Ready>(service.state.value)
     }
+
+    @Test
+    fun anInstallWaitingForARebootIsNoFailure() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("0") // 3010 or 1641, mapped by the helper
+        val service = service()
+        assertEquals(emptyList(), events(service))
+        assertIs<UpdateState.Ready>(service.state.value)
+        assertNull(service.startFailure)
+    }
 }

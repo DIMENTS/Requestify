@@ -1,7 +1,6 @@
 package nl.diments.requestify.desktop
 
 import java.nio.file.Path
-import java.util.Base64
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -26,10 +25,10 @@ class UpdateLauncherTest {
     @BeforeTest fun setUp() { dir = createTempDirectory("requestify-launcher") }
     @AfterTest fun tearDown() { dir.deleteTestDir() }
 
-    /** The PowerShell script the helper runs (the command carries it encoded, so no quoting can break it). */
+    /** The PowerShell script the helper runs: readable, as one `-Command` argument. */
     private fun script(command: List<String>): String {
-        assertEquals(listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand"), command.dropLast(1))
-        return String(Base64.getDecoder().decode(command.last()), Charsets.UTF_16LE)
+        assertEquals(listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"), command.dropLast(1))
+        return command.last()
     }
 
     private val marker = Path.of("$home\\Requestify-updates\\installing.txt")
@@ -41,7 +40,8 @@ class UpdateLauncherTest {
         return PendingUpdate("0.2.1", "Requestify-0.2.1.msi", checkNotNull(sha256Of(file)), "", "").also(store::savePending)
     }
 
-    private fun script(hidden: Boolean = false) = script(updateHelperCommand(msi, log, exitCode, marker, 4242, launcher, hidden))
+    private fun script(hidden: Boolean = false, pids: List<Long> = listOf(4242)) =
+        script(updateHelperCommand(msi, log, exitCode, marker, pids, launcher, hidden))
 
     @Test
     fun theCommandWaitsInstallsRecordsAndRelaunches() {
@@ -59,8 +59,11 @@ class UpdateLauncherTest {
         val s = script()
         assertTrue("-FilePath 'C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify\\Requestify.exe'" in s, s)
         assertTrue("-LiteralPath 'C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\install-exit-code.txt'" in s, s)
-        assertTrue("/i \"C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\Requestify-0.2.1.msi\"" in s, "msiexec gets the path in double quotes, inside PowerShell's single-quoted string\n$s")
-        assertTrue("/l*v \"C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\install.log\"" in s, s)
+        assertTrue(
+            "'/i ' + \$q + 'C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\Requestify-0.2.1.msi' + \$q" in s,
+            "msiexec gets the path in double quotes (\$q), the quote in it doubled\n$s",
+        )
+        assertTrue("/l*v ' + \$q + 'C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\install.log' + \$q" in s, s)
     }
 
     @Test
@@ -105,7 +108,12 @@ class UpdateLauncherTest {
     @Test
     fun theHelperRelaunchesWhateverIsInstalled() {
         val s = script()
-        assertFalse("if (" in s || "if(" in s, "after a failed install the old version is back, and it starts too\n$s")
+        val statements = s.split("; ")
+        assertEquals(1, statements.count { it.startsWith("if ") }, "only the exit code is looked at\n$s")
+        assertTrue(
+            statements.last().startsWith("Start-Process -FilePath 'C:"),
+            "after a failed install the old version is back, and it starts too, unconditionally\n$s",
+        )
     }
 
     @Test
@@ -129,5 +137,14 @@ class UpdateLauncherTest {
         assertFalse(UpdateLauncher(start = { started += it; 1L }).launch(pending, store, launcher, hidden = false))
         assertEquals(emptyList(), started, "nothing is installed")
         assertNull(store.pending(), "it is downloaded again later")
+    }
+
+    @Test
+    fun theHelperIsAReadableCommand() {
+        val s = script(pids = listOf(11, 22))
+        assertFalse('"' in s, "no double quote of its own: Java's argument quoting cannot break it\n$s")
+        assertTrue("Wait-Process -Id 11,22 -Timeout 60" in s, "the app and its launcher\n$s")
+        assertTrue("if (\$c -eq 3010 -or \$c -eq 1641) { \$c = 0 }" in s, "installed, a restart of Windows pending: success\n$s")
+        assertTrue("Set-Content -LiteralPath 'C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\install-exit-code.txt' -Value \$c" in s, s)
     }
 }

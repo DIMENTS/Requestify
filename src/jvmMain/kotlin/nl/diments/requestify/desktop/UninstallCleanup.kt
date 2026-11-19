@@ -2,6 +2,7 @@ package nl.diments.requestify.desktop
 
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.deleteRecursively
 import java.nio.file.StandardCopyOption
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -23,10 +24,18 @@ private const val MARKER_FILE = "autostart-removed.json"
 /**
  * Run by the uninstaller (`Requestify.exe --uninstall-cleanup`, never during an upgrade): removes the autostart entry
  * with Task Manager's switch, and leaves a note of how it was in [dataDir], which the uninstaller keeps. A reinstall
- * puts it back from that note ([restoreAutostartAfterReinstall]). Without an entry nothing is noted. It never throws:
- * an uninstall must not fail over this.
+ * puts it back from that note ([restoreAutostartAfterReinstall]). Without an entry nothing is noted. The downloaded
+ * updates ([updatesDir], up to ~90 MB) go too. It never throws: an uninstall must not fail over this.
  */
-fun cleanUpForUninstall(registry: RegistryPort, dataDir: Path) {
+@OptIn(kotlin.io.path.ExperimentalPathApi::class)
+fun cleanUpForUninstall(registry: RegistryPort, dataDir: Path, updatesDir: Path? = null) {
+    if (updatesDir != null) {
+        try {
+            updatesDir.deleteRecursively()
+        } catch (_: Throwable) {
+            // best effort: what stays is only disk space
+        }
+    }
     val state = try {
         registry.getString(RUN_KEY, AUTOSTART_VALUE_NAME) ?: return
         if (isDisabledInTaskManager(registry.getBinary(APPROVED_KEY, AUTOSTART_VALUE_NAME))) {

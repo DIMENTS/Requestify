@@ -91,7 +91,7 @@ private const val SHUTDOWN_FLUSH_MS = 2_000L
 fun main(args: Array<String>) {
     // The uninstaller's errand: nothing else of the app starts (no single instance, no crash guard, no window).
     if (UNINSTALL_CLEANUP_ARG in args) {
-        cleanUpForUninstall(JnaRegistry, AppPaths.default().dataDir)
+        AppPaths.default().let { paths -> cleanUpForUninstall(JnaRegistry, paths.dataDir, paths.updatesDir) }
         return
     }
     val mode = launchMode(args)
