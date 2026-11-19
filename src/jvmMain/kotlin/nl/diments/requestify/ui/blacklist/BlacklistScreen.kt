@@ -1,5 +1,6 @@
 package nl.diments.requestify.ui.blacklist
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -88,6 +89,8 @@ import nl.diments.requestify.ui.home.RowGap
 import nl.diments.requestify.ui.home.connectedShape
 import nl.diments.requestify.ui.home.kindName
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.stringResource
 
 /** The test tag of each row of the blacklist. */
@@ -113,53 +116,60 @@ fun BlacklistScreen(vm: BlacklistViewModel) {
         val list = state.blacklist
         Tabs(state.tab, list.tracks.size, list.artists.size, list.viewers.size, vm::onTab)
         AddField(state, vm)
-        val modifier = Modifier.weight(1f).fillMaxWidth()
-        when (state.tab) {
-            BlacklistTab.Songs -> BlockedList(
-                list.tracks.sortedByDescending { it.atEpochMs },
-                key = { it.track.id },
-                empty = stringResource(Res.string.blacklist_empty_songs),
-                modifier = modifier,
-            ) { entry, shape ->
-                BlockedRow(
-                    title = entry.track.name,
-                    detail = entry.track.artists.joinToString(", ").ifBlank { null },
-                    subtitle = blockedBy(entry.by, entry.atEpochMs),
-                    removeLabel = entry.track.name,
-                    shape = shape,
-                    onRemove = { vm.onRemove(entry.track.id) },
-                    leading = { AlbumArt(entry.track.albumArtUrl, Modifier.size(LeadingSize).clip(RoundedCornerShape(12.dp))) },
-                )
-            }
-            BlacklistTab.Artists -> BlockedList(
-                list.artists.sortedByDescending { it.atEpochMs },
-                key = { it.id ?: it.name },
-                empty = stringResource(Res.string.blacklist_empty_artists),
-                modifier = modifier,
-            ) { entry, shape ->
-                BlockedRow(
-                    title = entry.name,
-                    subtitle = blockedBy(entry.by, entry.atEpochMs),
-                    removeLabel = entry.name,
-                    shape = shape,
-                    onRemove = { vm.onRemove(entry.id ?: entry.name) },
-                    leading = { IconTile(AppIcons.PersonOff) },
-                )
-            }
-            BlacklistTab.Viewers -> BlockedList(
-                list.viewers.sortedByDescending { it.atEpochMs },
-                key = { it.twitchUserId },
-                empty = stringResource(Res.string.blacklist_empty_viewers),
-                modifier = modifier,
-            ) { entry, shape ->
-                BlockedRow(
-                    title = "@${entry.login}",
-                    subtitle = blockedBy(entry.by, entry.atEpochMs),
-                    removeLabel = "@${entry.login}",
-                    shape = shape,
-                    onRemove = { vm.onRemove(entry.twitchUserId) },
-                    leading = { IconTile(AppIcons.Block) },
-                )
+        // Like the queue's tabs: one list fades out before the next fades in.
+        AnimatedContent(
+            targetState = state.tab,
+            transitionSpec = { motion.fadeThrough() using motion.sizeTransform(clip = true) },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { tab ->
+            val modifier = Modifier.fillMaxSize()
+            when (tab) {
+                BlacklistTab.Songs -> BlockedList(
+                    list.tracks.sortedByDescending { it.atEpochMs },
+                    key = { it.track.id },
+                    empty = stringResource(Res.string.blacklist_empty_songs),
+                    modifier = modifier,
+                ) { entry, shape ->
+                    BlockedRow(
+                        title = entry.track.name,
+                        detail = entry.track.artists.joinToString(", ").ifBlank { null },
+                        subtitle = blockedBy(entry.by, entry.atEpochMs),
+                        removeLabel = entry.track.name,
+                        shape = shape,
+                        onRemove = { vm.onRemove(entry.track.id) },
+                        leading = { AlbumArt(entry.track.albumArtUrl, Modifier.size(LeadingSize).clip(RoundedCornerShape(12.dp))) },
+                    )
+                }
+                BlacklistTab.Artists -> BlockedList(
+                    list.artists.sortedByDescending { it.atEpochMs },
+                    key = { it.id ?: it.name },
+                    empty = stringResource(Res.string.blacklist_empty_artists),
+                    modifier = modifier,
+                ) { entry, shape ->
+                    BlockedRow(
+                        title = entry.name,
+                        subtitle = blockedBy(entry.by, entry.atEpochMs),
+                        removeLabel = entry.name,
+                        shape = shape,
+                        onRemove = { vm.onRemove(entry.id ?: entry.name) },
+                        leading = { IconTile(AppIcons.PersonOff) },
+                    )
+                }
+                BlacklistTab.Viewers -> BlockedList(
+                    list.viewers.sortedByDescending { it.atEpochMs },
+                    key = { it.twitchUserId },
+                    empty = stringResource(Res.string.blacklist_empty_viewers),
+                    modifier = modifier,
+                ) { entry, shape ->
+                    BlockedRow(
+                        title = "@${entry.login}",
+                        subtitle = blockedBy(entry.by, entry.atEpochMs),
+                        removeLabel = "@${entry.login}",
+                        shape = shape,
+                        onRemove = { vm.onRemove(entry.twitchUserId) },
+                        leading = { IconTile(AppIcons.Block) },
+                    )
+                }
             }
         }
     }
@@ -343,6 +353,7 @@ private fun CandidateRow(candidate: BlockCandidate, enabled: Boolean, onClick: (
 private const val DISABLED_ALPHA = 0.38f
 
 /** One tab's list: connected rows, or a quiet line when nothing is blocked. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun <T> BlockedList(
     entries: List<T>,
@@ -355,13 +366,17 @@ private fun <T> BlockedList(
         EmptyState(empty, modifier)
         return
     }
+    val motion = MaterialTheme.motionScheme
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(RowGap),
         contentPadding = PaddingValues(bottom = Spacing.l),
     ) {
         itemsIndexed(entries, key = { _, entry -> key(entry) }) { index, entry ->
-            row(entry, connectedShape(index, entries.size, dragging = false))
+            // Like the queue: a row fades in or out, and the rows around it slide to their new places.
+            Box(Modifier.animateItem(motion.defaultEffectsSpec(), motion.defaultSpatialSpec(), motion.fastEffectsSpec())) {
+                row(entry, connectedShape(index, entries.size, dragging = false))
+            }
         }
     }
 }

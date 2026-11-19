@@ -147,6 +147,7 @@ private val LogChipSlot = 104.dp
  * The Logboek: what went right or wrong, and why. Rows by day, newest first; filter chips and a search narrow them;
  * a row opens its details with everything that happened to it. A banner says when the Log cannot save.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LogScreen(vm: LogViewModel) {
     val days by vm.days.collectAsState()
@@ -183,15 +184,25 @@ fun LogScreen(vm: LogViewModel) {
             val empty = if (filter == LogFilter.All && query.isBlank()) Res.string.log_empty else Res.string.log_empty_filtered
             EmptyState(stringResource(empty), Modifier.fillMaxWidth().weight(1f))
         } else {
+            val motion = MaterialTheme.motionScheme
+            // Like the queue: rows a filter or a search hides fade out, new ones fade in, the rest slide into place.
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(RowGap),
                 contentPadding = PaddingValues(bottom = Spacing.l),
             ) {
                 days.forEach { day ->
-                    item(key = "day:${day.date}") { DayHeader(day.date, zone) }
+                    item(key = "day:${day.date}") {
+                        DayHeader(day.date, zone, Modifier.animateItem(motion.defaultEffectsSpec(), motion.defaultSpatialSpec(), motion.fastEffectsSpec()))
+                    }
                     itemsIndexed(day.rows, key = { _, row -> row.id }) { index, row ->
-                        LogRowItem(row, zone, connectedShape(index, day.rows.size, dragging = false), onClick = { vm.select(row.id) })
+                        LogRowItem(
+                            row,
+                            zone,
+                            connectedShape(index, day.rows.size, dragging = false),
+                            onClick = { vm.select(row.id) },
+                            modifier = Modifier.animateItem(motion.defaultEffectsSpec(), motion.defaultSpatialSpec(), motion.fastEffectsSpec()),
+                        )
                     }
                 }
             }
@@ -230,7 +241,7 @@ private fun LogFilter.label() = when (this) {
 }
 
 @Composable
-private fun DayHeader(date: LocalDate, zone: ZoneId) {
+private fun DayHeader(date: LocalDate, zone: ZoneId, modifier: Modifier = Modifier) {
     val today = LocalDate.now(zone)
     val text = when (date) {
         today -> stringResource(Res.string.log_today)
@@ -241,16 +252,16 @@ private fun DayHeader(date: LocalDate, zone: ZoneId) {
         text,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = Spacing.m, bottom = Spacing.xs),
+        modifier = modifier.padding(top = Spacing.m, bottom = Spacing.xs),
     )
 }
 
 @Composable
-private fun LogRowItem(row: LogRow, zone: ZoneId, shape: RoundedCornerShape, onClick: () -> Unit) {
+private fun LogRowItem(row: LogRow, zone: ZoneId, shape: RoundedCornerShape, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     Surface(
-        Modifier.fillMaxWidth().testTag(LOG_ROW_TAG).clickable(onClick = onClick),
+        modifier.fillMaxWidth().testTag(LOG_ROW_TAG).clickable(onClick = onClick),
         shape = shape,
         color = scheme.surfaceContainerLow,
     ) {

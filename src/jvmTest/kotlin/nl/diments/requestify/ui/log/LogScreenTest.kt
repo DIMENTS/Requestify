@@ -17,6 +17,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -138,5 +139,27 @@ class LogScreenTest {
         setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
         val starts = listOf("Jan", "Piet", "Kees").map { onNodeWithText("$it · Mr. Brightside").getBoundsInRoot().left }
         assertEquals(1, starts.distinct().size, "the titles start at $starts")
+    }
+
+    @Test
+    fun theRowsAFilterKeepsSlideIntoPlace() = runComposeUiTest {
+        val mixed = foldRows(
+            listOf(
+                LogRecord.RequestReceived("r1", at, RequestSource.CHAT, Requester("Jan"), "despacito"),
+                LogRecord.RequestStep("r1", at, LogStep.Resolved(track)),
+                LogRecord.ConnectionChanged("c1", at + 1_000, LogService.Twitch, LogConnectionState.Lost), // newest: on top
+            ),
+        )
+        val vm = LogViewModel(MutableStateFlow(mixed), MutableStateFlow(null), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
+        waitForIdle()
+        val before = onNodeWithText("Jan · Mr. Brightside").getBoundsInRoot().top
+        mainClock.autoAdvance = false
+        vm.setFilter(LogFilter.Requests)
+        mainClock.advanceTimeBy(64)
+        val during = onNodeWithText("Jan · Mr. Brightside").getBoundsInRoot().top
+        mainClock.advanceTimeBy(1_000)
+        val after = onNodeWithText("Jan · Mr. Brightside").getBoundsInRoot().top
+        assertTrue(after < during && during < before, "the row slides up: $before, $during, $after")
     }
 }

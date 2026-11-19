@@ -6,7 +6,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +66,8 @@ import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.stringResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -138,7 +139,7 @@ fun QueuePane(
         )
         AnimatedContent(
             targetState = tab,
-            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+            transitionSpec = { motion.fadeThrough() using motion.sizeTransform(clip = true) },
             modifier = Modifier.weight(1f),
         ) { shown ->
             when (shown) {
@@ -393,12 +394,14 @@ private fun ThenInSpotify(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PlayedList(history: List<PlayedEntry>, modifier: Modifier = Modifier) {
     if (history.isEmpty()) {
         EmptyState(stringResource(Res.string.home_played_empty), modifier)
         return
     }
+    val motion = MaterialTheme.motionScheme
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(RowGap),
@@ -406,6 +409,7 @@ private fun PlayedList(history: List<PlayedEntry>, modifier: Modifier = Modifier
     ) {
         itemsIndexed(history, key = { _, entry -> "${entry.request.id}@${entry.playedAtEpochMs}" }) { index, entry ->
             Surface(
+                modifier = Modifier.animateItem(motion.defaultEffectsSpec(), motion.defaultSpatialSpec(), motion.fastEffectsSpec()),
                 shape = connectedShape(index, history.size, dragging = false),
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
             ) {

@@ -4,6 +4,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import java.nio.file.Path
@@ -15,6 +17,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -152,5 +155,40 @@ class BlacklistScreenTest {
             .also { who.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(it) }.single()
         assertEquals(false, layout.isLineEllipsized(0), "who and when end in …")
         onNodeWithText(artists).assertExists() // the artists give way instead
+    }
+
+    @Test
+    fun switchingTabsFadesFromOneListToTheOther() = runDesktopComposeUiTest(width = 1000, height = 800) {
+        val parts = parts()
+        parts.blacklist.addTrack(track("t1", "Sandstorm", "Darude"), by = null, at = nov12)
+        parts.blacklist.addArtist("a1", "Pinkfong", by = null, at = nov12)
+        val vm = viewModel(parts, twitch = true)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { BlacklistScreen(vm) } }
+        waitForIdle()
+        mainClock.autoAdvance = false
+        vm.onTab(BlacklistTab.Artists)
+        mainClock.advanceTimeBy(32)
+        assertEquals(true, onAllNodesWithText("Sandstorm").fetchSemanticsNodes().isNotEmpty(), "the songs fade out")
+        mainClock.advanceTimeBy(1_000)
+        onNodeWithText("Pinkfong").assertIsDisplayed()
+        assertEquals(0, onAllNodesWithText("Sandstorm").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun whenARowIsUnblockedTheRowsUnderItSlideUp() = runDesktopComposeUiTest(width = 1000, height = 800) {
+        val parts = parts()
+        parts.blacklist.addTrack(track("t1", "Sandstorm", "Darude"), by = null, at = nov12)
+        parts.blacklist.addTrack(track("t2", "Baby Shark", "Pinkfong"), by = null, at = nov12 + 1) // newest: on top
+        val vm = viewModel(parts, twitch = true)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { BlacklistScreen(vm) } }
+        waitForIdle()
+        val before = onNodeWithText("Sandstorm").getBoundsInRoot().top
+        mainClock.autoAdvance = false
+        vm.onRemove("t2")
+        mainClock.advanceTimeBy(64)
+        val during = onNodeWithText("Sandstorm").getBoundsInRoot().top
+        mainClock.advanceTimeBy(1_000)
+        val after = onNodeWithText("Sandstorm").getBoundsInRoot().top
+        assertTrue(after < during && during < before, "the row slides up: $before, $during, $after")
     }
 }

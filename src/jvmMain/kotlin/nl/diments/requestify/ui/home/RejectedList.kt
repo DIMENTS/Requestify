@@ -100,6 +100,7 @@ private fun RejectReason.icon(): ImageVector = when (this) {
  * in (in the error colour, with "points refunded" when the points went back), with "Add anyway" (when the track
  * is known) and a dismiss button.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun RejectedList(
     entries: List<RejectedEntry>,
@@ -111,6 +112,7 @@ internal fun RejectedList(
         EmptyState(stringResource(Res.string.home_rejected_empty), modifier)
         return
     }
+    val motion = MaterialTheme.motionScheme
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(RowGap),
@@ -122,6 +124,7 @@ internal fun RejectedList(
                 shape = connectedShape(index, entries.size, dragging = false),
                 onAddAnyway = { onAddAnyway(entry.id) },
                 onDismiss = { onDismiss(entry.id) },
+                modifier = Modifier.animateItem(motion.defaultEffectsSpec(), motion.defaultSpatialSpec(), motion.fastEffectsSpec()),
             )
         }
     }
@@ -129,11 +132,17 @@ internal fun RejectedList(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun RejectedRow(entry: RejectedEntry, shape: RoundedCornerShape, onAddAnyway: () -> Unit, onDismiss: () -> Unit) {
+private fun RejectedRow(
+    entry: RejectedEntry,
+    shape: RoundedCornerShape,
+    onAddAnyway: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val scheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     val track = entry.request?.track
-    Surface(Modifier.testTag(REJECTED_ROW_TAG), shape = shape, color = scheme.surfaceContainerLow) {
+    Surface(modifier.testTag(REJECTED_ROW_TAG), shape = shape, color = scheme.surfaceContainerLow) {
         Row(
             modifier = Modifier.padding(start = Spacing.m, end = Spacing.xs, top = Spacing.s, bottom = Spacing.s),
             horizontalArrangement = Arrangement.spacedBy(Spacing.m),
