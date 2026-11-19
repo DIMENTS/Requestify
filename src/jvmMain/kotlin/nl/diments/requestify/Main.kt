@@ -155,6 +155,7 @@ fun main(args: Array<String>) {
         graph.updates.prepareInstallAtStart()?.let { pending ->
             // When the helper cannot start, this version simply starts as usual.
             if (UpdateLauncher().launch(pending, graph.updateStore, launcherExe, hidden = !initiallyVisible(mode))) {
+                instance.markQuitting()
                 crashGuard.markOrderlyEnd()
                 instance.close()
                 exitProcess(0)
@@ -177,6 +178,7 @@ fun main(args: Array<String>) {
         onOpen = { shell.showRequested() },
         onQuit = {
             quitApp(
+                markQuitting = instance::markQuitting,
                 hideTray = { tray.remove() },
                 hideWindow = shell::hideNow,
                 stopGracefully = graph::stopGracefully,
@@ -203,6 +205,7 @@ fun main(args: Array<String>) {
             val exe = launcherExe ?: return@collect
             val hidden = !shell.visible
             if (!UpdateLauncher().launch(pending, graph.updateStore, exe, hidden)) return@collect
+            instance.markQuitting()
             tray.remove()
             shell.hideNow()
             try {

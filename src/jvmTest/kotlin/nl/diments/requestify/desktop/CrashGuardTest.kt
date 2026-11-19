@@ -4,13 +4,16 @@ import java.awt.EventQueue
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
+import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -28,7 +31,11 @@ class CrashGuardTest {
     @BeforeTest fun setUp() { dir = createTempDirectory("requestify-crash") }
     @AfterTest fun tearDown() { dir.deleteTestDir() }
 
-    private fun guard(mode: LaunchMode = LaunchMode.Normal, installation: Installation = Installation(exe)) = CrashGuard(
+    private fun guard(
+        mode: LaunchMode = LaunchMode.Normal,
+        installation: Installation = Installation(exe),
+        isShuttingDown: () -> Boolean = { false },
+    ) = CrashGuard(
         dir = dir,
         clock = { now },
         mode = mode,
@@ -38,6 +45,7 @@ class CrashGuardTest {
         showFatal = { fatal += it },
         exit = { exits += it },
         fatalText = { "Requestify is gestopt door een fout. Start het opnieuw." },
+        isShuttingDown = isShuttingDown,
     )
 
     @Test
@@ -184,5 +192,40 @@ class CrashGuardTest {
         } finally {
             Thread.setDefaultUncaughtExceptionHandler(saved)
         }
+    }
+
+    @Test
+    fun aTouchAfterAnOrderlyEndWritesNothing() {
+        val guard = guard()
+        guard.markRunning()
+        guard.markOrderlyEnd()
+        guard.touch() // a late "still alive" from the background loop
+        assertFalse(dir.resolve("running.json").exists())
+    }
+
+    @Test
+    fun theEndRemovesOnlyItsOwnRunsMarker() {
+        val guard = guard()
+        guard.markRunning()
+        // A newer instance (started while this one quit) wrote its own marker meanwhile.
+        dir.resolve("running.json").writeText("""{"startedAtEpochMs":5,"lastAliveEpochMs":5,"runId":"someone-else"}""")
+        guard.markOrderlyEnd()
+        assertTrue(dir.resolve("running.json").exists(), "the newer instance's marker stays")
+    }
+
+    @Test
+    fun anErrorWhileTheJvmShutsDownIsNoCrashEvenBeforeOurHook() {
+        val guard = guard(isShuttingDown = { true })
+        guard.markRunning()
+        guard.onUncaught(IllegalStateException("during logoff, before our hook ran"))
+        assertEquals(emptyList(), relaunched)
+        assertEquals(emptyList(), fatal)
+        assertEquals(emptyList(), exits)
+        assertTrue(dir.resolve("crash").listDirectoryEntries("*.txt").single().readText().contains("before our hook ran"))
+    }
+
+    @Test
+    fun theJvmIsNotShuttingDownWhileRunning() {
+        assertFalse(jvmIsShuttingDown())
     }
 }

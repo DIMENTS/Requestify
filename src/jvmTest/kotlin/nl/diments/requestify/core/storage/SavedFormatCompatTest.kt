@@ -211,8 +211,13 @@ class SavedFormatCompatTest {
     /** The running marker (running.json) keeps these names: an update must still read the one a crash left. */
     @Test
     fun runMarkerIsPinned() {
-        val json = AppJson.instance.encodeToString(nl.diments.requestify.desktop.RunMarker.serializer(), nl.diments.requestify.desktop.RunMarker(1, 2, afterCrash = true, crashFile = "c.txt"))
-        assertEquals("""{"startedAtEpochMs":1,"lastAliveEpochMs":2,"afterCrash":true,"crashFile":"c.txt"}""", json)
+        val json = AppJson.instance.encodeToString(nl.diments.requestify.desktop.RunMarker.serializer(), nl.diments.requestify.desktop.RunMarker(1, 2, afterCrash = true, crashFile = "c.txt", runId = "r1"))
+        assertEquals("""{"startedAtEpochMs":1,"lastAliveEpochMs":2,"afterCrash":true,"crashFile":"c.txt","runId":"r1"}""", json)
+        assertEquals(
+            nl.diments.requestify.desktop.RunMarker(1, 2),
+            AppJson.instance.decodeFromString(nl.diments.requestify.desktop.RunMarker.serializer(), """{"startedAtEpochMs":1,"lastAliveEpochMs":2}"""),
+            "a marker an older version left reads",
+        )
     }
 
     /** Which DonoLink expiry step was notified is kept in settings.json under these names. */

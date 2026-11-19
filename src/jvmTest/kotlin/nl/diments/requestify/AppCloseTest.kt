@@ -8,6 +8,7 @@ class AppCloseTest {
     fun quitHidesStopsMarksAndExitsInOrder() {
         val steps = mutableListOf<String>()
         quitApp(
+            markQuitting = { steps += "quitting" },
             hideTray = { steps += "hide tray" },
             hideWindow = { steps += "hide window" },
             stopGracefully = { steps += "stop" },
@@ -15,7 +16,7 @@ class AppCloseTest {
             exit = { steps += "exit" },
         )
         assertEquals(
-            listOf("hide tray", "hide window", "stop", "orderly end", "exit"),
+            listOf("quitting", "hide tray", "hide window", "stop", "orderly end", "exit"),
             steps,
             "nothing hangs on screen while Twitch answers, and the next start knows this was no crash",
         )

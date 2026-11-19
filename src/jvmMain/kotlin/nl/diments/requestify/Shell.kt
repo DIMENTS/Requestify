@@ -60,17 +60,20 @@ class ShellState(visible: Boolean) {
 }
 
 /**
- * Quit from the tray: the icon and the window go at once (a window that waits on screen looks frozen), then the graceful
+ * Quit from the tray: a later start is told this one is quitting ([markQuitting]: it waits for this one to end), the
+ * icon and the window go at once (a window that waits on screen looks frozen), then the graceful
  * stop (the Channel Points reward paused, pending saves flushed; bounded), then the marker that tells the next start
  * this was no crash, then the exit.
  */
 fun quitApp(
+    markQuitting: () -> Unit = {},
     hideTray: () -> Unit,
     hideWindow: () -> Unit,
     stopGracefully: suspend () -> Unit,
     markOrderlyEnd: () -> Unit,
     exit: () -> Unit,
 ) {
+    markQuitting()
     hideTray()
     hideWindow()
     try {

@@ -12,6 +12,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.time.ZoneId
+import java.util.UUID
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.serialization.Serializable
@@ -29,6 +30,8 @@ data class RunMarker(
     val lastAliveEpochMs: Long,
     val afterCrash: Boolean = false,
     val crashFile: String? = null,
+    /** Which run wrote it: an orderly end removes only its own run's marker (plan 6). */
+    val runId: String? = null,
 )
 
 /**
@@ -51,7 +54,12 @@ class CrashGuard(
     private val fatalText: () -> String,
     private val restartWindowMs: Long = 600_000,
     private val keepFiles: Int = 10,
+    /** Whether the JVM is ending already, also before our own [shutdownHook] ran (hooks run in any order). */
+    private val isShuttingDown: () -> Boolean = ::jvmIsShuttingDown,
 ) {
+    /** This run's id in its marker. */
+    private val runId = UUID.randomUUID().toString()
+
     private val markerFile: Path get() = dir.resolve("running.json")
     private val crashDir: Path get() = dir.resolve("crash")
     private val lock = Any()
@@ -62,6 +70,9 @@ class CrashGuard(
 
     /** Guarded by [lock]: this run's marker. */
     private var marker: RunMarker? = null
+
+    /** Guarded by [lock]: the run ended in order; a late [touch] writes nothing. */
+    private var ended = false
 
     /** Set when the JVM starts ending (Windows shutting down, logoff, Quit): an error after that is no crash. */
     @Volatile
@@ -89,26 +100,37 @@ class CrashGuard(
 
     fun markRunning() {
         val now = clock()
-        write(RunMarker(now, now, afterCrash = mode == LaunchMode.AfterCrash))
+        write(RunMarker(now, now, afterCrash = mode == LaunchMode.AfterCrash, runId = runId))
     }
 
     /** Remembers that the app is still alive now (the last sign of life the next start reports). */
     fun touch() {
-        if (crashing) return
-        synchronized(lock) { marker }?.let { write(it.copy(lastAliveEpochMs = clock())) }
+        synchronized(lock) {
+            if (crashing || ended) return
+            marker?.let { write(it.copy(lastAliveEpochMs = clock())) }
+        }
     }
 
+    /**
+     * This run ended in order: its marker goes. A marker of another run (a new instance that started while this one
+     * quit) stays.
+     */
     fun markOrderlyEnd() {
-        if (crashing) return
-        synchronized(lock) { marker = null }
-        try {
-            Files.deleteIfExists(markerFile)
-        } catch (_: IOException) {
+        synchronized(lock) {
+            if (crashing) return
+            ended = true
+            marker = null
+            val onDisk = readMarker()
+            if (onDisk != null && onDisk.runId != runId) return
+            try {
+                Files.deleteIfExists(markerFile)
+            } catch (_: IOException) {
+            }
         }
     }
 
     fun onUncaught(t: Throwable) {
-        if (shuttingDown) {
+        if (shuttingDown || isShuttingDown()) {
             // The JVM is ending already (Windows shuts down or signs out): keep the error for diagnosis, but no restart
             // and no message. Exiting here would block until the shutdown hooks are done; the end comes anyway.
             try {
@@ -127,7 +149,7 @@ class CrashGuard(
         try {
             val file = writeCrashFile(t)
             synchronized(lock) { marker }?.let { write(it.copy(crashFile = file)) }
-                ?: write(RunMarker(clock(), clock(), crashFile = file))
+                ?: write(RunMarker(clock(), clock(), crashFile = file, runId = runId))
             val exe = installation.launcherExe
             val loop = mode == LaunchMode.AfterCrash && clock() - (synchronized(lock) { marker }?.startedAtEpochMs ?: 0) < restartWindowMs
             if (exe != null && !loop) relaunch(listOf(exe.toString(), AFTER_CRASH_ARG)) else showFatal(fatalText())
@@ -188,6 +210,19 @@ class CrashGuard(
     private companion object {
         val FILE_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").withZone(ZoneId.systemDefault())
     }
+}
+
+/**
+ * Whether the JVM is shutting down (Windows shutting down or signing out, or an exit): adding a shutdown hook then
+ * throws. Independent of which hook runs first.
+ */
+fun jvmIsShuttingDown(): Boolean = try {
+    val probe = Thread {}
+    Runtime.getRuntime().addShutdownHook(probe)
+    Runtime.getRuntime().removeShutdownHook(probe)
+    false
+} catch (_: IllegalStateException) {
+    true
 }
 
 /** A message that stays on screen after Requestify is gone, also when its own window can no longer draw. */

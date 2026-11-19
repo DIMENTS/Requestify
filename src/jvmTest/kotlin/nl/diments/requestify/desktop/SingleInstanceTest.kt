@@ -100,4 +100,28 @@ class SingleInstanceTest {
         assertIs<InstanceStart.First>(restarted, "the restart takes over once the old lock is gone")
         assertEquals(0, oldShown.get(), "it never asked the old one to show")
     }
+
+    @Test
+    fun aStartDuringQuitWaitsAndThenRuns() {
+        val shown = AtomicInteger()
+        val first = assertIs<InstanceStart.First>(start(onShow = { shown.incrementAndGet() })).instance
+        first.markQuitting()
+        Thread {
+            Thread.sleep(300)
+            first.close() // the Quit finishes
+        }.start()
+        val began = System.currentTimeMillis()
+        val second = SingleInstance(dir).start(onShowRequested = {}).also { if (it is InstanceStart.First) running += it.instance }
+        assertIs<InstanceStart.First>(second, "the new start waited for the quitting one and runs")
+        assertTrue(System.currentTimeMillis() - began < 5_000)
+        assertEquals(0, shown.get(), "a quitting instance does not show its window")
+    }
+
+    @Test
+    fun aQuitThatNeverEndsLeavesTheNewStartOut() {
+        val first = assertIs<InstanceStart.First>(start()).instance
+        first.markQuitting()
+        val second = SingleInstance(dir).start(onShowRequested = {}, quitWaitMs = 500)
+        assertEquals(InstanceStart.AlreadyRunning, second)
+    }
 }
