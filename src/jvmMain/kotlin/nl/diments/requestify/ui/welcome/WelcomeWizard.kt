@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -253,11 +254,12 @@ private fun Modifier.bleedHorizontally(amount: Dp): Modifier = layout { measurab
 /** Where a landing logo ends: this far left of the badge row's end, where its badge appears. */
 private const val BADGE_LANDING_PX = 96f
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ProgressDots(step: WizardStep) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         WizardStep.entries.forEach { dot ->
-            val width by animateDpAsState(if (dot == step) 24.dp else 8.dp)
+            val width by animateDpAsState(if (dot == step) 24.dp else 8.dp, MaterialTheme.motionScheme.defaultSpatialSpec())
             val colour = when {
                 dot == step -> MaterialTheme.colorScheme.primary
                 dot.ordinal < step.ordinal -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)

@@ -1,11 +1,12 @@
 package nl.diments.requestify.ui.window
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -20,6 +21,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,7 +48,7 @@ import nl.diments.requestify.ui.common.AppIcons
 import org.jetbrains.compose.resources.stringResource
 
 /** The corner of the open (checked) state: a rounded square next to the closed state's pill. */
-private val OpenShape = RoundedCornerShape(10.dp)
+private val OpenCorner = 10.dp
 
 /**
  * Opens and closes requests, in the title bar: an Expressive toggle button. Open is filled `primary` with a
@@ -58,8 +60,15 @@ private val OpenShape = RoundedCornerShape(10.dp)
 @Composable
 fun RequestsToggle(status: GateStatus, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
+    val motion = MaterialTheme.motionScheme
     val label = stringResource(status.labelResource())
     val tip = tooltipText(status)
+    // Open and closed fade and morph into each other (the button itself would switch them in one frame).
+    val corner by animateDpAsState(if (status.open) OpenCorner else ButtonDefaults.ExtraSmallContainerHeight / 2, motion.defaultSpatialSpec())
+    val container by animateColorAsState(if (status.open) scheme.primary else Color.Transparent, motion.defaultEffectsSpec())
+    val content by animateColorAsState(if (status.open) scheme.onPrimary else scheme.onSurfaceVariant, motion.defaultEffectsSpec())
+    val outline by animateColorAsState(if (status.open) Color.Transparent else scheme.outline, motion.defaultEffectsSpec())
+    val shape = RoundedCornerShape(corner)
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
         tooltip = { PlainTooltip { Text(tip) } },
@@ -70,14 +79,14 @@ fun RequestsToggle(status: GateStatus, onToggle: () -> Unit, modifier: Modifier 
             checked = status.open,
             onCheckedChange = { onToggle() },
             modifier = Modifier.height(ButtonDefaults.ExtraSmallContainerHeight),
-            shapes = ToggleButtonDefaults.shapes(shape = CircleShape, pressedShape = OpenShape, checkedShape = OpenShape),
+            shapes = ToggleButtonDefaults.shapes(shape = shape, pressedShape = RoundedCornerShape(OpenCorner), checkedShape = shape),
             colors = ToggleButtonDefaults.toggleButtonColors(
-                containerColor = Color.Transparent,
-                contentColor = scheme.onSurfaceVariant,
-                checkedContainerColor = scheme.primary,
-                checkedContentColor = scheme.onPrimary,
+                containerColor = container,
+                contentColor = content,
+                checkedContainerColor = container,
+                checkedContentColor = content,
             ),
-            border = if (status.open) null else BorderStroke(1.dp, scheme.outline),
+            border = BorderStroke(1.dp, outline),
             contentPadding = ButtonDefaults.ExtraSmallContentPadding,
         ) {
             Icon(

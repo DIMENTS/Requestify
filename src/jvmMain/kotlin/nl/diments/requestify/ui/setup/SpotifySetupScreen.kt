@@ -2,13 +2,10 @@ package nl.diments.requestify.ui.setup
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -110,6 +107,8 @@ import nl.diments.requestify.ui.common.SpotifyStatusChip
 import nl.diments.requestify.ui.common.PlatformLogo
 import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -257,8 +256,7 @@ private fun StepBadge(number: Int, done: Boolean) {
     AnimatedContent(
         targetState = done,
         transitionSpec = {
-            (scaleIn(motion.defaultSpatialSpec(), initialScale = 0.5f) + fadeIn(motion.defaultEffectsSpec()))
-                .togetherWith(fadeOut(motion.fastEffectsSpec()))
+            motion.fadeThrough(initialScale = 0.5f) using motion.sizeTransform()
         },
     ) { isDone ->
         if (isDone) {
@@ -324,9 +322,7 @@ private fun CopyableText(text: String) {
             AnimatedContent(
                 targetState = copied,
                 transitionSpec = {
-                    (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.fastSpatialSpec(), initialScale = 0.8f))
-                        .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                        .using(SizeTransform(clip = false))
+                    motion.fadeThrough(initialScale = 0.8f) using motion.sizeTransform()
                 },
             ) { isCopied ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -393,9 +389,7 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
         AnimatedContent(
             targetState = phase,
             transitionSpec = {
-                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.92f))
-                    .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                    .using(SizeTransform(clip = false))
+                motion.fadeThrough(initialScale = 0.92f) using motion.sizeTransform()
             },
         ) { shown ->
             when (shown) {

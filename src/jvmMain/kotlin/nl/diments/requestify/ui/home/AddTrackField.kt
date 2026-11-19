@@ -1,10 +1,6 @@
 package nl.diments.requestify.ui.home
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -55,6 +51,8 @@ import nl.diments.requestify.ui.common.AlbumArt
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -128,7 +126,7 @@ private fun MessageLine(message: AddMessage?) {
     AnimatedContent(
         targetState = message,
         transitionSpec = {
-            fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) using SizeTransform(clip = false)
+            motion.fadeThrough() using motion.sizeTransform()
         },
     ) { shown ->
         if (shown != null) {

@@ -5,9 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -96,6 +94,8 @@ import nl.diments.requestify.ui.theme.RequestifyTheme
 import nl.diments.requestify.ui.theme.Spacing
 import nl.diments.requestify.ui.theme.albumSeedFrom
 import nl.diments.requestify.ui.theme.albumSeedOrPrevious
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import nl.diments.requestify.ui.theme.resolveDark
 import nl.diments.requestify.ui.theme.selectSeeds
 import nl.diments.requestify.ui.window.RequestsToggle
@@ -244,10 +244,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                         }
                         AnimatedContent(
                             targetState = destination,
-                            transitionSpec = {
-                                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
-                                    .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                            },
+                            // A fade through: the old screen is gone before the new one fades in, never both at once.
+                            transitionSpec = { motion.fadeThrough(initialScale = 0.96f) using motion.sizeTransform(clip = true) },
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         ) { shown ->
                             screens.SaveableStateProvider(shown.name) {

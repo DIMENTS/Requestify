@@ -1,11 +1,7 @@
 package nl.diments.requestify.ui.home
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -105,9 +101,14 @@ import nl.diments.requestify.ui.common.ActionMenu
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
+import nl.diments.requestify.ui.theme.ArtPopSpec
+import nl.diments.requestify.ui.theme.FADE_THROUGH_DELAY_MS
 import nl.diments.requestify.ui.theme.LocalReducedMotion
 import nl.diments.requestify.ui.theme.SourceChip
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.delayed
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import nl.diments.requestify.ui.theme.sourceChipHeight
 import org.jetbrains.compose.resources.stringResource
 
@@ -305,7 +306,8 @@ private fun Label(nowPlaying: NowPlaying?) {
         nowPlaying == null || nowPlaying.isPlaying -> Res.string.now_playing_label
         else -> Res.string.now_playing_label_paused
     }
-    Crossfade(label, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) { shown ->
+    val motion = MaterialTheme.motionScheme
+    AnimatedContent(label, transitionSpec = { motion.fadeThrough() using motion.sizeTransform(clip = true) }) { shown ->
         Text(
             stringResource(shown),
             style = MaterialTheme.typography.labelMediumEmphasized,
@@ -329,7 +331,7 @@ private fun PoppingArt(track: Track, modifier: Modifier) {
         if (track.id == shownId || reduced) return@LaunchedEffect
         shownId = track.id
         pop.snapTo(0f)
-        pop.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow))
+        pop.animateTo(1f, ArtPopSpec)
     }
     AlbumArt(
         track.albumArtUrl,
@@ -363,9 +365,10 @@ private fun TrackText(track: Track, compact: Boolean) {
         targetState = track,
         contentKey = { it.id },
         transitionSpec = {
-            (fadeIn(motion.defaultEffectsSpec()) + slideInVertically(motion.defaultSpatialSpec()) { it / 3 })
+            // The old title fades out first; the new one rises in as it fades in, so the two never overlap.
+            (fadeIn(delayed(FADE_THROUGH_DELAY_MS, motion.defaultEffectsSpec())) + slideInVertically(motion.defaultSpatialSpec()) { it / 3 })
                 .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                .using(SizeTransform(clip = false))
+                .using(motion.sizeTransform())
         },
     ) { shown ->
         Column {
@@ -407,7 +410,7 @@ private fun RequestLine(request: Request?, known: Boolean) {
         AnimatedContent(
             targetState = request to known,
             contentKey = { (shown, shownKnown) -> shown?.id ?: shownKnown },
-            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+            transitionSpec = { motion.fadeThrough() using motion.sizeTransform(clip = true) },
             contentAlignment = Alignment.CenterStart,
             modifier = Modifier.fillMaxHeight(),
         ) { (shown, shownKnown) ->
@@ -442,9 +445,9 @@ private fun requesterRowHeight(): Dp {
 }
 
 /**
- * The wavy bar flattens while paused; between polls the position runs on locally. With nothing playing the bar
- * is empty and the times are placeholders, as in Spotify (an empty text lays out a pixel shorter at some text
- * sizes, which would move what is under it).
+ * The wavy bar flattens while paused (and stays flat with animation effects off); between polls the position runs
+ * on locally. With nothing playing the bar is empty and the times are placeholders, as in Spotify (an empty text
+ * lays out a pixel shorter at some text sizes, which would move what is under it).
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -452,11 +455,13 @@ private fun Progress(nowPlaying: NowPlaying?, clock: () -> Long) {
     val durationMs = nowPlaying?.track?.durationMs ?: 0L
     val position = rememberLivePosition(nowPlaying, clock)
     val elapsed by remember { derivedStateOf { formatDuration(position.longValue) } }
+    val reduced = LocalReducedMotion.current
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         LinearWavyProgressIndicator(
             progress = { if (durationMs > 0) position.longValue.toFloat() / durationMs else 0f },
             modifier = Modifier.fillMaxWidth(),
-            amplitude = { if (nowPlaying?.isPlaying == true) WavyProgressIndicatorDefaults.indicatorAmplitude(it) else 0f },
+            // The wave runs while playing; with animation effects off it stays a flat, still bar.
+            amplitude = { if (nowPlaying?.isPlaying == true && !reduced) WavyProgressIndicatorDefaults.indicatorAmplitude(it) else 0f },
         )
         val timeStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
         val timeColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -540,6 +545,7 @@ private fun Controls(
                         transitionSpec = {
                             (scaleIn(motion.fastSpatialSpec()) + fadeIn(motion.fastEffectsSpec()))
                                 .togetherWith(scaleOut(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()))
+                                .using(motion.sizeTransform(clip = true))
                         },
                     ) { playing ->
                         Icon(

@@ -2,14 +2,11 @@ package nl.diments.requestify.ui.setup
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -121,6 +118,8 @@ import nl.diments.requestify.ui.rules.Stepper
 import nl.diments.requestify.ui.common.PlatformLogo
 import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -220,9 +219,7 @@ internal fun TwitchSetupContent(
         AnimatedContent(
             targetState = phase,
             transitionSpec = {
-                (fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.defaultSpatialSpec(), initialScale = 0.96f))
-                    .togetherWith(fadeOut(motion.fastEffectsSpec()))
-                    .using(SizeTransform(clip = false))
+                motion.fadeThrough(initialScale = 0.96f) using motion.sizeTransform()
             },
         ) { shown ->
             when (shown) {

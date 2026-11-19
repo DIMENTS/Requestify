@@ -2,9 +2,6 @@ package nl.diments.requestify.ui.common
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -33,6 +30,8 @@ import nl.diments.requestify.resources.spotify_status_ok
 import nl.diments.requestify.resources.spotify_status_premium_required
 import nl.diments.requestify.resources.spotify_status_rate_limited
 import nl.diments.requestify.resources.spotify_status_unreachable
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -79,11 +78,16 @@ internal fun StatusChip(look: StatusLook, modifier: Modifier = Modifier, onClick
         motion.defaultEffectsSpec(),
     )
     val shape = MaterialTheme.shapes.small
-    val border = if (look.tone == Tone.Problem) null else BorderStroke(1.dp, scheme.outlineVariant)
+    // The outline fades with the fill, instead of vanishing the moment a problem comes in.
+    val outline by animateColorAsState(
+        if (look.tone == Tone.Problem) Color.Transparent else scheme.outlineVariant,
+        motion.defaultEffectsSpec(),
+    )
+    val border = BorderStroke(1.dp, outline)
     val body: @Composable () -> Unit = {
         AnimatedContent(
             targetState = look,
-            transitionSpec = { fadeIn(motion.defaultEffectsSpec()) togetherWith fadeOut(motion.fastEffectsSpec()) },
+            transitionSpec = { motion.fadeThrough() using motion.sizeTransform(clip = true) },
             contentKey = { it.text.key },
         ) { shown ->
             Row(
