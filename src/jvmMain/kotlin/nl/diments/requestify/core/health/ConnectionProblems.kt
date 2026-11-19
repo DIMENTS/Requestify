@@ -18,6 +18,12 @@ enum class DonationProblem { KeyRefused, NoKey, Disconnected, KeyExpiring }
 sealed interface ConnectionProblem {
     data class Spotify(val health: SpotifyHealth) : ConnectionProblem
     data object TwitchLoginNeeded : ConnectionProblem
+
+    /** The bot's login was refused: replies come from the streamer until the bot logs in again. */
+    data object TwitchBotLoginNeeded : ConnectionProblem
+
+    /** The channel does not let the bot talk ([reason], Twitch's words): replies come from the streamer meanwhile. */
+    data class TwitchBotBlocked(val reason: String) : ConnectionProblem
     data object TwitchDisconnected : ConnectionProblem
     data object RewardRemoved : ConnectionProblem
 
@@ -39,6 +45,10 @@ data class TwitchHealth(
     val loginNeeded: Boolean = false,
     val disconnected: Boolean = false,
     val rewardRemoved: Boolean = false,
+    /** The bot's login was refused (see `TwitchBotHealth`). */
+    val botLoginNeeded: Boolean = false,
+    /** Why the channel holds the bot back; null while it does not. */
+    val botBlockedReason: String? = null,
 )
 
 /** A DonoLink key is warned about from this long before it expires. */
@@ -62,6 +72,7 @@ fun connectionProblems(
         else -> Unit
     }
     if (twitch.loginNeeded) add(ConnectionProblem.TwitchLoginNeeded)
+    if (twitch.botLoginNeeded) add(ConnectionProblem.TwitchBotLoginNeeded)
     val kind = donations.kind
     if (kind != DonationSourceKind.None && donations.status == DonationStatus.KeyRefused) {
         add(ConnectionProblem.Donation(kind, DonationProblem.KeyRefused))
@@ -72,6 +83,7 @@ fun connectionProblems(
     if (spotify == SpotifyHealth.NoActiveDevice) add(ConnectionProblem.Spotify(spotify))
     if (spotify is SpotifyHealth.Unreachable || spotify is SpotifyHealth.RateLimited) add(ConnectionProblem.Spotify(spotify))
     if (twitch.disconnected) add(ConnectionProblem.TwitchDisconnected)
+    twitch.botBlockedReason?.let { add(ConnectionProblem.TwitchBotBlocked(it)) }
     if (kind != DonationSourceKind.None && donations.status == DonationStatus.Retrying) {
         add(ConnectionProblem.Donation(kind, DonationProblem.Disconnected))
     }

@@ -36,6 +36,9 @@ import nl.diments.requestify.resources.notice_spotify_login_title
 import nl.diments.requestify.resources.notice_streamelements_refused_text
 import nl.diments.requestify.resources.notice_streamelements_refused_title
 import nl.diments.requestify.resources.notice_twitch_login_title
+import nl.diments.requestify.resources.notice_twitch_bot_blocked_title
+import nl.diments.requestify.resources.notice_twitch_bot_login_title
+import nl.diments.requestify.resources.notice_twitch_bot_text
 import org.jetbrains.compose.resources.getString
 
 /** Where a click on a notification takes the streamer. */
@@ -48,6 +51,10 @@ sealed interface Notice {
     data object SpotifyLoginNeeded : Notice
     data object SpotifyPremiumMissing : Notice
     data object TwitchLoginNeeded : Notice
+    data object TwitchBotLoginNeeded : Notice
+
+    /** No reason: a changed reason is no new problem. */
+    data object TwitchBotBlocked : Notice
     data class KeyRefused(val kind: DonationSourceKind) : Notice
 
     /** [daysLeft]: whole days until the DonoLink key expires (0: within 24 hours). */
@@ -152,6 +159,8 @@ class Notifier(
             else -> null
         }
         ConnectionProblem.TwitchLoginNeeded -> Notice.TwitchLoginNeeded
+        ConnectionProblem.TwitchBotLoginNeeded -> Notice.TwitchBotLoginNeeded
+        is ConnectionProblem.TwitchBotBlocked -> Notice.TwitchBotBlocked
         ConnectionProblem.RewardRemoved -> Notice.RewardRemoved
         is ConnectionProblem.Donation -> if (problem == DonationProblem.KeyRefused) Notice.KeyRefused(kind) else null
         ConnectionProblem.TwitchDisconnected -> null
@@ -167,6 +176,8 @@ suspend fun noticeText(notice: Notice): Pair<String, String> = when (notice) {
     Notice.SpotifyLoginNeeded -> getString(Res.string.notice_spotify_login_title) to getString(Res.string.notice_log_in_again_text)
     Notice.SpotifyPremiumMissing -> getString(Res.string.notice_premium_title) to getString(Res.string.notice_premium_text)
     Notice.TwitchLoginNeeded -> getString(Res.string.notice_twitch_login_title) to getString(Res.string.notice_log_in_again_text)
+    Notice.TwitchBotLoginNeeded -> getString(Res.string.notice_twitch_bot_login_title) to getString(Res.string.notice_twitch_bot_text)
+    Notice.TwitchBotBlocked -> getString(Res.string.notice_twitch_bot_blocked_title) to getString(Res.string.notice_twitch_bot_text)
     is Notice.KeyRefused -> if (notice.kind == DonationSourceKind.StreamElements) {
         getString(Res.string.notice_streamelements_refused_title) to getString(Res.string.notice_streamelements_refused_text)
     } else {

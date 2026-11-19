@@ -21,6 +21,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
@@ -54,6 +55,7 @@ import nl.diments.requestify.core.donations.streamelements.StreamElementsApi
 import nl.diments.requestify.core.donations.streamelements.StreamElementsSource
 import nl.diments.requestify.core.donations.streamelements.channelIdFromJwt
 import nl.diments.requestify.core.log.BitsGapWatcher
+import nl.diments.requestify.core.log.ConnectionReport
 import nl.diments.requestify.core.log.ConnectionSnapshot
 import nl.diments.requestify.core.log.donationConnections
 import nl.diments.requestify.core.log.LogInputs
@@ -98,7 +100,10 @@ import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.StreamWatcher
 import nl.diments.requestify.core.twitch.TwitchApi
 import nl.diments.requestify.core.twitch.TwitchSession
+import nl.diments.requestify.core.twitch.auth.TWITCH_BOT_SCOPES
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
+import nl.diments.requestify.core.twitch.bot.TwitchBot
+import nl.diments.requestify.core.twitch.bot.TwitchBotHealth
 import nl.diments.requestify.core.twitch.bits.BitsSource
 import nl.diments.requestify.core.twitch.chat.ChatReplies
 import nl.diments.requestify.core.twitch.chat.ChatReplySender
@@ -252,12 +257,29 @@ class AppGraph(
     /** Keeps EventSub and the login in step, and reports Twitch's health to the connection chip. */
     val twitchSession: TwitchSession = TwitchSession(twitchAuth, twitchApi, eventSub, settings, scope, clock = System::currentTimeMillis)
 
+    /** The optional bot account: its own login, and a Helix client on its token in the streamer's channel. */
+    internal val twitchBot: TwitchBot = run {
+        val botAuth = TwitchAuth(
+            http,
+            secrets,
+            clock = System::currentTimeMillis,
+            secretKey = SecretKeys.TWITCH_BOT_REFRESH_TOKEN,
+            scopes = TWITCH_BOT_SCOPES,
+        )
+        val botApi = TwitchApi(
+            http = http,
+            token = { force -> botAuth.token(force) },
+            broadcasterId = { settings.settings.value.twitch.account?.userId },
+        )
+        TwitchBot(botAuth, botApi, settings, scope)
+    }
+
     // The Twitch sources. Built once; they run while the Twitch session is connected (see [startTwitchSources]).
 
     private val chatReplies = ChatReplies()
 
-    /** Sends the replies of chat, Bits and Channel Points, one at a time. */
-    private val chatSender = ChatReplySender(twitchApi, scope)
+    /** Sends the replies of chat, Bits and Channel Points, one at a time: as the bot when one is connected. */
+    private val chatSender = ChatReplySender(twitchApi, scope, bot = twitchBot)
 
     private val chat = TwitchChat(
         eventSub = eventSub,
@@ -446,13 +468,13 @@ class AppGraph(
      */
     val problems: StateFlow<List<ConnectionProblem>> = problemsOverTime(
         spotify = controller.health,
-        twitch = twitchSession.health,
+        twitch = combine(twitchSession.health, twitchBot.health, ::withBot),
         donations = donationSources.health,
         ticks = clockTicks(System::currentTimeMillis, ZoneId.systemDefault()),
     ).stateIn(
         scope,
         SharingStarted.Eagerly,
-        connectionProblems(controller.health.value, twitchSession.health.value, donationSources.health.value),
+        connectionProblems(controller.health.value, withBot(twitchSession.health.value, twitchBot.health.value), donationSources.health.value),
     )
 
     /** Every file that cannot be saved right now: the one banner, the Log, the tray and the notifier. */
@@ -507,6 +529,12 @@ class AppGraph(
             saves = saveHealth.problems,
             previousRun = previousRun,
             updates = updates.events,
+            reports = merge(
+                combine(twitchBot.health, twitchBot.drops.dropping) { health, dropping -> botReport(health, dropping) },
+                chatSender.streamerDrops.dropping.map { dropping ->
+                    ConnectionReport(LogService.TwitchChat, if (dropping == null) ConnectionSnapshot.Up else ConnectionSnapshot.MessagesDropped, dropping)
+                },
+            ),
         ),
     )
 
@@ -533,6 +561,7 @@ class AppGraph(
         // Before the session: when it is connected already, the sources listen before EventSub connects.
         followTwitchSession()
         twitchSession.start()
+        twitchBot.start()
     }
 
     /**
@@ -540,6 +569,7 @@ class AppGraph(
      * cut off; the atomic write then keeps the previous file, so at most the last change is lost.
      */
     fun stop() {
+        twitchBot.stop()
         twitchSession.stop()
         stopFollowingTwitchSession()
         donationSources.stop()
@@ -663,6 +693,17 @@ private fun SpotifyHealth.toSnapshot(): ConnectionSnapshot = when (this) {
     SpotifyHealth.LoginNeeded -> ConnectionSnapshot.LoginExpired
     is SpotifyHealth.Unreachable -> ConnectionSnapshot.Down
     else -> ConnectionSnapshot.Up
+}
+
+/** The streamer's Twitch health with the bot's problems added, for the chip, the tray and the notifier. */
+private fun withBot(twitch: TwitchHealth, bot: TwitchBotHealth): TwitchHealth =
+    twitch.copy(botLoginNeeded = bot.loginNeeded, botBlockedReason = bot.blockedReason)
+
+/** The bot as the Log sees it: its login, then what Twitch held back, under its own service. */
+private fun botReport(health: TwitchBotHealth, dropping: String?): ConnectionReport = when {
+    health.loginNeeded -> ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.LoginExpired)
+    dropping != null -> ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.MessagesDropped, dropping)
+    else -> ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.Up)
 }
 
 private fun TwitchHealth.toSnapshot(): ConnectionSnapshot = when {

@@ -88,4 +88,26 @@ class ConnectionProblemsTest {
             "a day later, without any change of health, the key is within its week",
         )
     }
+
+    @Test
+    fun aBotThatNeedsALoginComesRightAfterTheStreamersLogin() {
+        val problems = connectionProblems(
+            SpotifyHealth.Ok,
+            TwitchHealth(loginNeeded = true, disconnected = true, botLoginNeeded = true),
+            DonationHealth(DonationSourceKind.DonoLink, DonationStatus.KeyRefused),
+        )
+        assertEquals(ConnectionProblem.TwitchLoginNeeded, problems[0])
+        assertEquals(ConnectionProblem.TwitchBotLoginNeeded, problems[1])
+    }
+
+    @Test
+    fun aBlockedBotIsAProblem() {
+        val problems = connectionProblems(SpotifyHealth.Ok, TwitchHealth(disconnected = true, botBlockedReason = "Followers only"))
+        assertEquals(listOf(ConnectionProblem.TwitchDisconnected, ConnectionProblem.TwitchBotBlocked("Followers only")), problems)
+    }
+
+    @Test
+    fun aBotThatIsNotConnectedIsNoProblem() {
+        assertEquals(emptyList(), connectionProblems(SpotifyHealth.Ok, TwitchHealth()))
+    }
 }

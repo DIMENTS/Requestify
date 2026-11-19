@@ -223,4 +223,26 @@ class NotifierTest {
             Locale.setDefault(saved)
         }
     }
+
+    @Test
+    fun aBotThatNeedsALoginIsNotifiedOnce() = runTest {
+        notifier()
+        problems.value = listOf(ConnectionProblem.TwitchBotLoginNeeded)
+        runCurrent()
+        problems.value = listOf(ConnectionProblem.TwitchBotLoginNeeded)
+        runCurrent()
+        problems.value = listOf(ConnectionProblem.TwitchBotLoginNeeded, ConnectionProblem.Spotify(SpotifyHealth.NoActiveDevice))
+        runCurrent()
+        assertEquals(listOf<Notice>(Notice.TwitchBotLoginNeeded), sent)
+    }
+
+    @Test
+    fun aBlockedBotIsNotifiedOnceWhateverTheReason() = runTest {
+        notifier()
+        problems.value = listOf(ConnectionProblem.TwitchBotBlocked("a"))
+        runCurrent()
+        problems.value = listOf(ConnectionProblem.TwitchBotBlocked("b"))
+        runCurrent()
+        assertEquals(listOf<Notice>(Notice.TwitchBotBlocked), sent)
+    }
 }

@@ -32,6 +32,12 @@ import nl.diments.requestify.core.update.UpdateEvent
 /** A connection as the Log sees it; a change from one to another may be news. */
 enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged, MessagesDropped }
 
+/**
+ * A connection change with a reason to show ([detail]): Twitch holding back the bot's or the streamer's chat
+ * messages, or the bot's login.
+ */
+data class ConnectionReport(val service: LogService, val snapshot: ConnectionSnapshot, val detail: String? = null)
+
 /** Everything the Log listens to. None of these replays: the Logbook subscribes before anything can happen. */
 data class LogInputs(
     val intake: Flow<IntakeRecord> = emptyFlow(),
@@ -46,6 +52,8 @@ data class LogInputs(
     val previousRun: PreviousRun? = null,
     /** What happened to updates: installed, or failed to download or install. */
     val updates: Flow<UpdateEvent> = emptyFlow(),
+    /** Connection changes that carry a reason (see [ConnectionReport]). */
+    val reports: Flow<ConnectionReport> = emptyFlow(),
 )
 
 /**
@@ -98,6 +106,7 @@ class Logbook(
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.gaps.collect { inbox.trySend(it) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.saves.collect { inbox.trySend(SavesChange(it)) } }
             launch(start = CoroutineStart.UNDISPATCHED) { inputs.updates.collect { inbox.trySend(it) } }
+            launch(start = CoroutineStart.UNDISPATCHED) { inputs.reports.collect { inbox.trySend(it) } }
             inputs.previousRun?.let { run ->
                 inbox.trySend(LogRecord.AppStopped("app:${run.lastAliveEpochMs}", clock(), run.lastAliveEpochMs, run.crashLine, run.restarted))
             }
@@ -155,6 +164,7 @@ class Logbook(
             is OutboxResult -> onRefund(event)
             is GateEvent -> onGate(event)
             is ConnectionChange -> onConnection(event.service, event.snapshot)
+            is ConnectionReport -> onConnection(event.service, event.snapshot, event.detail)
             is SavesChange -> onConnection(
                 LogService.Files,
                 if (event.problems.isEmpty()) ConnectionSnapshot.Up else ConnectionSnapshot.Down,

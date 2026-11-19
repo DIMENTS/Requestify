@@ -54,6 +54,7 @@ class LogbookTest {
     private val gaps = MutableSharedFlow<LogRecord.GapNoticed>(extraBufferCapacity = 64)
     private val saves = MutableStateFlow<List<SaveProblem>>(emptyList())
     private val updates = MutableSharedFlow<UpdateEvent>(extraBufferCapacity = 64)
+    private val reports = MutableSharedFlow<ConnectionReport>(extraBufferCapacity = 64)
 
     private val track = Track("t1", "spotify:track:t1", "Mr. Brightside", listOf("The Killers"), 222_000, false, null)
 
@@ -65,7 +66,7 @@ class LogbookTest {
         store = store,
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
-        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves, previousRun, updates = updates),
+        inputs = LogInputs(intake, requests, refunds, gate, connections, gaps, saves, previousRun, updates = updates, reports = reports),
         folding = StandardTestDispatcher(testScheduler),
     ).also {
         it.start()
@@ -330,5 +331,36 @@ class LogbookTest {
         advanceTimeBy(31 * 24 * 3_600_000L)
         runCurrent()
         assertEquals(emptyList(), log.rows.value, "older than 30 days: gone from the screen too, not only from disk")
+    }
+
+    @Test
+    fun droppedMessagesAreOneRowUntilOneIsSent() = runTest {
+        val log = logbook()
+        reports.tryEmit(ConnectionReport(LogService.TwitchChat, ConnectionSnapshot.MessagesDropped, "Slow mode"))
+        runCurrent()
+        reports.tryEmit(ConnectionReport(LogService.TwitchChat, ConnectionSnapshot.MessagesDropped, "Slow mode"))
+        runCurrent()
+        reports.tryEmit(ConnectionReport(LogService.TwitchChat, ConnectionSnapshot.Up))
+        runCurrent()
+        val row = log.rows.value.single()
+        val changes = row.records.map { it as LogRecord.ConnectionChanged }
+        assertEquals(listOf(LogConnectionState.MessagesDropped, LogConnectionState.Restored), changes.map { it.state })
+        assertEquals("Slow mode", changes.first().detail)
+        assertEquals(LogService.TwitchChat, changes.first().service)
+    }
+
+    @Test
+    fun theBotsOutageDoesNotCloseTheStreamersTwitchOutage() = runTest {
+        val log = logbook()
+        connections.tryEmit(LogService.Twitch to ConnectionSnapshot.Down)
+        runCurrent()
+        reports.tryEmit(ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.LoginExpired))
+        runCurrent()
+        reports.tryEmit(ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.Up))
+        runCurrent()
+        val twitch = log.rows.value.single { (it.records.first() as LogRecord.ConnectionChanged).service == LogService.Twitch }
+        assertEquals(LogConnectionState.Lost, (twitch.records.last() as LogRecord.ConnectionChanged).state, "still open")
+        val bot = log.rows.value.single { (it.records.first() as LogRecord.ConnectionChanged).service == LogService.TwitchBot }
+        assertEquals(listOf(LogConnectionState.LoginExpired, LogConnectionState.Restored), bot.records.map { (it as LogRecord.ConnectionChanged).state })
     }
 }

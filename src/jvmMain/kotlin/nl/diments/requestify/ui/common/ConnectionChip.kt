@@ -20,6 +20,8 @@ import nl.diments.requestify.resources.connection_reward_removed
 import nl.diments.requestify.resources.connection_streamelements_disconnected
 import nl.diments.requestify.resources.connection_streamelements_refused
 import nl.diments.requestify.resources.connection_twitch_disconnected
+import nl.diments.requestify.resources.connection_twitch_bot_blocked
+import nl.diments.requestify.resources.connection_twitch_bot_login_needed
 import nl.diments.requestify.resources.connection_twitch_login_needed
 import org.jetbrains.compose.resources.StringResource
 
@@ -30,6 +32,8 @@ private fun ConnectionProblem.look(nowMs: Long = System.currentTimeMillis()): St
     is ConnectionProblem.Spotify -> health.look()
     ConnectionProblem.TwitchLoginNeeded -> StatusLook(Res.string.connection_twitch_login_needed, AppIcons.Warning, Tone.Problem)
     ConnectionProblem.TwitchDisconnected -> StatusLook(Res.string.connection_twitch_disconnected, AppIcons.CloudOff, Tone.Problem)
+    ConnectionProblem.TwitchBotLoginNeeded -> StatusLook(Res.string.connection_twitch_bot_login_needed, AppIcons.Warning, Tone.Problem)
+    is ConnectionProblem.TwitchBotBlocked -> StatusLook(Res.string.connection_twitch_bot_blocked, AppIcons.Warning, Tone.Problem)
     ConnectionProblem.RewardRemoved -> StatusLook(Res.string.connection_reward_removed, AppIcons.Warning, Tone.Problem)
     is ConnectionProblem.Donation -> {
         val streamElements = kind == DonationSourceKind.StreamElements
