@@ -155,8 +155,9 @@ class DonationsSetupViewModel(
                 }
                 DonationSourceKind.StreamElements -> when (val channel = streamElements.channel()) {
                     is SeResult.Ok -> {
-                        (streamElements.channelCurrency(channel.value.id) as? SeResult.Ok)?.value?.let { currency ->
-                            settings.tryUpdate { it.copy(donations = it.donations.copy(streamElementsCurrency = currency)) }
+                        // The channel's currency; no currency in the answer clears a saved one (a failed lookup keeps it).
+                        (streamElements.channelCurrency(channel.value.id) as? SeResult.Ok)?.let { found ->
+                            settings.tryUpdate { it.copy(donations = it.donations.copy(streamElementsCurrency = found.value)) }
                         }
                         DonationTest.Ok(channel.value.name, null)
                     }

@@ -298,10 +298,18 @@ class RequestIntake(
      * Takes the requests with [ids] out of the queue once their Rejected entries are on disk: a request whose entry
      * cannot be saved yet stays queued (and leaves later, in the background, once it is), and a crash in between
      * leaves a duplicate, never a loss. Waits at most [SWEEP_SAVE_WAIT_MS], so a failing disk never holds a block up.
+     * A request handed over to Spotify meanwhile plays after all: its entry leaves Rejected again.
      */
     private suspend fun leaveQueueOnceListed(ids: Set<String>) {
         if (ids.isEmpty()) return
-        suspend fun leave() = controller.removeMatching(RemoveReason.Blacklisted) { queue -> queue.filter { it.id in ids } }
+        suspend fun leave() {
+            val removed = controller.removeMatching(RemoveReason.Blacklisted) { queue -> queue.filter { it.id in ids } }.mapTo(HashSet()) { it.id }
+            val notRemoved = ids - removed
+            if (notRemoved.isEmpty()) return
+            val s = controller.loadedSnapshot()
+            notRemoved.filter { id -> s.handedOver?.id == id || s.playing?.id == id || s.history.any { it.request.id == id } }
+                .forEach { rejected.remove(it) }
+        }
         if (withTimeoutOrNull(SWEEP_SAVE_WAIT_MS) { rejected.awaitSaved() } != null) {
             leave()
         } else {

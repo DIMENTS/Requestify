@@ -204,4 +204,22 @@ class DonationsSetupViewModelTest {
         assertFalse(state(DonationTest.Ok("x", null), DonationStatus.Off, kind = DonationSourceKind.None).confirmed())
         assertFalse(state(DonationTest.Ok("x", null), DonationStatus.Connected, hasKey = false).confirmed())
     }
+
+    @Test
+    fun aChannelWithoutACurrencyClearsTheSavedOne() = runTest {
+        val noCurrency = StreamElementsApi(
+            HttpClient(MockEngine { req ->
+                val body = if (req.url.encodedPath.endsWith("/tipping/ch1")) """{}""" else """{"_id":"ch1","username":"diments","displayName":"DIMENTS"}"""
+                respond(body, HttpStatusCode.OK, json)
+            }),
+            jwt = { secrets.get(SecretKeys.STREAMELEMENTS_JWT) },
+        )
+        val settings = settings()
+        settings.tryUpdate { it.copy(donations = it.donations.copy(streamElementsCurrency = "EUR")) }
+        val vm = vm(settings, se = noCurrency)
+        vm.choose(DonationSourceKind.StreamElements)
+        vm.pasteKey("eyJ.jwt.sig")
+        awaitUntil("the test") { vm.state.value.test is DonationTest.Ok }
+        awaitUntil("the currency cleared") { settings.settings.value.donations.streamElementsCurrency == null }
+    }
 }

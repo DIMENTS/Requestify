@@ -99,6 +99,9 @@ class Notifier(
 ) {
     /** The notifiable problems seen last time: one that is already here is not notified again. */
     private var present = emptySet<Notice>()
+
+    /** The key-expiry step notified this run, also when settings.json could not remember it. */
+    private var expiryNotifiedThisRun: KeyExpiryNotice? = null
     private var savingWatch: Job? = null
 
     fun start() {
@@ -132,10 +135,12 @@ class Notifier(
     private fun onKeyExpiring(expiresAt: Long) {
         val left = expiresAt - clock()
         val stage = if (left < DAY_MS) 1 else 7 // its last day: under 24 hours, so the text says "within 24 hours"
-        val notified = settings.settings.value.keyExpiryNotified?.takeIf { it.expiresAtEpochMs == expiresAt }
-        if (notified != null && notified.stage <= stage) return
+        fun KeyExpiryNotice?.covers() = this != null && expiresAtEpochMs == expiresAt && this.stage <= stage
+        if (settings.settings.value.keyExpiryNotified.covers() || expiryNotifiedThisRun.covers()) return
         send(Notice.KeyExpiring(daysLeft = (left.coerceAtLeast(0) / DAY_MS).toInt()))
-        settings.tryUpdate { it.copy(keyExpiryNotified = KeyExpiryNotice(expiresAt, stage)) }
+        val notice = KeyExpiryNotice(expiresAt, stage)
+        expiryNotifiedThisRun = notice // remembered for this run even while settings.json cannot be written
+        settings.tryUpdate { it.copy(keyExpiryNotified = notice) }
     }
 
     private fun onSaves(list: List<SaveProblem>) {

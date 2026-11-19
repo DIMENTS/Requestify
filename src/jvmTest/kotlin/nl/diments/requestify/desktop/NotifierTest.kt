@@ -245,4 +245,25 @@ class NotifierTest {
         runCurrent()
         assertEquals(listOf<Notice>(Notice.TwitchBotBlocked), sent)
     }
+
+    /** settings.json could not be read at start, so the step is not remembered there: still notified once this run. */
+    @Test
+    fun anUnsavableStageIsNotSentAgainThisRun() = runTest {
+        val file = dir.resolve("locked-settings.json")
+        java.nio.file.Files.writeString(file, "{}")
+        val held = java.nio.file.Files.newByteChannel(file, java.nio.file.StandardOpenOption.READ, com.sun.nio.file.ExtendedOpenOption.NOSHARE_READ)
+        try {
+            val store = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext())
+            notifier(store)
+            problems.value = listOf(expiring(base + 5 * day))
+            runCurrent()
+            advanceTimeBy(hour + 1) // the hourly look at the key
+            runCurrent()
+            advanceTimeBy(hour)
+            runCurrent()
+            assertEquals(listOf<Notice>(Notice.KeyExpiring(daysLeft = 5)), sent)
+        } finally {
+            held.close()
+        }
+    }
 }

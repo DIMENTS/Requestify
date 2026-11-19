@@ -441,6 +441,27 @@ class RequestIntakeTest {
         assertEquals(listOf("paid"), rejectedOnDisk())
     }
 
+    @Test
+    fun aRequestHandedOverDuringASweepIsNotListedAsRejected() = runTest {
+        val p = parts()
+        p.controller.enqueue(Request("paid", track("t-paid", "Bad", "bad"), Requester("V", "v", "u1"), RequestSource.BITS, Payment.Bits(100), 1L))
+        runCurrent()
+        breakWrites("rejected.json")
+        assertTrue(p.intake.blockArtist("bad", "Bad", null)) // listed; it leaves the queue once that is on disk
+        runCurrent()
+
+        // Meanwhile the song on Spotify nears its end: the request is handed over to Spotify.
+        p.player.plays(track("now"), progressMs = 190_000)
+        p.controller.start()
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals("paid", p.controller.handedOver.value?.id)
+
+        healWrites("rejected.json")
+        advanceTimeBy(30_000); runCurrent()
+        assertTrue(p.rejected.entries.value.none { it.id == "paid" }, "it plays, so it is not listed as rejected")
+        p.controller.stop()
+    }
+
     private fun rejectedOnDisk(): List<String> =
         JsonFileStore(dir.resolve("rejected.json"), ListSerializer(RejectedEntry.serializer())) { emptyList() }.read().map { it.id }
 
