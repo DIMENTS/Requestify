@@ -17,8 +17,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createTempDirectory
-import kotlin.io.path.deleteRecursively
 import kotlin.test.AfterTest
+import nl.diments.requestify.core.storage.deleteTestDir
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -92,7 +92,7 @@ class AppGraphTest {
     private lateinit var dir: Path
 
     @BeforeTest fun setUp() { dir = createTempDirectory("requestify-graph") }
-    @AfterTest fun tearDown() { dir.deleteRecursively() }
+    @AfterTest fun tearDown() { dir.deleteTestDir() } // a graph for an existing user saves settings in the background at start
 
     @Test
     fun buildsWithTempDir() = runTest {
