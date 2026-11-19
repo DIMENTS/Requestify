@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.Track
@@ -424,7 +425,7 @@ internal fun EmptyState(text: String, modifier: Modifier = Modifier) {
                 tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(40.dp),
             )
-            Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
     }
 }

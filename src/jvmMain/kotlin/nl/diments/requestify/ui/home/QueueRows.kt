@@ -76,6 +76,9 @@ internal val DragHandleSize = 20.dp
 internal val DragHandleSlot = Spacing.s + DragHandleSize + Spacing.s
 internal val RemoveButtonSize = 48.dp
 
+/** The widest a requester's name gets in a queue row; a longer one ends in "…", so the title keeps its room. */
+internal val RequesterMaxWidth = 128.dp
+
 /** Corner radii of row [index] of [count] in the connected list; a dragged row lifts out fully rounded. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -205,7 +208,14 @@ internal fun RequestDetails(
 ) {
     TrackDetails(request.track, modifier, secondaryColor, paid = request.isPaid) {
         SourceChip(request.source, sourceLabel(request))
-        Text(requesterLabel(request), style = MaterialTheme.typography.labelMedium, color = secondaryColor, maxLines = 1)
+        Text(
+            requesterLabel(request),
+            style = MaterialTheme.typography.labelMedium,
+            color = secondaryColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = RequesterMaxWidth),
+        )
     }
 }
 

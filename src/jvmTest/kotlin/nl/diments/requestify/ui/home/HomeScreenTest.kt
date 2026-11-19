@@ -226,6 +226,36 @@ class HomeScreenTest {
             assertEquals(row.size.height.toFloat(), row.boundsInRoot.height, "the first row is cut off")
         }
 
+    // Home in a maximized Full HD window: the window minus the rail and the title bar.
+    private val fullHdWidth = 1920.dp - CollapsedRailWidth
+    private val fullHdHeight = 1080.dp - TitleBarHeight
+
+    @Test
+    fun onAMaximizedWindowTheQueueStaysReadableWithNowPlayingBesideIt() =
+        runDesktopComposeUiTest(width = fullHdWidth.value.toInt(), height = fullHdHeight.value.toInt()) {
+            setContent { HomeScreen(viewModel(), albumSeed = null) }
+            val headline = onNodeWithText("Queue").getBoundsInRoot()
+            val addField = onNode(hasSetTextAction()).getBoundsInRoot()
+            val card = onNodeWithTag(NOW_PLAYING_PANE_TAG).getBoundsInRoot()
+
+            assertEquals(24.dp, headline.left, "Home still starts where the pages start")
+            assertTrue(addField.right - addField.left <= QueueMaxWidth, "the queue is ${addField.right - addField.left} wide")
+            assertEquals(24.dp, card.left - addField.right, "Now Playing sits right beside the queue")
+            assertTrue(card.right - card.left > 400.dp, "on a tall window Now Playing grows with it: ${card.right - card.left}")
+        }
+
+    @Test
+    fun aLongRequesterNameLeavesTheTitleItsRoom() = runDesktopComposeUiTest(width = 904, height = 640) {
+        val controller = controller(FakeSpotifyPlayer { 0L })
+        val vm = viewModelWith(controller)
+        controller.enqueue(chatRequest(1).copy(requester = Requester("Supercalifragilistic_2025")))
+        setContent { HomeScreen(vm, albumSeed = null) }
+        waitUntil(timeoutMillis = 5_000) { vm.state.value.queue.size == 1 }
+        waitForIdle()
+        val name = onNodeWithText("Supercalifragilistic_2025", substring = true).getBoundsInRoot()
+        assertTrue(name.right - name.left <= RequesterMaxWidth, "the requester takes ${name.right - name.left}")
+    }
+
     @Test
     fun typedTextSurvivesTheLayoutSwitch() = runDesktopComposeUiTest(width = 1180, height = 760) {
         val vm = viewModel()

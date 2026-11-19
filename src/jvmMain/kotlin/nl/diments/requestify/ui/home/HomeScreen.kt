@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -36,6 +37,19 @@ internal val WideLayoutMinWidth = 900.dp
 private const val NOW_PLAYING_SHARE = 0.36f
 private val NowPlayingMinWidth = 320.dp
 private val NowPlayingMaxWidth = 400.dp
+
+/**
+ * On a tall window Now Playing may grow past [NowPlayingMaxWidth], up to this share of Home's height and at most
+ * [NowPlayingTallMaxWidth], so its art fills the taller card instead of floating in it.
+ */
+private const val NOW_PLAYING_HEIGHT_SHARE = 0.5f
+private val NowPlayingTallMaxWidth = 520.dp
+
+/**
+ * The widest the queue gets: on a maximized window its rows stay readable (title and duration within one glance)
+ * and Now Playing stays right beside it. Like the pages, Home then keeps its start edge and leaves the rest empty.
+ */
+internal val QueueMaxWidth = 960.dp
 
 /**
  * The Home screen: the queue on the left, Now Playing on the right. It uses the app theme of its caller; Now
@@ -87,10 +101,11 @@ fun HomeScreen(vm: HomeViewModel, albumSeed: Color?, addFieldFocus: FocusRequest
             }
             if (wide) {
                 // Whole dp, so the panes and the gap between them land on whole pixels.
-                val nowPlayingWidth = (maxWidth * NOW_PLAYING_SHARE).coerceIn(NowPlayingMinWidth, NowPlayingMaxWidth)
+                val nowPlayingMax = (maxHeight * NOW_PLAYING_HEIGHT_SHARE).coerceIn(NowPlayingMaxWidth, NowPlayingTallMaxWidth)
+                val nowPlayingWidth = (maxWidth * NOW_PLAYING_SHARE).coerceIn(NowPlayingMinWidth, nowPlayingMax)
                     .value.toInt().dp
                 Row(Modifier.padding(Spacing.xl), horizontalArrangement = Arrangement.spacedBy(Spacing.xl)) {
-                    queuePane(state, Modifier.weight(1f).fillMaxHeight())
+                    queuePane(state, Modifier.weight(1f, fill = false).widthIn(max = QueueMaxWidth).fillMaxWidth().fillMaxHeight())
                     nowPlayingPane(Modifier.width(nowPlayingWidth).fillMaxHeight())
                 }
             } else {
