@@ -1,5 +1,6 @@
 package nl.diments.requestify.ui.rules
 
+import nl.diments.requestify.core.settings.setForTest
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
@@ -80,19 +81,19 @@ class RulesScreenTest {
         onNodeWithText("7:30").assertIsDisplayed()
         assertEquals(450_000, settings.settings.value.rules.maxDurationMs)
 
-        settings.update { it.copy(rules = it.rules.copy(maxDurationMs = 900_000)) }
+        settings.setForTest { it.copy(rules = it.rules.copy(maxDurationMs = 900_000)) }
         waitForIdle()
         onNodeWithText("15:00").assertIsDisplayed()
         onNodeWithContentDescription("Increase Maximum length").assertIsNotEnabled()
         onNodeWithContentDescription("Decrease Maximum length").assertIsEnabled()
 
-        settings.update { it.copy(rules = it.rules.copy(maxQueueLength = 1, maxPerViewer = 10, cooldownMinutes = 60)) }
+        settings.setForTest { it.copy(rules = it.rules.copy(maxQueueLength = 1, maxPerViewer = 10, cooldownMinutes = 60)) }
         waitForIdle()
         onNodeWithContentDescription("Decrease Maximum in the queue").assertIsNotEnabled()
         onNodeWithContentDescription("Increase Per viewer at once").assertIsNotEnabled()
         onNodeWithContentDescription("Increase Cooldown per viewer").assertIsNotEnabled()
 
-        settings.update { it.copy(rules = it.rules.copy(minDurationMs = 0, cooldownMinutes = 0)) }
+        settings.setForTest { it.copy(rules = it.rules.copy(minDurationMs = 0, cooldownMinutes = 0)) }
         waitForIdle()
         onNodeWithContentDescription("Decrease Minimum length").assertIsNotEnabled()
         onNodeWithContentDescription("Decrease Cooldown per viewer").assertIsNotEnabled()

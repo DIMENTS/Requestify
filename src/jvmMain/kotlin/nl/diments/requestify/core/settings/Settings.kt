@@ -81,12 +81,10 @@ class SettingsStore(file: JsonFileStore<Settings>, context: SaveContext) {
     /** Set while settings.json cannot be saved. */
     val saveProblem: StateFlow<SaveProblem?> get() = state.saveProblem
 
-    /** Applies [f] at once. Throws [IllegalStateException] while the saved settings could not be read yet. */
-    fun update(f: (Settings) -> Settings) {
-        check(state.change(f)) { "The saved settings cannot be read yet" }
-    }
-
-    /** Like [update] for UI actions: false, with nothing changed, while the saved settings could not be read yet. */
+    /**
+     * Applies [f] at once (saved in the background). False, with nothing changed, while the saved settings could not be
+     * read yet: every caller handles that (nothing throws).
+     */
     fun tryUpdate(f: (Settings) -> Settings): Boolean = state.change(f)
 
     /** Returns once every change made before this call is on disk. */

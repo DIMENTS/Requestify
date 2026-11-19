@@ -4,9 +4,12 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import nl.diments.requestify.core.model.IgnoredReason
@@ -103,6 +106,12 @@ class RequestIntake(
     private val retrying = ConcurrentHashMap.newKeySet<String>()
     private val savingRejection = ConcurrentHashMap.newKeySet<String>()
 
+    /** How many paid rejections wait to be saved later ([saveRejectionLater]). */
+    private val rejectionsWaiting = MutableStateFlow(0)
+
+    /** Bumped to make every waiting rejection try again at once ([awaitRejectionsSavedLater]). */
+    private val retryRejectionsNow = MutableStateFlow(0L)
+
     /** Resumes the paid requests that were waiting for Spotify when the app last ran. */
     fun start() {
         pending.pending.value.forEach { retryLater(it) }
@@ -150,6 +159,17 @@ class RequestIntake(
         controller.awaitSaved()
     }
 
+    /**
+     * Quit and Windows shutting down: the paid rejections that wait to be saved later (their file could not be read at
+     * start) try again at once, and this returns once none waits any more. Bound it with a timeout: while the file
+     * stays unreadable it does not return. Not part of [awaitSaved], which a donation source awaits for every donation.
+     */
+    suspend fun awaitRejectionsSavedLater() {
+        retryRejectionsNow.update { it + 1 }
+        rejectionsWaiting.first { it == 0 }
+        rejected.awaitSaved()
+    }
+
     suspend fun isKnown(id: String): Boolean {
         if (rejected.entries.value.any { it.id == id } || pending.pending.value.any { it.id == id }) return true
         val s = controller.loadedSnapshot()
@@ -184,16 +204,22 @@ class RequestIntake(
     /** Saves a paid rejection that could not be written yet, on the retry schedule. */
     private fun saveRejectionLater(entry: RejectedEntry) {
         if (!savingRejection.add(entry.id)) return
+        rejectionsWaiting.update { it + 1 }
         scope.launch {
             try {
                 var attempt = 0
                 while (true) {
-                    delay(retryDelaysMs.getOrElse(attempt) { retryDelaysMs.lastOrNull() ?: 60_000L })
+                    val seen = retryRejectionsNow.value
+                    // The retry schedule, cut short by [awaitRejectionsSavedLater].
+                    withTimeoutOrNull(retryDelaysMs.getOrElse(attempt) { retryDelaysMs.lastOrNull() ?: 60_000L }) {
+                        retryRejectionsNow.first { it != seen }
+                    }
                     attempt++
                     if (rejected.add(entry)) return@launch
                 }
             } finally {
                 savingRejection.remove(entry.id)
+                rejectionsWaiting.update { it - 1 }
             }
         }
     }

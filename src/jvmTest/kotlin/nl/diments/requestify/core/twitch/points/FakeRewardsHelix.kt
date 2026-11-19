@@ -1,7 +1,9 @@
 package nl.diments.requestify.core.twitch.points
 
+import kotlinx.coroutines.CoroutineDispatcher
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockEngineConfig
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -25,9 +27,10 @@ import nl.diments.requestify.core.twitch.TwitchApi
 
 /**
  * A [TwitchApi] on a mock engine for the custom-rewards calls of one channel: it lists [rewards] (the manageable
- * ones, for `only_manageable_rewards`, are [manageable]), creates and patches them, and records every call.
+ * ones, for `only_manageable_rewards`, are [manageable]), creates and patches them, and records every call. Pass the
+ * test's [dispatcher] to answer in virtual time.
  */
-class FakeRewardsHelix {
+class FakeRewardsHelix(dispatcher: CoroutineDispatcher? = null) {
     data class Call(val method: HttpMethod, val query: Map<String, String>, val body: JsonObject?) {
         val isPatch get() = method == HttpMethod.Patch
         val isCreate get() = method == HttpMethod.Post
@@ -59,13 +62,16 @@ class FakeRewardsHelix {
 
     val api = TwitchApi(
         http = HttpClient(
-            MockEngine { request ->
+            MockEngine(
+                MockEngineConfig().apply {
+                this.dispatcher = dispatcher
+                addHandler { request ->
                 val body = (request.body as? TextContent)?.text?.let { Json.parseToJsonElement(it).jsonObject }
                 val query = request.url.parameters.entries().associate { it.key to it.value.first() }
                 calls += Call(request.method, query, body)
                 when (request.method) {
                     HttpMethod.Get -> {
-                        if (listStatus != 200) return@MockEngine respond("{}", HttpStatusCode.fromValue(listStatus), json)
+                        if (listStatus != 200) return@addHandler respond("{}", HttpStatusCode.fromValue(listStatus), json)
                         val only = query["only_manageable_rewards"] == "true"
                         val list = rewards.filter { !only || it.id in manageable }
                         respond(
@@ -105,7 +111,7 @@ class FakeRewardsHelix {
                     }
                     HttpMethod.Patch -> {
                         if (updateStatus != 200) {
-                            return@MockEngine respond("""{"status":$updateStatus,"message":"$badRequestMessage"}""", HttpStatusCode.fromValue(updateStatus), json)
+                            return@addHandler respond("""{"status":$updateStatus,"message":"$badRequestMessage"}""", HttpStatusCode.fromValue(updateStatus), json)
                         }
                         val id = query.getValue("id")
                         val old = rewards.first { it.id == id }
@@ -122,7 +128,9 @@ class FakeRewardsHelix {
                     }
                     else -> respond("{}", HttpStatusCode.NoContent, json)
                 }
-            },
+            }
+                },
+            ),
         ),
         token = { TokenResult.Ok("tok") },
         broadcasterId = { "b1" },

@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.chat
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.io.path.ExperimentalPathApi
@@ -157,7 +158,7 @@ class TwitchChatTest {
     }
 
     private fun Harness.setPermission(permission: ChatPermission) =
-        settings.update { it.copy(twitch = it.twitch.copy(chatPermission = permission)) }
+        settings.setForTest { it.copy(twitch = it.twitch.copy(chatPermission = permission)) }
 
     @Test
     fun srAddsAndRepliesWithPositionAsReply() = runTest {
@@ -233,7 +234,7 @@ class TwitchChatTest {
     @Test
     fun messagesOfTheBotAreNotCommands() = runTest {
         val h = harness()
-        h.settings.update { it.copy(twitch = it.twitch.copy(bot = TwitchAccount("7", "mybot", "MyBot"))) }
+        h.settings.setForTest { it.copy(twitch = it.twitch.copy(bot = TwitchAccount("7", "mybot", "MyBot"))) }
         h.message("fromBot", "!sr ${link(idA)}", viewer = "7")
         h.message("probe", "!song", viewer = "u2")
 
@@ -410,14 +411,14 @@ class TwitchChatTest {
     @Test
     fun chatSwitchedOffIgnoresEverything() = runTest {
         val h = harness()
-        h.settings.update { it.copy(twitch = it.twitch.copy(chatEnabled = false)) }
+        h.settings.setForTest { it.copy(twitch = it.twitch.copy(chatEnabled = false)) }
         h.message("m1", "!sr ${link(idA)}")
         h.message("m2", "!song")
         settle()
         assertTrue(h.twitch.sends.isEmpty())
         assertTrue(h.queued.isEmpty())
 
-        h.settings.update { it.copy(twitch = it.twitch.copy(chatEnabled = true)) }
+        h.settings.setForTest { it.copy(twitch = it.twitch.copy(chatEnabled = true)) }
         h.message("m3", "!song")
         awaitUntil("reply") { h.twitch.sends.isNotEmpty() }
         assertEquals(listOf("m3"), h.twitch.sends.map { it.replyTo })

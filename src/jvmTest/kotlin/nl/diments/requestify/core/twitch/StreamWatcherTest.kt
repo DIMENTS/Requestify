@@ -156,6 +156,26 @@ class StreamWatcherTest {
     }
 
     @Test
+    fun aStopAndStartDoesNotBlockTheNewRunsReRead() = runTest {
+        val h = Harness(this)
+        h.watcher.start()
+        runCurrent()
+        h.events.emit(EventSubEvent.StreamOnline)
+        runCurrent()
+        h.live = false // Helix disagrees: a re-read waits until the event is old enough to doubt
+        h.freshSessions.emit(Unit)
+        runCurrent()
+        advanceTimeBy(60_000)
+        h.watcher.stop() // the session dropped...
+        h.watcher.start() // ...and came back: the new run reads, and disagrees again
+        runCurrent()
+        assertTrue(h.gateLive)
+        advanceTimeBy(4 * 60_000 + 1)
+        runCurrent()
+        assertFalse(h.gateLive, "the new run reads again once the event is old enough to doubt")
+    }
+
+    @Test
     fun onlineAndOfflineEventsDriveTheGate() = runTest {
         val h = Harness(this)
         h.watcher.start()

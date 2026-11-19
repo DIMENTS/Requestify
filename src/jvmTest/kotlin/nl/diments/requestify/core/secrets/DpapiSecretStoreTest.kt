@@ -139,4 +139,42 @@ class DpapiSecretStoreTest {
         store.remove("k")
         assertNull(store.get("k"))
     }
+
+    /** The background re-read decrypts outside the store's lock: the UI thread's get() never waits for DPAPI. */
+    @Test fun aReReadDoesNotHoldTheLock() {
+        DpapiSecretStore(file, inCallerSaveContext()).put("a", "1")
+        val decrypting = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val lock = Files.newByteChannel(file, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+        try {
+            val store = DpapiSecretStore(
+                file,
+                SaveContext(scope, System::currentTimeMillis, kotlinx.coroutines.Dispatchers.IO),
+                unprotect = { bytes ->
+                    decrypting.countDown()
+                    release.await()
+                    Crypt32Util.cryptUnprotectData(bytes)
+                },
+                rereadEveryMs = 10,
+            )
+            lock.close()
+            assertTrue(decrypting.await(5, java.util.concurrent.TimeUnit.SECONDS), "the re-read is decrypting")
+            // On another thread with a deadline: a get() that waits for the decryption would wait forever here.
+            val got = java.util.concurrent.CompletableFuture.supplyAsync { store.get("a") }
+            val answer = try {
+                got.get(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            } catch (_: java.util.concurrent.TimeoutException) {
+                kotlin.test.fail("get() waited for the decryption")
+            }
+            assertNull(answer, "still the old (empty) view while it decrypts")
+            release.countDown()
+            repeat(200) { if (store.get("a") == null) Thread.sleep(10) }
+            assertEquals("1", store.get("a"))
+        } finally {
+            release.countDown()
+            if (lock.isOpen) lock.close()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
 }

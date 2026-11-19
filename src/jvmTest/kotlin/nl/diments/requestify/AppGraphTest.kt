@@ -1,5 +1,6 @@
 package nl.diments.requestify
 
+import nl.diments.requestify.core.settings.setForTest
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
@@ -546,9 +547,9 @@ class AppGraphTest {
         withGraph(services, loggedInToBoth()) { graph ->
             awaitTwitch(graph, services, sockets = 1)
             val account = graph.settings.settings.value.twitch.account
-            graph.settings.update { it.copy(twitch = it.twitch.copy(account = null)) }
+            graph.settings.setForTest { it.copy(twitch = it.twitch.copy(account = null)) }
             await("the session ended") { graph.eventSub.state.value == EventSubState.Stopped }
-            graph.settings.update { it.copy(twitch = it.twitch.copy(account = account)) }
+            graph.settings.setForTest { it.copy(twitch = it.twitch.copy(account = account)) }
             awaitTwitch(graph, services, sockets = 2)
             await("requests open") { graph.gate.open.value }
 

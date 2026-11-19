@@ -266,7 +266,8 @@ class PlaybackController(
     /**
      * Returns once the state as of this call is saved in queue.json: while saving fails ([persistError]) it tries again
      * every [SAVE_RETRY_MS]. A source that marks something as handled (a donation cursor) waits for this first. Before
-     * the saved state is loaded nothing of this run can need saving, so it returns at once.
+     * the saved state is loaded it returns at once: changes made meanwhile wait for the load and are saved with it, so
+     * this call does not cover them.
      */
     suspend fun awaitSaved() {
         while (true) {

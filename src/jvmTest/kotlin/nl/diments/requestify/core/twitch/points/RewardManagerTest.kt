@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.points
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createTempDirectory
@@ -12,6 +13,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +51,7 @@ class RewardManagerTest {
     private class Harness(dir: Path, scope: CoroutineScope, language: AppLanguage, points: ChannelPointsSettings) {
         val helix = FakeRewardsHelix()
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-            .apply { update { it.copy(twitch = TwitchSettings(channelPoints = points)) } }
+            .apply { setForTest { it.copy(twitch = TwitchSettings(channelPoints = points)) } }
         val events = MutableSharedFlow<EventSubEvent>(extraBufferCapacity = 16)
         val open = MutableStateFlow(true)
         var rewardChanges = 0
@@ -306,19 +309,34 @@ class RewardManagerTest {
     }
 
     @Test
-    fun aNewerWantedStateWinsOverAPendingRetry() = runBlocking {
-        val h = harness(points = managedPoints).withOwnReward()
-        h.helix.updateStatus = 500
-        h.manager.start()
-        h.open.value = false
-        eventually("the refusal shows") { h.manager.outOfSync.value }
-        h.open.value = true // requests are open again before the pause could be sent
-        val before = h.helix.patches.size
-        h.helix.updateStatus = 200
-        eventually("in sync") { !h.manager.outOfSync.value }
-        assertFalse(h.helix.rewards.single().isPaused)
-        assertEquals(emptyList(), h.helix.patches.drop(before).filter { it.body!!["is_paused"]?.jsonPrimitive?.boolean == true })
-        h.manager.stop()
+    fun aNewerWantedStateWinsOverAPendingRetry() = kotlinx.coroutines.test.runTest {
+        // On virtual time: the retries (20-80 ms) and Twitch's answers run on the test scheduler, so no real timer can
+        // slip a retry in between the steps below.
+        val helix = FakeRewardsHelix(coroutineContext[kotlin.coroutines.ContinuationInterceptor] as kotlinx.coroutines.CoroutineDispatcher)
+        helix.rewards += helix.reward("rw-1")
+        helix.manageable += "rw-1"
+        val settings = SettingsStore(JsonFileStore(dir.resolve("virtual-settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
+            .apply { setForTest { it.copy(twitch = TwitchSettings(channelPoints = managedPoints)) } }
+        val open = MutableStateFlow(true)
+        val manager = RewardManager(
+            helix.api, settings, MutableSharedFlow(), {}, open, { AppLanguage.English }, backgroundScope,
+            retryFirstMs = 20, retryMaxMs = 80,
+        )
+        helix.updateStatus = 500
+        manager.start()
+        runCurrent()
+        open.value = false
+        runCurrent()
+        assertTrue(manager.outOfSync.value, "the refusal shows")
+        open.value = true // requests are open again before the pause could be sent
+        val before = helix.patches.size
+        helix.updateStatus = 200
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertFalse(manager.outOfSync.value, "in sync")
+        assertFalse(helix.rewards.single().isPaused)
+        assertEquals(emptyList(), helix.patches.drop(before).filter { it.body!!["is_paused"]?.jsonPrimitive?.boolean == true })
+        manager.stop()
     }
 
     @Test

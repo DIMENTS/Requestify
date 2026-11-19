@@ -70,6 +70,7 @@ class StreamWatcher(
         synchronized(lock) {
             if (job?.isActive == true) return
             val current = ++run
+            reReadPending = false // a re-read of an earlier run never blocks this one's
             job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 // Both are subscribed before start() returns: neither flow replays.
                 val reads = Channel<Unit>(Channel.CONFLATED)
@@ -114,6 +115,9 @@ class StreamWatcher(
             run++
             job?.cancel()
             job = null
+            reRead?.cancel()
+            reRead = null
+            reReadPending = false
         }
     }
 
@@ -148,7 +152,7 @@ class StreamWatcher(
         if (reReadPending) return
         reReadPending = true
         val eventsNow = streamEvents
-        scope.launch {
+        reRead = scope.launch {
             delay((atMs - clock()).coerceAtLeast(0) + 1)
             val stillDoubtful = synchronized(lock) { reReadPending = false; current == run && streamEvents == eventsNow }
             if (stillDoubtful) readUntilAnswered(current)
@@ -157,6 +161,9 @@ class StreamWatcher(
 
     /** Guarded by [lock]: a re-read after a contradicting answer is waiting. */
     private var reReadPending = false
+
+    /** Guarded by [lock]: that re-read, cancelled by [stop]. */
+    private var reRead: Job? = null
 
     /** One read of the live status, applied unless a stream event says otherwise; false when Twitch did not answer. */
     private suspend fun read(current: Long): Boolean = reading.withLock {

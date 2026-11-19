@@ -67,7 +67,14 @@ class DpapiSecretStore(
     /** Guarded by this. The secrets in plain text, and the saved entries that cannot be decrypted (kept as they are). */
     private var plain: Map<String, String> = emptyMap()
     private var undecryptable: Map<String, String> = emptyMap()
-    private var loadFailed = !load()
+
+    /** True while the file could not be read; written under this, read by the re-read loop too. */
+    @Volatile
+    private var loadFailed = true
+
+    init {
+        readDecrypted()?.let(::adopt)
+    }
 
     private val writer = BackgroundWriter(store.fileName, ::encryptAndWrite, context)
 
@@ -100,12 +107,17 @@ class DpapiSecretStore(
 
     override suspend fun flush(timeoutMs: Long): Boolean = writer.flush(timeoutMs)
 
-    /** Reads and decrypts the file; false (nothing changed) when it cannot be read. Caller holds this, or builds it. */
-    private fun load(): Boolean {
+    private class Loaded(val plain: Map<String, String>, val undecryptable: Map<String, String>)
+
+    /**
+     * Reads and decrypts the file, touching nothing of this store: the slow part (the file, with its retries, and
+     * DPAPI) runs without the lock. Null when the file cannot be read.
+     */
+    private fun readDecrypted(): Loaded? {
         val saved = try {
             store.read()
         } catch (_: StoreReadException) {
-            return false
+            return null
         }
         val decrypted = HashMap<String, String>()
         val kept = HashMap<String, String>()
@@ -117,16 +129,23 @@ class DpapiSecretStore(
             }
             if (value != null) decrypted[key] = value else kept[key] = encoded
         }
-        plain = decrypted
-        undecryptable = kept
-        return true
+        return Loaded(decrypted, kept)
+    }
+
+    /** Takes what [readDecrypted] read, under the lock: from now on [put] and [remove] may write. */
+    @Synchronized
+    private fun adopt(loaded: Loaded) {
+        plain = loaded.plain
+        undecryptable = loaded.undecryptable
+        loadFailed = false
     }
 
     private suspend fun readAgainUntilItWorks() {
         while (true) {
             delay(rereadEveryMs)
-            val loaded = synchronized(this) { load().also { if (it) loadFailed = false } }
-            if (loaded) return
+            val loaded = readDecrypted() ?: continue
+            adopt(loaded)
+            return
         }
     }
 

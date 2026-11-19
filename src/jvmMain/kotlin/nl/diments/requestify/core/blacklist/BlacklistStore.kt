@@ -8,8 +8,9 @@ import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.core.storage.SaveProblem
 
 /**
- * The blacklist in blacklist.json. Unreadable file at start: empty and [loadFailed], nothing written over it. A
- * write that fails returns false and changes nothing. Adding what is blocked already, or removing what is not
+ * The blacklist in blacklist.json. Unreadable file at start: empty and [loadFailed], nothing written over it, and a
+ * change returns false (nothing changes) until the file could be read. A save that fails keeps the change in memory,
+ * is retried in the background and shows in [saveProblem]. Adding what is blocked already, or removing what is not
  * blocked, changes nothing and returns true.
  */
 class BlacklistStore(file: JsonFileStore<Blacklist>, context: SaveContext) {

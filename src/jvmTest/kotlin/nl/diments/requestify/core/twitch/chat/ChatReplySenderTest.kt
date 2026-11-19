@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.chat
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import java.util.UUID
 import kotlin.io.path.ExperimentalPathApi
@@ -142,7 +143,7 @@ class ChatReplySenderTest {
         val secrets = InMemorySecretStore().apply { if (loggedIn) put(SecretKeys.TWITCH_BOT_REFRESH_TOKEN, "b0") }
         val auth = TwitchAuth(fake.http, secrets, clock = System::currentTimeMillis, secretKey = SecretKeys.TWITCH_BOT_REFRESH_TOKEN, scopes = TWITCH_BOT_SCOPES)
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings-${UUID.randomUUID()}.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-            .apply { update { it.copy(twitch = TwitchSettings(account = STREAMER, bot = botAccount)) } }
+            .apply { setForTest { it.copy(twitch = TwitchSettings(account = STREAMER, bot = botAccount)) } }
         val bot = TwitchBot(auth, botApi.api, settings, scope.backgroundScope)
         val sender = ChatReplySender(streamer.api, scope.backgroundScope, bot = bot).also { it.start() }
     }

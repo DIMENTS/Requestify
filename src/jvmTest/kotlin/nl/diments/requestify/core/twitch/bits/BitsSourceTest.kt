@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.bits
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.io.path.ExperimentalPathApi
@@ -242,7 +243,7 @@ class BitsSourceTest {
     @Test
     fun switchedOffIgnoresCheers() = runTest {
         val h = harness()
-        h.rig.settings.update { it.copy(twitch = it.twitch.copy(bitsEnabled = false)) }
+        h.rig.settings.setForTest { it.copy(twitch = it.twitch.copy(bitsEnabled = false)) }
         h.cheer("c1", "Cheer100 ${link(idA)}")
 
         settle()

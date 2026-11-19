@@ -77,6 +77,7 @@ class RequestIntakeTest {
     ) = IncomingRequest(id, input, linkOnly, Requester("V $viewer", viewer, viewer), source, payment, sourceRef, 1L)
 
     private class Parts(
+        val player: FakeSpotifyPlayer,
         val controller: PlaybackController,
         val blacklist: BlacklistStore,
         val rejected: RejectedStore,
@@ -88,8 +89,9 @@ class RequestIntakeTest {
     /** An intake on the files in [dir]; calling it again builds a second one on the same files. */
     private fun TestScope.parts(): Parts {
         val job = Job(backgroundScope.coroutineContext[Job])
+        val player = FakeSpotifyPlayer { testScheduler.currentTime }
         val controller = PlaybackController(
-            player = FakeSpotifyPlayer { testScheduler.currentTime },
+            player = player,
             store = QueueStore(JsonFileStore(dir.resolve("queue.json"), PersistedPlayback.serializer()) { PersistedPlayback() }),
             requestsOpen = open,
             paidPriority = { true },
@@ -105,7 +107,7 @@ class RequestIntakeTest {
             CoroutineScope(backgroundScope.coroutineContext + job),
             clock = { testScheduler.currentTime }, shortLinks = shortLinks, retryDelaysMs = listOf(5_000, 15_000),
         )
-        return Parts(controller, blacklist, rejected, pending, intake, job)
+        return Parts(player, controller, blacklist, rejected, pending, intake, job)
     }
 
     /** The stores save in the background on the test scheduler, as in the app. */
@@ -471,6 +473,27 @@ class RequestIntakeTest {
         assertTrue(p.rejected.saveProblem.value != null, "the failing save shows")
         healWrites("rejected.json")
         advanceTimeBy(30_000); runCurrent()
+        assertEquals(listOf("p1"), rejectedOnDisk())
+    }
+
+    @Test
+    fun aRejectionSavedLaterIsPartOfTheFlush() = runTest {
+        dir.resolve("rejected.json").toFile().writeText("[]")
+        val held = java.nio.file.Files.newByteChannel(
+            dir.resolve("rejected.json"),
+            java.nio.file.StandardOpenOption.READ,
+            com.sun.nio.file.ExtendedOpenOption.NOSHARE_READ,
+        )
+        val p = parts() // rejected.json cannot be read at start: a paid rejection is saved later
+        advanceTimeBy(1_000)
+        p.intake.submit(incoming("p1", input = "https://open.spotify.com/album/$idA", payment = Payment.Bits(500), source = RequestSource.BITS))
+        held.close()
+        advanceTimeBy(4_500); runCurrent() // the file is read again at 5 s; the rejection's own retry is at 6 s
+
+        val flushed = kotlinx.coroutines.withTimeoutOrNull(100) { p.intake.awaitRejectionsSavedLater() }
+        assertTrue(flushed != null, "Quit saves it at once, without waiting for the retry")
+        assertEquals(listOf("p1"), p.rejected.entries.value.map { it.id })
+        runCurrent()
         assertEquals(listOf("p1"), rejectedOnDisk())
     }
 

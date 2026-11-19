@@ -124,4 +124,24 @@ class BackgroundWriterTest {
         writer.save(1)
         assertTrue(writer.flush(3_000))
     }
+
+    @Test
+    fun flushCutsTheBackoffShort() = runTest {
+        val attemptsAt = mutableListOf<Long>()
+        var failures = 1
+        val writer = BackgroundWriter<Int>("x.json", {
+            attemptsAt += testScheduler.currentTime
+            if (failures-- > 0) throw IOException("locked by a virus scanner")
+        }, context(), backoffMs = listOf(30_000))
+        writer.save(1)
+        runCurrent()
+        assertEquals(listOf(0L), attemptsAt)
+
+        var flushed: Boolean? = null
+        launch { flushed = writer.flush(1_000) } // Quit: the write is tried again at once
+        runCurrent()
+        assertEquals(true, flushed)
+        assertEquals(listOf(0L, 0L), attemptsAt, "no 30 s wait")
+        assertNull(writer.problem.value)
+    }
 }

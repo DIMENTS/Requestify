@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch
 
+import nl.diments.requestify.core.settings.setForTest
 import java.io.IOException
 import java.nio.file.Path
 import java.util.UUID
@@ -78,7 +79,7 @@ class TwitchSessionTest {
         val secrets = InMemorySecretStore().apply { if (loggedIn) put(SecretKeys.TWITCH_REFRESH_TOKEN, "r0") }
         val auth = TwitchAuth(twitch.http, secrets, clock = { scope.currentTime })
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings-${UUID.randomUUID()}.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-            .apply { update { it.copy(twitch = TwitchSettings(account = account)) } }
+            .apply { setForTest { it.copy(twitch = TwitchSettings(account = account)) } }
         val connector = FakeConnector()
         private lateinit var created: TwitchSession
         val api = TwitchApi(
@@ -219,7 +220,7 @@ class TwitchSessionTest {
     fun aRemovedRewardShowsInTheHealthOnlyWhileChannelPointsAreUsed() = runTest {
         val h = Harness(this)
         assertFalse(h.session.health.value.rewardRemoved)
-        fun points(enabled: Boolean, removed: Boolean) = h.settings.update { s ->
+        fun points(enabled: Boolean, removed: Boolean) = h.settings.setForTest { s ->
             s.copy(twitch = s.twitch.copy(channelPoints = s.twitch.channelPoints.copy(enabled = enabled, rewardRemoved = removed)))
         }
         points(enabled = true, removed = true)
@@ -231,7 +232,7 @@ class TwitchSessionTest {
         assertFalse(h.session.health.value.rewardRemoved)
 
         points(enabled = true, removed = true)
-        h.settings.update { s -> s.copy(twitch = s.twitch.copy(account = null)) } // logged out of Twitch
+        h.settings.setForTest { s -> s.copy(twitch = s.twitch.copy(account = null)) } // logged out of Twitch
         runCurrent()
         assertFalse(h.session.health.value.rewardRemoved)
     }

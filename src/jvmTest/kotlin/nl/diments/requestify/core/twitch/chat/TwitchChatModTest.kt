@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.chat
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.io.path.ExperimentalPathApi
@@ -161,7 +162,7 @@ class TwitchChatModTest {
     fun removeUsageNamesTheConfiguredCommandInTheAppLanguage() = runTest {
         Locale.setDefault(Locale.forLanguageTag("nl-NL"))
         val h = harness()
-        h.rig.settings.update { s -> s.copy(twitch = s.twitch.copy(commands = s.twitch.commands.copy(remove = "weg"))) }
+        h.rig.settings.setForTest { s -> s.copy(twitch = s.twitch.copy(commands = s.twitch.commands.copy(remove = "weg"))) }
 
         h.message("r1", "!weg", viewer = "mod1", badges = setOf("moderator"))
         awaitUntil("reply") { h.sends.isNotEmpty() }

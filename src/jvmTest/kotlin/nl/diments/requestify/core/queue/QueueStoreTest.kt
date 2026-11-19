@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.queue
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
@@ -111,7 +112,7 @@ class QueueStoreTest {
     @Test fun settingsStoreUpdatePersistsAndEmits() {
         val file = JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }
         val store = SettingsStore(file, inCallerSaveContext())
-        store.update { it.copy(themeMode = ThemeMode.Custom(0xFF112233.toInt()), darkMode = DarkMode.Dark) }
+        store.setForTest { it.copy(themeMode = ThemeMode.Custom(0xFF112233.toInt()), darkMode = DarkMode.Dark) }
         val expected = Settings(themeMode = ThemeMode.Custom(0xFF112233.toInt()), darkMode = DarkMode.Dark)
         assertEquals(expected, store.settings.value)
         assertEquals(expected, SettingsStore(file, inCallerSaveContext()).settings.value)

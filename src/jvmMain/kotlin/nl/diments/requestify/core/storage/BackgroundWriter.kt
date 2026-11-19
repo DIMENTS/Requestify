@@ -5,7 +5,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +44,9 @@ class BackgroundWriter<T>(
     private val writtenVersion = MutableStateFlow(0L)
 
     private val signal = Channel<Unit>(Channel.CONFLATED)
+
+    /** Cuts a running back-off short ([flush]: Quit, or Windows shutting down, tries the write again at once). */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
     private val _problem = MutableStateFlow<SaveProblem?>(null)
 
     /** Set after a failed write, kept while retrying, cleared by the write that works. */
@@ -71,8 +73,14 @@ class BackgroundWriter<T>(
         writtenVersion.first { it >= target }
     }
 
-    /** [awaitSaved] with a deadline: true when everything was written in time. */
-    suspend fun flush(timeoutMs: Long): Boolean = withTimeoutOrNull(timeoutMs) { awaitSaved() } != null
+    /**
+     * [awaitSaved] with a deadline: true when everything was written in time. A write that is waiting out a back-off
+     * after a failure is tried again at once.
+     */
+    suspend fun flush(timeoutMs: Long): Boolean {
+        wake.trySend(Unit)
+        return withTimeoutOrNull(timeoutMs) { awaitSaved() } != null
+    }
 
     private suspend fun writePending() {
         var attempt = 0
@@ -85,7 +93,7 @@ class BackgroundWriter<T>(
             } catch (e: Exception) {
                 val reason = e.message ?: e.toString()
                 _problem.value = _problem.value?.copy(reason = reason) ?: SaveProblem(fileName, reason, context.clock())
-                delay(backoffMs.getOrElse(attempt) { backoffMs.lastOrNull() ?: 30_000L })
+                withTimeoutOrNull(backoffMs.getOrElse(attempt) { backoffMs.lastOrNull() ?: 30_000L }) { wake.receive() }
                 attempt++
                 continue
             }

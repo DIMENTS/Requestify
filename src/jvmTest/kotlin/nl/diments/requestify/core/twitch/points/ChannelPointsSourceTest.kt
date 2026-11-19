@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.points
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.io.path.ExperimentalPathApi
@@ -102,7 +103,7 @@ class ChannelPointsSourceTest {
         rig.catalog.tracks[idA] = track(idA, "Alpha")
         rig.catalog.tracks[idB] = track(idB, "Bravo")
         rig.catalog.tracks[idC] = track(idC, "Charlie")
-        rig.settings.update {
+        rig.settings.setForTest {
             it.copy(twitch = it.twitch.copy(channelPoints = ChannelPointsSettings(enabled = true, rewardId = REWARD, managed = managed)))
         }
         val helix = FakeRedemptionsApi { testScheduler.currentTime }
@@ -440,7 +441,7 @@ class ChannelPointsSourceTest {
         val h = harness()
         h.redeem("red1", link(idA), reward = "another-reward")
         settle()
-        h.rig.settings.update { it.copy(twitch = it.twitch.copy(channelPoints = it.twitch.channelPoints.copy(enabled = false))) }
+        h.rig.settings.setForTest { it.copy(twitch = it.twitch.copy(channelPoints = it.twitch.channelPoints.copy(enabled = false))) }
         h.redeem("red2", link(idA)) // its own reward, but Channel Points are switched off
         settle()
 

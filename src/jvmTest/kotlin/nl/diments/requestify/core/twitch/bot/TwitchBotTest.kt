@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.twitch.bot
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import java.util.UUID
 import kotlin.coroutines.ContinuationInterceptor
@@ -58,7 +59,7 @@ class TwitchBotTest {
             scopes = TWITCH_BOT_SCOPES,
         )
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings-${UUID.randomUUID()}.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-            .apply { update { it.copy(twitch = TwitchSettings(account = account, bot = bot)) } }
+            .apply { setForTest { it.copy(twitch = TwitchSettings(account = account, bot = bot)) } }
         val api = TwitchApi(
             twitch.http,
             token = { force -> auth.token(force) },

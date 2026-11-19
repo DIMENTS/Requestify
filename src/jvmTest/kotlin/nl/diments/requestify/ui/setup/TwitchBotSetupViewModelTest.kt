@@ -1,5 +1,6 @@
 package nl.diments.requestify.ui.setup
 
+import nl.diments.requestify.core.settings.setForTest
 import java.nio.file.Path
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.io.path.ExperimentalPathApi
@@ -49,7 +50,7 @@ class TwitchBotSetupViewModelTest {
         }
         val auth = TwitchAuth(twitch.http, secrets, clock = { scope.currentTime }, secretKey = SecretKeys.TWITCH_BOT_REFRESH_TOKEN, scopes = TWITCH_BOT_SCOPES)
         val settings = SettingsStore(JsonFileStore(dir.resolve("settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-            .apply { update { it.copy(twitch = TwitchSettings(account = STREAMER, bot = botAccount)) } }
+            .apply { setForTest { it.copy(twitch = TwitchSettings(account = STREAMER, bot = botAccount)) } }
         val api = TwitchApi(twitch.http, token = { force -> auth.token(force) }, broadcasterId = { settings.settings.value.twitch.account?.userId })
         val bot = TwitchBot(auth, api, settings, scope.backgroundScope)
         val opened = mutableListOf<String>()

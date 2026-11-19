@@ -666,6 +666,7 @@ class AppGraph(
             { redemptionOutbox.flush(timeoutMs) },
             { secrets.flush(timeoutMs) },
             { withTimeoutOrNull(timeoutMs) { controller.awaitSaved() } != null },
+            { withTimeoutOrNull(timeoutMs) { intake.awaitRejectionsSavedLater() } != null },
         ).map { flush -> async { flush() } }.awaitAll().all { it }
     }
 
