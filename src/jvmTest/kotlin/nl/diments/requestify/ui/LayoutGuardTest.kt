@@ -101,7 +101,7 @@ class LayoutGuardTest {
 
     private fun text(resource: StringResource, vararg args: Any): String = runBlocking { getString(resource, *args) }
 
-    /** A control with [label] as its text that takes clicks. */
+    /** A control with [resource] (formatted with [args]) as its text that takes clicks. */
     private fun button(resource: StringResource, vararg args: Any): Pair<String, SemanticsMatcher> =
         text(resource, *args).let { it to (hasText(it) and hasClickAction()) }
 
