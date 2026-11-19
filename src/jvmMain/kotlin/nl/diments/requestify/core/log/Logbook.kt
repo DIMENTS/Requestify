@@ -177,16 +177,7 @@ class Logbook(
     }
 
     /** One row per update event: updated (good news), or a failed download or install (a problem). */
-    private fun onUpdate(event: UpdateEvent) {
-        val at = clock()
-        add(
-            when (event) {
-                is UpdateEvent.Updated -> LogRecord.AppUpdated("update:${event.to}:$at", at, event.from.toString(), event.to.toString())
-                is UpdateEvent.InstallFailed -> LogRecord.UpdateFailed("update-failed:${event.version}:$at", at, event.version.toString(), exitCode = event.exitCode)
-                is UpdateEvent.DownloadFailed -> LogRecord.UpdateFailed("update-failed:${event.version}:$at", at, event.version.toString(), reason = event.reason)
-            },
-        )
-    }
+    private fun onUpdate(event: UpdateEvent) = add(updateRecord(event, clock()))
 
     private fun onIntake(r: IntakeRecord) {
         val incoming = r.incoming
@@ -312,6 +303,13 @@ class Logbook(
             else -> Unit
         }
     }
+}
+
+/** The Log row of an update event at [at]; also written directly when the Log of that run never starts. */
+internal fun updateRecord(event: UpdateEvent, at: Long): LogRecord = when (event) {
+    is UpdateEvent.Updated -> LogRecord.AppUpdated("update:${event.to}:$at", at, event.from.toString(), event.to.toString())
+    is UpdateEvent.InstallFailed -> LogRecord.UpdateFailed("update-failed:${event.version}:$at", at, event.version.toString(), exitCode = event.exitCode)
+    is UpdateEvent.DownloadFailed -> LogRecord.UpdateFailed("update-failed:${event.version}:$at", at, event.version.toString(), reason = event.reason)
 }
 
 private const val DAY_MS = 24 * 3_600_000L

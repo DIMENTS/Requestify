@@ -228,4 +228,67 @@ class UpdateServiceTest {
         }
         assertEquals(0, checks)
     }
+
+    @Test
+    fun aFailedManualCheckKeepsReady() = runTest {
+        store.savePending(pendingOf(release("0.2.1")))
+        val service = service()
+        assertIs<UpdateState.Ready>(service.state.value)
+        answer = ReleaseCheck.Failed("no network")
+        service.checkNow()
+        runCurrent()
+        assertIs<UpdateState.Ready>(service.state.value, "the update stays ready")
+        assertEquals(true, service.checkFailedNote.value, "with a short note")
+
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        service.checkNow()
+        runCurrent()
+        assertEquals(false, service.checkFailedNote.value, "the next check clears it")
+    }
+
+    @Test
+    fun aFailedManualCheckWithoutAnUpdateSaysSo() = runTest {
+        answer = ReleaseCheck.Failed("no network")
+        val service = service()
+        service.checkNow()
+        runCurrent()
+        assertEquals(UpdateState.CheckFailed(manual = true), service.state.value)
+        assertEquals(false, service.checkFailedNote.value)
+    }
+
+    @Test
+    fun installNowAsksOncePerRun() = runTest {
+        store.savePending(pendingOf(release("0.2.1")))
+        val service = service()
+        val requests = mutableListOf<PendingUpdate>()
+        backgroundScope.launch { service.installRequests.collect { requests += it } }
+        runCurrent()
+        service.installNow()
+        service.installNow() // a double click
+        runCurrent()
+        assertEquals(1, requests.size)
+        assertEquals(1, store.pending()?.attempts, "one attempt counted")
+
+        service.installRequestFailed() // the helper could not start: the button works again
+        service.installNow()
+        runCurrent()
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun aNewerVersionInstalledByHandShowsNoCard() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        val service = service(running = AppVersion(0, 2, 2))
+        assertEquals(emptyList(), events(service))
+        assertNull(service.justUpdated.value, "the notes of 0.2.1 are not the news of 0.2.2")
+        assertNull(store.pending())
+    }
+
+    @Test
+    fun theStartKnowsItsFailedInstall() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("1603")
+        val service = service()
+        assertEquals(UpdateEvent.InstallFailed(AppVersion(0, 2, 1), 1603), service.startFailure)
+    }
 }

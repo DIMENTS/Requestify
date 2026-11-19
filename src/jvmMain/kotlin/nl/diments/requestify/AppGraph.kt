@@ -62,6 +62,8 @@ import nl.diments.requestify.core.log.LogInputs
 import nl.diments.requestify.core.log.LogService
 import nl.diments.requestify.core.log.LogStore
 import nl.diments.requestify.core.log.PreviousRun
+import nl.diments.requestify.core.log.updateRecord
+import nl.diments.requestify.core.update.UpdateEvent
 import nl.diments.requestify.desktop.Autostart
 import nl.diments.requestify.desktop.NoAutostart
 import nl.diments.requestify.core.log.Logbook
@@ -652,6 +654,17 @@ class AppGraph(
             launch { withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { logStore.stop() } }
             launch { flushAll(EXIT_PAUSE_TIMEOUT_MS) }
         }
+    }
+
+    /**
+     * Writes [event]'s Log row straight to the Log's files, without the Logbook: a start that installs an update again
+     * at once ends before its Log ever starts, and its failed install would otherwise never be in the Log (F-1). Waits
+     * at most 2 s for the write.
+     */
+    suspend fun logNow(event: UpdateEvent) {
+        logStore.start()
+        logStore.append(updateRecord(event, System.currentTimeMillis()))
+        withTimeoutOrNull(2_000) { logStore.stop() }
     }
 
     /** Waits, at most [timeoutMs], until every file is saved; true when all of them were. */

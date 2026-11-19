@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.StateFlow
+import nl.diments.requestify.core.update.AppVersion
 import nl.diments.requestify.core.update.UpdateService
 import nl.diments.requestify.core.update.UpdateState
 import nl.diments.requestify.resources.Res
@@ -39,6 +40,7 @@ import nl.diments.requestify.resources.about_up_to_date
 import nl.diments.requestify.resources.about_update_now
 import nl.diments.requestify.resources.about_update_when_offline
 import nl.diments.requestify.resources.about_version
+import nl.diments.requestify.resources.about_check_failed_note
 import nl.diments.requestify.resources.about_whats_new
 import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
@@ -48,12 +50,18 @@ class AboutActions(
     val check: () -> Unit = {},
     val install: () -> Unit = {},
     val openRelease: () -> Unit = {},
+    /** "Wat is er nieuw" for the version that runs (every state but Ready, which links its new version). */
+    val openRunningRelease: () -> Unit = {},
     val openLicence: () -> Unit = {},
     val openNotice: () -> Unit = {},
     val openWizard: () -> Unit = {},
 )
 
 private const val REPO_URL = "https://github.com/DIMENTS/Requestify"
+
+/** The release page of [version] (what is new in the version that runs); all releases for a local build or "dev". */
+fun runningReleasePage(version: String): String =
+    AppVersion.parse(version)?.takeUnless { it.isLocalBuild }?.let { "$REPO_URL/releases/tag/v$it" } ?: "$REPO_URL/releases"
 
 /**
  * Settings → Over Requestify: the version, Requestify's own updates ([UpdateService]) and the links. [openUrl] opens a
@@ -67,12 +75,14 @@ class AboutViewModel(
 ) {
     val state: StateFlow<UpdateState> get() = updates.state
     val canInstallNow: StateFlow<Boolean> get() = updates.canInstallNow
+    val checkFailedNote: StateFlow<Boolean> get() = updates.checkFailedNote
     val hasWizard: Boolean get() = openWizard != null
 
     val actions = AboutActions(
         check = updates::checkNow,
         install = updates::installNow,
         openRelease = { openUrl(releasePage()) },
+        openRunningRelease = { openUrl(runningReleasePage(version)) },
         openLicence = { openUrl("$REPO_URL/blob/main/LICENSE") },
         openNotice = { openUrl("$REPO_URL/blob/main/NOTICE") },
         openWizard = { openWizard?.invoke() },
@@ -90,7 +100,8 @@ class AboutViewModel(
 internal fun AboutSection(vm: AboutViewModel) {
     val state by vm.state.collectAsState()
     val canInstallNow by vm.canInstallNow.collectAsState()
-    AboutCard(vm.version, state, canInstallNow, vm.hasWizard, vm.actions)
+    val checkFailedNote by vm.checkFailedNote.collectAsState()
+    AboutCard(vm.version, state, canInstallNow, vm.hasWizard, vm.actions, checkFailedNote)
 }
 
 /**
@@ -99,7 +110,14 @@ internal fun AboutSection(vm: AboutViewModel) {
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun AboutCard(version: String, state: UpdateState, canInstallNow: Boolean, hasWizard: Boolean, actions: AboutActions) {
+fun AboutCard(
+    version: String,
+    state: UpdateState,
+    canInstallNow: Boolean,
+    hasWizard: Boolean,
+    actions: AboutActions,
+    checkFailedNote: Boolean = false,
+) {
     val scheme = MaterialTheme.colorScheme
     Surface(shape = MaterialTheme.shapes.extraLarge, color = scheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
@@ -131,11 +149,18 @@ fun AboutCard(version: String, state: UpdateState, canInstallNow: Boolean, hasWi
                     TextButton(onClick = actions.openRelease) { Text(stringResource(Res.string.about_download_yourself)) }
                 }
             }
+            // A check by hand that failed while an update is ready (or failed): the update stays, with this line.
+            if (checkFailedNote && (state is UpdateState.Ready || state is UpdateState.InstallFailed)) {
+                Text(stringResource(Res.string.about_check_failed_note), style = MaterialTheme.typography.bodySmall, color = scheme.error)
+            }
             if (state != UpdateState.Off) {
                 OutlinedButton(onClick = actions.check, enabled = state !is UpdateState.Checking) { Text(stringResource(Res.string.about_check)) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
                 TextButton(onClick = actions.openLicence) { Text(stringResource(Res.string.about_licence)) }
+                if (state != UpdateState.Off && state !is UpdateState.Ready) {
+                    TextButton(onClick = actions.openRunningRelease) { Text(stringResource(Res.string.about_whats_new)) }
+                }
                 TextButton(onClick = actions.openNotice) { Text(stringResource(Res.string.about_credits)) }
                 if (hasWizard) TextButton(onClick = actions.openWizard) { Text(stringResource(Res.string.about_open_wizard)) }
             }

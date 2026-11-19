@@ -253,6 +253,21 @@ class AppGraphTest {
     }
 
     @Test
+    fun logNowWritesTheRowWithoutTheLog() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val graph = AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), scope) // never started: no Logbook
+            graph.logNow(nl.diments.requestify.core.update.UpdateEvent.InstallFailed(nl.diments.requestify.core.update.AppVersion(0, 2, 1), 1603))
+            val rows = nl.diments.requestify.core.log.LogStore(AppPaths(dir).logDir, scope, clock = System::currentTimeMillis).readAll()
+            val failed = rows.filterIsInstance<nl.diments.requestify.core.log.LogRecord.UpdateFailed>().single()
+            assertEquals("0.2.1", failed.version)
+            assertEquals(1603, failed.exitCode)
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun gracefulExitLeavesOtherRewardsAlone() = runBlocking {
         assertEquals(emptyList(), exitCalls(ChannelPointsSettings(enabled = true, rewardId = "rw-1", managed = false)), "not ours")
     }

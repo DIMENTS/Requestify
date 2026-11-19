@@ -84,6 +84,20 @@ class UpdateService(
     private val _installRequests = MutableSharedFlow<PendingUpdate>(extraBufferCapacity = 1)
     val installRequests: SharedFlow<PendingUpdate> = _installRequests.asSharedFlow()
 
+    /** A check asked for by hand failed while an update is ready (or failed): it says so next to it (F-2). */
+    private val _checkFailedNote = MutableStateFlow(false)
+    val checkFailedNote: StateFlow<Boolean> = _checkFailedNote.asStateFlow()
+
+    /** "Nu bijwerken" asked once this run: a double click is no second attempt (F-3). */
+    private val installRequested = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * The failed install this start found (also in [events]): a start that installs again at once writes it to the Log
+     * itself, as its Log never starts (F-1).
+     */
+    var startFailure: UpdateEvent.InstallFailed? = null
+        private set
+
     private val checking = Mutex()
 
     /** Versions whose failed download was reported in this run: one Log row each. */
@@ -103,8 +117,9 @@ class UpdateService(
             return
         }
         if (running >= target) {
-            // Installed: by us (attempts > 0), or by hand with a newer installer. Only ours is reported.
-            if (pending.attempts > 0) {
+            // Installed: by us (attempts > 0), or by hand (also a newer version than ours). Only ours is reported, and only
+            // for the version we installed: a newer one installed by hand is not announced with our notes.
+            if (pending.attempts > 0 && running == target) {
                 val from = pending.from?.let(AppVersion::parse) ?: running
                 _events.tryEmit(UpdateEvent.Updated(from, running))
                 JustUpdated(from.toString(), running.toString(), pending.notes).also { store.saveJustUpdated(it); _justUpdated.value = it }
@@ -114,7 +129,9 @@ class UpdateService(
             return
         }
         if (pending.attempts > 0) {
-            _events.tryEmit(UpdateEvent.InstallFailed(target, store.lastExitCode()))
+            val failure = UpdateEvent.InstallFailed(target, store.lastExitCode())
+            startFailure = failure
+            _events.tryEmit(failure)
             store.clearExitCode()
         }
         _state.value = if (pending.attempts >= maxAttempts) {
@@ -146,23 +163,30 @@ class UpdateService(
      */
     private suspend fun check(manual: Boolean) = checking.withLock {
         val before = _state.value
+        _checkFailedNote.value = false
         try {
             checkOnce(manual, before)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            _state.value = if (manual) UpdateState.CheckFailed(manual = true) else settled(before) ?: UpdateState.CheckFailed(manual = false)
+            failed(manual, before)
         }
+    }
+
+    /**
+     * A check that failed: an update that is ready (or failed) stays, with a note when the check was asked for by
+     * hand; otherwise a check by hand says it failed, and an automatic one stays quiet.
+     */
+    private fun failed(manual: Boolean, before: UpdateState) {
+        val kept = settled(before)
+        _state.value = kept ?: UpdateState.CheckFailed(manual)
+        if (kept != null && manual) _checkFailedNote.value = true
     }
 
     private suspend fun checkOnce(manual: Boolean, before: UpdateState) {
         if (manual) _state.value = UpdateState.Checking(manual = true)
         when (val answer = latestRelease()) {
-            is ReleaseCheck.Failed -> _state.value = when {
-                manual -> UpdateState.CheckFailed(manual = true)
-                before is UpdateState.Ready || before is UpdateState.InstallFailed -> before
-                else -> UpdateState.CheckFailed(manual = false)
-            }
+            is ReleaseCheck.Failed -> failed(manual, before)
             ReleaseCheck.NoneUsable -> _state.value = settled(before) ?: UpdateState.UpToDate(clock())
             is ReleaseCheck.Found -> onRelease(answer.release, before, manual)
         }
@@ -196,8 +220,17 @@ class UpdateService(
     /** "Nu bijwerken": only while offline with requests closed and an update ready; the shell does the rest. */
     fun installNow() {
         if (_state.value !is UpdateState.Ready || !canInstallNow(gate.value)) return
-        prepareInstallAtStart()?.let { _installRequests.tryEmit(it) }
+        if (!installRequested.compareAndSet(false, true)) return // asked already: one attempt per run
+        val pending = prepareInstallAtStart()
+        if (pending == null) {
+            installRequested.set(false)
+            return
+        }
+        _installRequests.tryEmit(pending)
     }
+
+    /** The shell could not start the install: "Nu bijwerken" may be asked again. */
+    fun installRequestFailed() = installRequested.set(false)
 
     /** Counts the attempt (and which version starts it) before the install; null when nothing is pending. */
     fun prepareInstallAtStart(): PendingUpdate? = store.markAttempt(from = running?.toString())

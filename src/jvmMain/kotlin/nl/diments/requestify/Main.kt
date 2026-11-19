@@ -165,6 +165,8 @@ fun main(args: Array<String>) {
             // When the helper cannot start, this version simply starts as usual.
             if (UpdateLauncher().launch(pending, graph.updateStore, launcherExe, hidden = !initiallyVisible(mode))) {
                 instance.markQuitting()
+                // This run's Log never starts: the failed install that led to this retry is written to it directly.
+                graph.updates.startFailure?.let { failure -> runBlocking { graph.logNow(failure) } }
                 crashGuard.markOrderlyEnd()
                 instance.close()
                 exitProcess(0)
@@ -219,7 +221,10 @@ fun main(args: Array<String>) {
         graph.updates.installRequests.collect { pending ->
             val exe = launcherExe ?: return@collect
             val hidden = !shell.visible
-            if (!UpdateLauncher().launch(pending, graph.updateStore, exe, hidden)) return@collect
+            if (!UpdateLauncher().launch(pending, graph.updateStore, exe, hidden)) {
+                graph.updates.installRequestFailed() // "Nu bijwerken" may be asked again
+                return@collect
+            }
             instance.markQuitting()
             tray.remove()
             shell.hideNow()

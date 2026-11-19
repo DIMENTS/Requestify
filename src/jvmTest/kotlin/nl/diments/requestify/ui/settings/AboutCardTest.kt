@@ -99,4 +99,40 @@ class AboutCardTest {
         waitForIdle()
         onNodeWithText("Open the welcome wizard").assertDoesNotExist()
     }
+
+    @Test
+    fun whatsNewIsThereInEveryStateButOff() = runDesktopComposeUiTest(width = 900, height = 900) {
+        val opened = mutableListOf<String>()
+        var state by mutableStateOf<UpdateState>(UpdateState.Off)
+        val actions = AboutActions(openRelease = { opened += "new" }, openRunningRelease = { opened += "running" })
+        setContent { RequestifyTheme(BrandSeed, dark = true) { AboutCard("0.3.0", state, canInstallNow = true, hasWizard = false, actions = actions) } }
+        onNodeWithText("What's new").assertDoesNotExist()
+        for (s in listOf(UpdateState.Idle, UpdateState.UpToDate(0), UpdateState.CheckFailed(manual = false), UpdateState.InstallFailed(AppVersion(0, 3, 1), page))) {
+            state = s
+            waitForIdle()
+            onNodeWithText("What's new").performClick()
+        }
+        state = UpdateState.Ready(AppVersion(0, 3, 1), "notes", page)
+        waitForIdle()
+        onNodeWithText("What's new").performClick() // the new version's notes
+        assertEquals(listOf("running", "running", "running", "running", "new"), opened)
+    }
+
+    @Test
+    fun aFailedCheckShowsNextToReady() = runDesktopComposeUiTest(width = 900, height = 900) {
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                AboutCard("0.3.0", UpdateState.Ready(AppVersion(0, 3, 1), "notes", page), canInstallNow = true, hasWizard = false, actions = AboutActions(), checkFailedNote = true)
+            }
+        }
+        onNodeWithText("Version 0.3.1 is ready").assertIsDisplayed()
+        onNodeWithText("Checking for updates did not work just now.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theRunningReleasePageIsItsTag() {
+        assertEquals("https://github.com/DIMENTS/Requestify/releases/tag/v0.3.0", runningReleasePage("0.3.0"))
+        assertEquals("https://github.com/DIMENTS/Requestify/releases", runningReleasePage("dev"))
+        assertEquals("https://github.com/DIMENTS/Requestify/releases", runningReleasePage("0.0.4711"), "a local build has no page")
+    }
 }
