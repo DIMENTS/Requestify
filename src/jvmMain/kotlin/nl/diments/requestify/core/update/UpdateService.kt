@@ -159,6 +159,9 @@ class UpdateService(
     private suspend fun onRelease(release: Release, before: UpdateState, manual: Boolean) {
         val running = running ?: return
         if (release.version <= running) {
+            // Nothing newer is published (any more): an update downloaded earlier was pulled, or made a pre-release.
+            // Lean towards not installing it.
+            if (store.pending() != null) store.clearPending()
             _state.value = UpdateState.UpToDate(clock())
             return
         }

@@ -187,6 +187,18 @@ class UpdateServiceTest {
     }
 
     @Test
+    fun aPulledReleaseIsNotInstalled() = runTest {
+        store.savePending(pendingOf(release("0.2.1"))) // downloaded before the maker pulled it (or made it a pre-release)
+        val service = service()
+        assertIs<UpdateState.Ready>(service.state.value)
+        answer = ReleaseCheck.Found(release("0.2.0")) // the newest published one is the version running
+        service.checkNow()
+        runCurrent()
+        assertIs<UpdateState.UpToDate>(service.state.value)
+        assertNull(store.pending(), "never installed at a later start either")
+    }
+
+    @Test
     fun theDevBuildIsOff() = runTest {
         for (running in listOf(null, AppVersion(0, 0, 33443))) {
             val service = service(running)
