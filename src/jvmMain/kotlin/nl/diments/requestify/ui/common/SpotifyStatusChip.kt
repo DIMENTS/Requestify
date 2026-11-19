@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import nl.diments.requestify.core.playback.SpotifyHealth
 import nl.diments.requestify.resources.Res
@@ -91,7 +92,12 @@ internal fun StatusChip(look: StatusLook, modifier: Modifier = Modifier, onClick
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(shown.icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
-                Text(stringResource(shown.text, *shown.args.toTypedArray()), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    stringResource(shown.text, *shown.args.toTypedArray()),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -73,8 +73,12 @@ fun TitleBar(
             maxLines = 1,
         )
         Spacer(Modifier.width(16.dp))
-        ConnectionChip(problems, onConnectionsClick, Modifier.titleBarClientArea(clientAreas), nothingConnected)
-        Spacer(Modifier.weight(1f))
+        // The status gets the room the toggle leaves (the toggle is measured first): in a narrow window a long status
+        // ends in "…" instead of pushing the toggle under the caption buttons. The room around the chip moves the window.
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            ConnectionChip(problems, onConnectionsClick, Modifier.titleBarClientArea(clientAreas), nothingConnected)
+        }
+        Spacer(Modifier.width(8.dp))
         Box(Modifier.titleBarClientArea(clientAreas)) { requestsSwitch() }
     }
 }
