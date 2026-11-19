@@ -37,6 +37,7 @@ import nl.diments.requestify.resources.twitch_bot_moderator
 import nl.diments.requestify.resources.twitch_bot_own_account
 import nl.diments.requestify.resources.twitch_bot_private_window
 import nl.diments.requestify.resources.twitch_bot_replies_from
+import nl.diments.requestify.resources.twitch_bot_replies_from_you
 import nl.diments.requestify.resources.twitch_bot_title
 import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.theme.Spacing
@@ -106,6 +107,9 @@ private fun NotConnected(login: TwitchLoginState, compact: Boolean, vm: TwitchBo
 private fun Connected(bot: TwitchAccount, login: TwitchLoginState, loginDead: Boolean, vm: TwitchBotSetupViewModel) {
     val moderator by vm.moderator.collectAsState()
     val lastDrop by vm.lastDrop.collectAsState()
+    val health by vm.health.collectAsState()
+    // The bot cannot send right now: replies come from the streamer, and the line says so.
+    val repliesFromYou = loginDead || health.blockedReason != null
     if (loginDead) {
         Surface(
             shape = MaterialTheme.shapes.large,
@@ -124,7 +128,7 @@ private fun Connected(bot: TwitchAccount, login: TwitchLoginState, loginDead: Bo
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            stringResource(Res.string.twitch_bot_replies_from, bot.displayName),
+            stringResource(if (repliesFromYou) Res.string.twitch_bot_replies_from_you else Res.string.twitch_bot_replies_from, bot.displayName),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
         )
@@ -138,7 +142,8 @@ private fun Connected(bot: TwitchAccount, login: TwitchLoginState, loginDead: Bo
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.primary,
         )
-        false -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
+        // Not a moderator, or not known yet (the check did not answer): the tip, with "Opnieuw kijken".
+        false, null -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
             Text(
                 stringResource(Res.string.twitch_bot_mod_tip),
                 style = MaterialTheme.typography.bodyMedium,
@@ -155,7 +160,6 @@ private fun Connected(bot: TwitchAccount, login: TwitchLoginState, loginDead: Bo
                 }
             }
         }
-        null -> Unit
     }
     lastDrop?.let { ErrorText(stringResource(Res.string.twitch_bot_last_drop, it)) }
 }

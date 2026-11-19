@@ -19,6 +19,7 @@ import nl.diments.requestify.core.twitch.TwitchResult
 import nl.diments.requestify.core.twitch.auth.DeviceLoginResult
 import nl.diments.requestify.core.twitch.auth.TwitchAuthStatus
 import nl.diments.requestify.core.twitch.bot.TwitchBot
+import nl.diments.requestify.core.twitch.bot.TwitchBotHealth
 
 /**
  * The bot section of the Twitch card (Connections and the welcome wizard): connect a bot account with the device
@@ -46,6 +47,9 @@ class TwitchBotSetupViewModel(
 
     /** Why the bot's latest message was not sent, while it is not sending. */
     val lastDrop: StateFlow<String?> = bot.drops.dropping
+
+    /** What is wrong with the bot: a refused login, or the channel holding it back (replies then come from the streamer). */
+    val health: StateFlow<TwitchBotHealth> = bot.health
 
     /** The last change could not be saved; nothing changed. */
     val saveFailed: StateFlow<Boolean> = _saveFailed.asStateFlow()

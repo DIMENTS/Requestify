@@ -405,4 +405,29 @@ class TwitchCardTest {
         show(parts())
         onNodeWithText("Bot account (optional)").assertDoesNotExist()
     }
+
+    @Test
+    fun theBotsDeadLoginSaysRepliesComeFromYou() = runDesktopComposeUiTest(width = 900, height = 1400) {
+        show(parts(loggedIn = true, account = affiliate, botAccount = bot, botLoggedIn = false))
+        onNodeWithText("Replies come from you for now; @MyBot can't send").assertIsDisplayed()
+        onNodeWithText("Replies come from @MyBot").assertDoesNotExist()
+    }
+
+    @Test
+    fun anUnknownModeratorStatusStillShowsTheTip() = runDesktopComposeUiTest(width = 900, height = 1400) {
+        show(parts(loggedIn = true, account = affiliate, botAccount = bot)) // the moderator check has not answered
+        onNodeWithText("Make your bot a moderator", substring = true).assertIsDisplayed()
+        onNode(hasText("Check again") and hasClickAction()).assertIsDisplayed()
+    }
+
+    @Test
+    fun theBotSectionSaysWhenItIsYourOwnAccount() = runDesktopComposeUiTest(width = 900, height = 1400) {
+        // The browser is logged in as the streamer (user 42): Twitch approves the bot's code as the streamer.
+        show(parts(loggedIn = true, account = affiliate, twitch = FakeTwitch().apply { pendingPolls = 0 }))
+        onNode(hasText("Connect bot") and hasClickAction()).performClick()
+        waitUntil(timeoutMillis = 20_000) {
+            onAllNodesWithText("That is your own account", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        onNodeWithText("That is your own account", substring = true).assertIsDisplayed()
+    }
 }

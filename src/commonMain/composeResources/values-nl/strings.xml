@@ -246,6 +246,7 @@
     <string name="twitch_bot_copy_link">Link kopiëren</string>
     <string name="twitch_bot_own_account">Dat is je eigen account. Log in met je bot, bijvoorbeeld in een privévenster.</string>
     <string name="twitch_bot_replies_from">Antwoorden komen van @%1$s</string>
+    <string name="twitch_bot_replies_from_you">Antwoorden komen nu van jou; @%1$s kan even niet</string>
     <string name="twitch_bot_disconnect">Ontkoppelen</string>
     <string name="twitch_bot_moderator">Moderator ✓</string>
     <string name="twitch_bot_mod_tip">Maak je bot moderator, dan houdt Twitch zijn berichten minder snel tegen:</string>

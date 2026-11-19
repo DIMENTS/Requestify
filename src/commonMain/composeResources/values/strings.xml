@@ -246,6 +246,7 @@
     <string name="twitch_bot_copy_link">Copy link</string>
     <string name="twitch_bot_own_account">That is your own account. Log in with your bot, for example in a private window.</string>
     <string name="twitch_bot_replies_from">Replies come from @%1$s</string>
+    <string name="twitch_bot_replies_from_you">Replies come from you for now; @%1$s can't send</string>
     <string name="twitch_bot_disconnect">Disconnect</string>
     <string name="twitch_bot_moderator">Moderator ✓</string>
     <string name="twitch_bot_mod_tip">Make your bot a moderator, so Twitch holds its messages back less often:</string>
