@@ -338,4 +338,36 @@ class NowPlayingPaneTest {
         onNodeWithText("Block @streamfan").assertDoesNotExist()
         onNodeWithText("Block viewer").assertDoesNotExist()
     }
+
+    /** The art's bounds one frame after the track changes, and once it has settled. */
+    private fun artOnTrackChange(reduced: Boolean): Pair<androidx.compose.ui.unit.DpRect, androidx.compose.ui.unit.DpRect> {
+        lateinit var result: Pair<androidx.compose.ui.unit.DpRect, androidx.compose.ui.unit.DpRect>
+        runComposeUiTest {
+            var nowPlaying by mutableStateOf(polled(60_000))
+            mainClock.autoAdvance = false
+            setContent {
+                CompositionLocalProvider(nl.diments.requestify.ui.theme.LocalReducedMotion provides reduced) {
+                    Pane(nowPlaying, clock = { mainClock.currentTime }, modifier = Modifier.width(400.dp).height(700.dp))
+                }
+            }
+            mainClock.advanceTimeBy(1_000)
+            val settled = onNodeWithTag(NOW_PLAYING_ART_TAG, useUnmergedTree = true).getBoundsInRoot()
+            nowPlaying = nowPlaying.copy(track = midnightCity.copy(id = "t2", name = "Wait"))
+            mainClock.advanceTimeBy(48)
+            result = onNodeWithTag(NOW_PLAYING_ART_TAG, useUnmergedTree = true).getBoundsInRoot() to settled
+        }
+        return result
+    }
+
+    @Test
+    fun theArtPopsOnANewTrack() {
+        val (justAfter, settled) = artOnTrackChange(reduced = false)
+        kotlin.test.assertNotEquals(settled, justAfter, "mid-pop the art is smaller")
+    }
+
+    @Test
+    fun withAnimationEffectsOffTheArtStaysStillOnANewTrack() {
+        val (justAfter, settled) = artOnTrackChange(reduced = true)
+        assertEquals(settled, justAfter)
+    }
 }

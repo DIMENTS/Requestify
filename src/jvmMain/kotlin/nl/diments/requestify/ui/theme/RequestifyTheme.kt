@@ -1,5 +1,7 @@
 package nl.diments.requestify.ui.theme
 
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.snap
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Typography
@@ -48,8 +50,25 @@ fun RequestifyTheme(seed: Color, dark: Boolean, content: @Composable () -> Unit)
         isDark = dark,
         style = SchemeStyle,
         animate = true,
-        motionScheme = MotionScheme.expressive(),
+        motionScheme = if (LocalReducedMotion.current) ReducedMotionScheme else MotionScheme.expressive(),
         typography = ExpressiveTypography,
         content = content,
     )
+}
+
+/**
+ * The motion while Windows' animation effects are off ([LocalReducedMotion]): nothing slides, scales, grows or
+ * bounces (every spatial spec snaps), while colours and opacity still fade calmly, so a change is still noticed.
+ * Screens then just crossfade.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private object ReducedMotionScheme : MotionScheme {
+    private val calm = MotionScheme.standard()
+
+    override fun <T> defaultSpatialSpec(): FiniteAnimationSpec<T> = snap()
+    override fun <T> fastSpatialSpec(): FiniteAnimationSpec<T> = snap()
+    override fun <T> slowSpatialSpec(): FiniteAnimationSpec<T> = snap()
+    override fun <T> defaultEffectsSpec(): FiniteAnimationSpec<T> = calm.defaultEffectsSpec()
+    override fun <T> fastEffectsSpec(): FiniteAnimationSpec<T> = calm.fastEffectsSpec()
+    override fun <T> slowEffectsSpec(): FiniteAnimationSpec<T> = calm.slowEffectsSpec()
 }

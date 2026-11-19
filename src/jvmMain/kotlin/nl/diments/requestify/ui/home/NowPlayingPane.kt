@@ -105,6 +105,7 @@ import nl.diments.requestify.ui.common.ActionMenu
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.common.requesterLabel
 import nl.diments.requestify.ui.common.sourceLabel
+import nl.diments.requestify.ui.theme.LocalReducedMotion
 import nl.diments.requestify.ui.theme.SourceChip
 import nl.diments.requestify.ui.theme.Spacing
 import nl.diments.requestify.ui.theme.sourceChipHeight
@@ -115,6 +116,9 @@ internal const val NOW_PLAYING_PANE_TAG = "now-playing"
 
 /** The test tag of the room kept for the track details (see [Details]). */
 internal const val NOW_PLAYING_DETAILS_TAG = "now-playing-details"
+
+/** The test tag of the album art. */
+internal const val NOW_PLAYING_ART_TAG = "now-playing-art"
 
 private val PaneCorner = 32.dp
 
@@ -314,14 +318,15 @@ private fun Label(nowPlaying: NowPlaying?) {
 
 /**
  * The art pops on every track change: it springs up from 86 % with a little overshoot while its shape
- * morphs from a circle into the asymmetric art shape.
+ * morphs from a circle into the asymmetric art shape. With Windows' animation effects off it just changes.
  */
 @Composable
 private fun PoppingArt(track: Track, modifier: Modifier) {
     val pop = remember { Animatable(1f) }
+    val reduced = LocalReducedMotion.current
     var shownId by remember { mutableStateOf(track.id) }
     LaunchedEffect(track.id) {
-        if (track.id == shownId) return@LaunchedEffect
+        if (track.id == shownId || reduced) return@LaunchedEffect
         shownId = track.id
         pop.snapTo(0f)
         pop.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMediumLow))
@@ -334,7 +339,7 @@ private fun PoppingArt(track: Track, modifier: Modifier) {
             scaleY = scaleX
             shape = artShape(progress.coerceIn(0f, 1f))
             clip = true
-        },
+        }.testTag(NOW_PLAYING_ART_TAG),
     )
 }
 
