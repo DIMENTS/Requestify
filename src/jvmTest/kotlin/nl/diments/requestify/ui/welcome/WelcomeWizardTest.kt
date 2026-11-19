@@ -2,6 +2,9 @@ package nl.diments.requestify.ui.welcome
 
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.unit.dp
+import kotlin.test.assertTrue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -160,5 +163,42 @@ class WelcomeWizardTest {
         onNodeWithText("Connect Twitch").assertExists() // the card stays
         onNodeWithText("Optional: let your bot send the replies.").assertExists()
         onNode(hasText("Continue") and hasClickAction()).assertExists()
+    }
+}
+
+/** The wizard in a maximized window: the card keeps a calm height and the card with its dots sits in the middle. */
+@OptIn(ExperimentalTestApi::class, ExperimentalPathApi::class)
+class WelcomeWizardTallWindowTest {
+    private val originalLocale = Locale.getDefault()
+    private lateinit var dir: Path
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    @BeforeTest fun setUp() {
+        Locale.setDefault(Locale.ENGLISH)
+        dir = createTempDirectory("requestify-wizard-tall")
+    }
+
+    @AfterTest fun tearDown() {
+        scope.cancel()
+        dir.deleteRecursively()
+        Locale.setDefault(originalLocale)
+    }
+
+    @Test
+    fun onATallWindowTheCardKeepsItsHeightAndSitsInTheMiddle() = runDesktopComposeUiTest(width = 1920, height = 1400) {
+        val graph = AppGraph(
+            AppPaths(dir, updatesDir = dir.resolve("updates")), InMemorySecretStore(),
+            MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope, welcomeWizard = true,
+        )
+        setContent { AppScaffold(graph) }
+        onNode(hasText("Let's go") and hasClickAction()).performClick()
+        waitForIdle()
+        val wizard = onNodeWithTag(WIZARD_TAG).getBoundsInRoot()
+        val card = onNodeWithTag(WIZARD_CARD_TAG).getBoundsInRoot()
+        assertTrue(card.bottom - card.top <= WizardCardMaxHeight, "the card is ${card.bottom - card.top} tall")
+        val above = card.top - wizard.top
+        val below = wizard.bottom - card.bottom
+        assertTrue(above > 200.dp && below > 200.dp, "the card sits in the middle: $above above, $below below")
+        onNode(hasText("Later") and hasClickAction()).assertIsDisplayed()
     }
 }

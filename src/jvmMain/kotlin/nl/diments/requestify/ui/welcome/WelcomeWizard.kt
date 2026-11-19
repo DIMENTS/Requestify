@@ -94,6 +94,9 @@ import org.jetbrains.compose.resources.stringResource
 
 const val WIZARD_TAG = "wizard"
 
+/** The test tag of the wizard's card. */
+const val WIZARD_CARD_TAG = "wizard-card"
+
 fun wizardBadgeTag(platform: WizardPlatform) = "wizard-badge-${platform.name.lowercase()}"
 
 /** How long a connection is celebrated on its card before the next one comes. */
@@ -101,6 +104,9 @@ internal const val CELEBRATION_MS = 2_000L
 
 /** The widest the wizard's card gets: one card, centred, with room around it. */
 private val CardMaxWidth = 640.dp
+
+/** The tallest the card gets: on a tall window it stays one calm card in the middle, not a tall empty one. */
+internal val WizardCardMaxHeight = 860.dp
 
 internal val WizardPlatform.mark: PlatformMark
     get() = when (this) {
@@ -160,7 +166,11 @@ fun WelcomeWizard(
     }
     Box(Modifier.fillMaxSize().testTag(WIZARD_TAG).onGloballyPositioned { origin = it.positionInRoot() }, contentAlignment = Alignment.TopCenter) {
         if (!reduced) MovingShapes(Modifier.matchParentSize())
-        Column(Modifier.widthIn(max = CardMaxWidth).fillMaxHeight().padding(horizontal = Spacing.xl, vertical = Spacing.l)) {
+        // Centred top to bottom: on a tall window the card keeps [WizardCardMaxHeight] and sits in the middle.
+        Column(
+            Modifier.widthIn(max = CardMaxWidth).fillMaxHeight().padding(horizontal = Spacing.xl, vertical = Spacing.l),
+            verticalArrangement = Arrangement.Center,
+        ) {
             Row(Modifier.fillMaxWidth().heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
                 ProgressDots(state.step)
                 Spacer(Modifier.weight(1f))
@@ -174,7 +184,8 @@ fun WelcomeWizard(
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.weight(1f).fillMaxWidth().squashOn(state.celebrating, enabled = !reduced),
+                modifier = Modifier.weight(1f, fill = false).heightIn(max = WizardCardMaxHeight).fillMaxSize()
+                    .testTag(WIZARD_CARD_TAG).squashOn(state.celebrating, enabled = !reduced),
             ) {
                 AnimatedContent(
                     targetState = CardKey(state.step, state.celebrating),
