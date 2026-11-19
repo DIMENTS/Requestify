@@ -54,15 +54,6 @@ feestje bij elke koppeling.
 *Koppelingen* legt elke stap uit, en het *Logboek* laat zien wat er met elk verzoek gebeurde. De kijkers en
 albumhoesjes in deze screenshots zijn verzonnen.
 
-### Uitbrengen (voor de maker)
-
-1. Zet een tag met het nieuwe versienummer, bijvoorbeeld `git tag v0.2.0` en `git push origin v0.2.0`. Alleen cijfers:
-   `v<MAJOR>.<MINOR>.<BUILD>`, en elk nummer maar één keer.
-2. GitHub Actions draait de tests, bouwt de installers en maakt een **concept-release** met de bestanden en hun
-   controlegetallen.
-3. Schrijf in het concept wat er nieuw is en publiceer het. Een testversie publiceer je als **pre-release**: die krijgen
-   anderen niet als update.
-
 ## English
 
 Requestify is a Windows app for streamers. Viewers request songs through Twitch chat, Channel Points and donations
@@ -116,29 +107,6 @@ a little party for every connection.
 *Connections* explains every step, and the *Log* shows what happened to each request. The viewers and album covers in
 these screenshots are made up.
 
-### Releasing (for the maintainer)
+---
 
-1. Push a tag with the new version, for example `git tag v0.2.0` and `git push origin v0.2.0`. Digits only:
-   `v<MAJOR>.<MINOR>.<BUILD>`, and every number only once.
-2. GitHub Actions runs the tests, builds the installers and creates a **draft release** with the files and their
-   checksums.
-3. Write what's new in the draft and publish it. Publish a test build as a **pre-release**: it is never offered as an
-   update.
-
-## Development
-
-- JetBrains Runtime 21 through the Gradle toolchain (downloaded automatically); Gradle itself runs on JDK 17 or newer.
-  Windows 10/11 x64.
-- Run: `.\gradlew.bat run` (one Requestify at a time: quit a running one from its tray menu first).
-- Test: `.\gradlew.bat jvmTest`.
-- Installers: `.\gradlew.bat packageRequestifyExe` and `packageRequestifyMsi` (`build/installer/`). A local build gets
-  a fresh version `0.0.<n>` every time and never updates itself; `-Prequestify.version=0.2.0` builds a release version.
-  `packaging/check-msi.ps1 <msi>` lists the installer's own actions.
-- Start with Windows, the tray, the crash restart, updating and uninstalling only work in the installed app; see the
-  manual checklists in `docs/superpowers/plans/`.
-- To be offered pre-releases as updates while testing: `REQUESTIFY_UPDATE_PRERELEASES=1`.
-- Offscreen renders of UI states: `REQUESTIFY_RENDERS=<folder> .\gradlew.bat jvmTest --tests "*Renders*"`.
-- The README screenshots (`docs/images/`, Dutch and English):
-  `REQUESTIFY_SCREENSHOTS=docs/images .\gradlew.bat jvmTest --tests "*ReadmeScreenshots*" --rerun`.
-
-Design specs and plans live in [`docs/`](docs/). Third-party material is listed in [`NOTICE`](NOTICE).
+Voor ontwikkelaars · For developers: [docs/development.md](docs/development.md)
