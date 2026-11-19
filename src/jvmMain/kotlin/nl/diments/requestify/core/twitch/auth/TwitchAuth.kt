@@ -36,6 +36,12 @@ val TWITCH_SCOPES = listOf(
     "moderator:read:followers",
 )
 
+/** The bot account sends chat messages, and may read where it is a moderator (shown on Connections); nothing else. */
+val TWITCH_BOT_SCOPES = listOf(
+    "user:write:chat",
+    "user:read:moderated_channels",
+)
+
 sealed interface TwitchAuthStatus {
     data object LoggedOut : TwitchAuthStatus
     data object LoggedIn : TwitchAuthStatus
@@ -53,6 +59,9 @@ data class DeviceCode(
 
 sealed interface DeviceLoginResult {
     data class Success(val userId: String, val login: String) : DeviceLoginResult
+
+    /** The code was approved by an account the caller refused (the bot's code, approved as the streamer); nothing saved. */
+    data class WrongAccount(val userId: String, val login: String) : DeviceLoginResult
     data object Expired : DeviceLoginResult
     data class Failed(val reason: String) : DeviceLoginResult
 }
@@ -89,8 +98,9 @@ private const val DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_c
 private const val SLOW_DOWN_MS = 5_000L
 
 /**
- * The broadcaster's Twitch login: device code grant of a Public client (no secret), rotating refresh tokens and
- * token validation. Mirrors `SpotifyAuth`: a network problem never logs out, only Twitch refusing the login does.
+ * A Twitch login (the broadcaster's, or the bot's with [secretKey] and [scopes] of its own): device code grant of a
+ * Public client (no secret), rotating refresh tokens and token validation. Mirrors `SpotifyAuth`: a network problem
+ * never logs out, only Twitch refusing the login does.
  */
 class TwitchAuth(
     private val http: HttpClient,
@@ -98,6 +108,8 @@ class TwitchAuth(
     private val clock: () -> Long,
     private val idBaseUrl: String = "https://id.twitch.tv",
     private val requestTimeoutMs: Long = 15_000,
+    private val secretKey: String = SecretKeys.TWITCH_REFRESH_TOKEN,
+    private val scopes: List<String> = TWITCH_SCOPES,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
@@ -113,7 +125,7 @@ class TwitchAuth(
     private var pendingRefresh: String? = null
 
     private val _status = MutableStateFlow<TwitchAuthStatus>(
-        if (secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN) != null) TwitchAuthStatus.LoggedIn else TwitchAuthStatus.LoggedOut,
+        if (secrets.get(secretKey) != null) TwitchAuthStatus.LoggedIn else TwitchAuthStatus.LoggedOut,
     )
     val status: StateFlow<TwitchAuthStatus> = _status.asStateFlow()
 
@@ -121,7 +133,7 @@ class TwitchAuth(
     suspend fun startDeviceLogin(): DeviceCode? {
         val (code, body) = post("/oauth2/device") {
             append("client_id", TWITCH_CLIENT_ID)
-            append("scopes", TWITCH_SCOPES.joinToString(" "))
+            append("scopes", scopes.joinToString(" "))
         } ?: return null
         if (code != HttpStatusCode.OK) return null
         val parsed = try {
@@ -140,9 +152,10 @@ class TwitchAuth(
 
     /**
      * Polls until the user approved [code], the code ran out or Twitch refused it. Only `authorization_pending` (and
-     * a network problem) keeps polling. On success the login is saved and the account is looked up.
+     * a network problem) keeps polling. On success the account is looked up and, when [accept] takes its user id, the
+     * login is saved; a refused account ([DeviceLoginResult.WrongAccount]) saves nothing and leaves any earlier login.
      */
-    suspend fun awaitDeviceLogin(code: DeviceCode): DeviceLoginResult {
+    suspend fun awaitDeviceLogin(code: DeviceCode, accept: (userId: String) -> Boolean = { true }): DeviceLoginResult {
         val startGeneration = synchronized(stateLock) { generation }
         var interval = code.intervalMs
         while (true) {
@@ -151,7 +164,7 @@ class TwitchAuth(
             if (clock() >= code.expiresAtEpochMs) return DeviceLoginResult.Expired
             val (status, body) = post("/oauth2/token") {
                 append("client_id", TWITCH_CLIENT_ID)
-                append("scopes", TWITCH_SCOPES.joinToString(" "))
+                append("scopes", scopes.joinToString(" "))
                 append("device_code", code.deviceCode)
                 append("grant_type", DEVICE_GRANT_TYPE)
             } ?: continue // offline for a moment: the code is still good, ask again
@@ -162,7 +175,7 @@ class TwitchAuth(
                     return DeviceLoginResult.Failed("unreadable token response")
                 }
                 val refresh = token.refreshToken ?: return DeviceLoginResult.Failed("no refresh token in response")
-                return finishLogin(startGeneration, token.accessToken, token.expiresIn, refresh)
+                return finishLogin(startGeneration, token.accessToken, token.expiresIn, refresh, accept)
             }
             when (messageOf(body)) {
                 "authorization_pending" -> Unit
@@ -172,12 +185,23 @@ class TwitchAuth(
         }
     }
 
-    private suspend fun finishLogin(startGeneration: Long, access: String, expiresIn: Long, refresh: String): DeviceLoginResult {
-        val loginGeneration = synchronized(stateLock) {
+    /**
+     * The account is looked up first: without it the login is no use, and an account [accept] refuses must not
+     * replace anything. Only then is the login saved; when that fails nothing has changed and the user can try again.
+     */
+    private suspend fun finishLogin(
+        startGeneration: Long,
+        access: String,
+        expiresIn: Long,
+        refresh: String,
+        accept: (userId: String) -> Boolean,
+    ): DeviceLoginResult {
+        val who = whoAmI(access) as? Identity.Known ?: return DeviceLoginResult.Failed("could not read the Twitch account")
+        if (!accept(who.userId)) return DeviceLoginResult.WrongAccount(who.userId, who.login)
+        synchronized(stateLock) {
             if (generation != startGeneration) return DeviceLoginResult.Failed("cancelled")
-            // Saved first: when that fails nothing has changed and the user can simply try again.
             try {
-                secrets.put(SecretKeys.TWITCH_REFRESH_TOKEN, refresh)
+                secrets.put(secretKey, refresh)
             } catch (_: IOException) {
                 return DeviceLoginResult.Failed("could not save the login")
             } catch (_: SecurityException) {
@@ -187,33 +211,8 @@ class TwitchAuth(
             pendingRefresh = null
             cached = AccessToken(access, clock() + expiresIn * 1000)
             _status.value = TwitchAuthStatus.LoggedIn
-            generation
         }
-        return when (val who = whoAmI(access)) {
-            is Identity.Known -> DeviceLoginResult.Success(who.userId, who.login)
-            // Without the account the login is no use: undo it, the user can simply try again.
-            else -> {
-                rollBackLogin(loginGeneration)
-                DeviceLoginResult.Failed("could not read the Twitch account")
-            }
-        }
-    }
-
-    /** Undoes the login of [loginGeneration] only: a newer login, logout or revocation is left alone. */
-    private fun rollBackLogin(loginGeneration: Long) = synchronized(stateLock) {
-        if (generation != loginGeneration) return@synchronized
-        generation++
-        cached = null
-        pendingRefresh = null
-        _status.value = try {
-            secrets.remove(SecretKeys.TWITCH_REFRESH_TOKEN)
-            TwitchAuthStatus.LoggedOut
-        } catch (_: IOException) {
-            // Still on disk, so it must not look logged out or logged in: ask for a new login, which replaces it.
-            TwitchAuthStatus.LoginNeeded("could not undo the login")
-        } catch (_: SecurityException) {
-            TwitchAuthStatus.LoginNeeded("could not undo the login")
-        }
+        return DeviceLoginResult.Success(who.userId, who.login)
     }
 
     /**
@@ -313,7 +312,7 @@ class TwitchAuth(
         // A rotated token that could not be saved yet is the live one; the saved one is already used up.
         val refreshToken = synchronized(stateLock) {
             pendingRefresh?.also { if (trySave(it)) pendingRefresh = null }
-        } ?: secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN)
+        } ?: secrets.get(secretKey)
         if (refreshToken == null) {
             // Logged in, yet the saved login cannot be read (the secrets file held by another program, or not
             // decryptable for now): a read failure, not a logout. The status stays; only logout(), forget() and the
@@ -379,7 +378,7 @@ class TwitchAuth(
     )
 
     private fun trySave(refresh: String): Boolean = try {
-        secrets.put(SecretKeys.TWITCH_REFRESH_TOKEN, refresh)
+        secrets.put(secretKey, refresh)
         true
     } catch (_: IOException) {
         false
@@ -391,7 +390,7 @@ class TwitchAuth(
     private fun forget(reason: String) {
         pendingRefresh = null
         try {
-            secrets.remove(SecretKeys.TWITCH_REFRESH_TOKEN)
+            secrets.remove(secretKey)
         } catch (_: IOException) {
             // Left on disk for now; the status below stops it being used, and a new login replaces it.
         } catch (_: SecurityException) {
@@ -409,7 +408,7 @@ class TwitchAuth(
      * written), nothing has changed and the login stays.
      */
     fun logout() = synchronized(stateLock) {
-        secrets.remove(SecretKeys.TWITCH_REFRESH_TOKEN)
+        secrets.remove(secretKey)
         generation++
         cached = null
         pendingRefresh = null

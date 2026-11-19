@@ -38,6 +38,9 @@ private val NO_PROBLEM: StateFlow<SaveProblem?> = MutableStateFlow(null)
 object SecretKeys {
     const val SPOTIFY_REFRESH_TOKEN = "spotify.refresh_token"
     const val TWITCH_REFRESH_TOKEN = "twitch.refresh_token"
+
+    /** The optional bot account's login (plan 6), apart from the broadcaster's. */
+    const val TWITCH_BOT_REFRESH_TOKEN = "twitch.bot_refresh_token"
     const val DONOLINK_KEY = "donolink.key"
     const val STREAMELEMENTS_JWT = "streamelements.jwt"
 }

@@ -441,7 +441,8 @@ class TwitchAuthTest {
         }
         assertIs<DeviceLoginResult.Failed>(a.awaitDeviceLogin(code))
         assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
-        assertEquals(0, validations)
+        // The account is looked up before anything is saved.
+        assertEquals(1, validations)
         assertEquals(TokenResult.LoggedOut, a.token())
     }
 
@@ -458,13 +459,14 @@ class TwitchAuthTest {
     }
 
     @Test
-    fun rollbackThatCannotRemoveTheSecretAsksForANewLogin() = runTest {
+    fun anAccountThatCannotBeReadNeedsNoRollback() = runTest {
         val secrets = FlakyStore(InMemorySecretStore()).apply { failRemove = true }
         val a = virtual(secrets, this) { req ->
             if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else respond("", HttpStatusCode.InternalServerError)
         }
         assertIs<DeviceLoginResult.Failed>(a.awaitDeviceLogin(code))
-        assertTrue(a.status.value is TwitchAuthStatus.LoginNeeded)
+        // Nothing was saved before the account was looked up, so there is nothing to remove.
+        assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
     }
 
     @Test
@@ -570,5 +572,92 @@ class TwitchAuthTest {
         assertEquals(DeviceLoginResult.Failed("cancelled"), a.awaitDeviceLogin(c))
         assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
         assertEquals(TwitchAuthStatus.LoginNeeded("revoked"), a.status.value)
+    }
+
+    private fun botAuth(secrets: SecretStore, scope: TestScope, handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData) =
+        TwitchAuth(
+            http = HttpClient(
+                MockEngine(
+                    MockEngineConfig().apply {
+                        addHandler(handler)
+                        dispatcher = scope.coroutineContext[ContinuationInterceptor] as CoroutineDispatcher
+                    },
+                ),
+            ),
+            secrets = secrets,
+            clock = { scope.currentTime },
+            secretKey = SecretKeys.TWITCH_BOT_REFRESH_TOKEN,
+            scopes = TWITCH_BOT_SCOPES,
+        )
+
+    @Test
+    fun aBotLoginUsesItsOwnSecretAndScopes() = runTest {
+        val secrets = InMemorySecretStore()
+        var deviceForm: Parameters? = null
+        val a = botAuth(secrets, this) { req ->
+            when (req.url.encodedPath) {
+                "/oauth2/device" -> {
+                    deviceForm = form(req)
+                    respond(
+                        """{"device_code":"dc","user_code":"ABCDEFGH","verification_uri":"https://x","expires_in":1800,"interval":5}""",
+                        HttpStatusCode.OK,
+                        json,
+                    )
+                }
+                "/oauth2/token" -> tokens("a1", "r1")
+                else -> valid(login = "mybot", userId = "7")
+            }
+        }
+        val code = assertNotNull(a.startDeviceLogin())
+        assertEquals("user:write:chat user:read:moderated_channels", deviceForm!!["scopes"])
+        assertEquals(DeviceLoginResult.Success("7", "mybot"), a.awaitDeviceLogin(code))
+        assertEquals("r1", secrets.get(SecretKeys.TWITCH_BOT_REFRESH_TOKEN))
+        assertEquals(null, secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+    }
+
+    @Test
+    fun aRefusedAccountIsNotSaved() = runTest {
+        val secrets = InMemorySecretStore()
+        val a = botAuth(secrets, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else valid()
+        }
+        val code = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertEquals(DeviceLoginResult.WrongAccount("42", "diments"), a.awaitDeviceLogin(code, accept = { it != "42" }))
+        assertEquals(null, secrets.get(SecretKeys.TWITCH_BOT_REFRESH_TOKEN))
+        assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
+        assertEquals(TokenResult.LoggedOut, a.token())
+    }
+
+    @Test
+    fun aRefusedAccountLeavesAnEarlierLoginAlone() = runTest {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.TWITCH_BOT_REFRESH_TOKEN, "r0") }
+        val a = botAuth(secrets, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else valid()
+        }
+        assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
+        val code = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertIs<DeviceLoginResult.WrongAccount>(a.awaitDeviceLogin(code, accept = { false }))
+        assertEquals("r0", secrets.get(SecretKeys.TWITCH_BOT_REFRESH_TOKEN))
+        assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
+    }
+
+    @Test
+    fun anAccountThatCannotBeReadSavesNothing() = runTest {
+        var puts = 0
+        val stored = InMemorySecretStore()
+        val secrets = object : SecretStore by stored {
+            override fun put(key: String, value: String) {
+                puts++
+                stored.put(key, value)
+            }
+        }
+        val a = virtual(secrets, this) { req ->
+            if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r1") else respond("", HttpStatusCode.InternalServerError)
+        }
+        val code = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertIs<DeviceLoginResult.Failed>(a.awaitDeviceLogin(code))
+        assertEquals(0, puts)
+        assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
     }
 }

@@ -187,7 +187,8 @@ class TwitchSetupViewModel(
                     is DeviceLoginResult.Success ->
                         if (withContext(NonCancellable) { saveAccount(result) }) TwitchLoginState.Idle else TwitchLoginState.Failed
                     DeviceLoginResult.Expired -> TwitchLoginState.Expired
-                    is DeviceLoginResult.Failed -> TwitchLoginState.Failed
+                    // The streamer's own login accepts any account: a refusal cannot happen here.
+                    is DeviceLoginResult.Failed, is DeviceLoginResult.WrongAccount -> TwitchLoginState.Failed
                 }
             } catch (e: CancellationException) {
                 // Cancelled while the login was being completed inside TwitchAuth: it may be logged in already,
