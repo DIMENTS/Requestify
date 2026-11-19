@@ -154,7 +154,11 @@ internal object LiveFixture {
      * Spotify as the app sees it while [nowPlaying] plays (by M83, or [LONG_ARTIST] with a long title), with two tracks
      * queued in Spotify itself.
      */
-    fun spotify(art: FakeArt, nowPlaying: String = "Midnight City", nowPlayingArtist: String = "M83") = MockEngine { request ->
+    fun spotify(art: FakeArt, nowPlaying: String = "Midnight City", nowPlayingArtist: String = "M83") =
+        spotify(art) { Triple("np", nowPlaying, nowPlayingArtist) }
+
+    /** As above, with what plays read on every poll: (track id, title, artist), so a test can change the song. */
+    fun spotify(art: FakeArt, playing: () -> Triple<String, String, String>) = MockEngine { request ->
         val json = headersOf("Content-Type", "application/json")
         fun dto(id: String, name: String, artist: String, ms: Long, image: Int) =
             """{"id":"$id","uri":"spotify:track:$id","name":"$name","type":"track","duration_ms":$ms,"explicit":false,""" +
@@ -163,8 +167,10 @@ internal object LiveFixture {
         when {
             request.url.host == "accounts.spotify.com" -> respond("""{"access_token":"sp","token_type":"Bearer","expires_in":3600}""", HttpStatusCode.OK, json)
             request.url.host != "api.spotify.com" -> respondError(HttpStatusCode.ServiceUnavailable)
-            path == "/v1/me/player/currently-playing" ->
-                respond("""{"progress_ms":97000,"is_playing":true,"item":${dto("np", nowPlaying, nowPlayingArtist, 243_000, 0)}}""", HttpStatusCode.OK, json)
+            path == "/v1/me/player/currently-playing" -> {
+                val (id, name, artist) = playing()
+                respond("""{"progress_ms":97000,"is_playing":true,"item":${dto(id, name, artist, 243_000, if (id == "np") 0 else id.hashCode().mod(10))}}""", HttpStatusCode.OK, json)
+            }
             path == "/v1/me/player/queue" ->
                 respond("""{"queue":[${dto("q1", "Electric Feel", "MGMT", 229_000, 9)},${dto("q2", "Breezeblocks", "alt-J", 227_000, 5)}]}""", HttpStatusCode.OK, json)
             path == "/v1/me" -> respond("""{"product":"premium"}""", HttpStatusCode.OK, json)
