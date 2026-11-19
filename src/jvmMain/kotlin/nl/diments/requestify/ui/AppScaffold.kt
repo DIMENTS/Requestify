@@ -178,7 +178,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                 // A new streamer first gets the welcome wizard, in place of the rail and the screens; the title bar stays.
                 if (welcomeVisible) {
                     Box(Modifier.weight(1f).fillMaxWidth()) {
-                        WelcomeWizard(graph.welcome, graph.spotifySetup, graph.twitchSetup, graph.donationsSetup)
+                        WelcomeWizard(graph.welcome, graph.spotifySetup, graph.twitchSetup, graph.donationsSetup, graph.twitchBotSetup)
                     }
                     return@Column
                 }

@@ -26,6 +26,7 @@ import nl.diments.requestify.core.donations.DonationCursor
 import nl.diments.requestify.core.donations.DonationCursorStore
 import nl.diments.requestify.core.donations.DonationCursors
 import nl.diments.requestify.core.donations.DonationHealth
+import nl.diments.requestify.core.donations.DonationStatus
 import nl.diments.requestify.core.donations.donolink.DonoLinkFeed
 import nl.diments.requestify.core.donations.donolink.DonoLinkMe
 import nl.diments.requestify.core.donations.donolink.DonoLinkPage
@@ -183,5 +184,24 @@ class DonationsSetupViewModelTest {
         val before = restarts
         vm.pasteKey("dl_live_new")
         assertEquals(before + 1, restarts, "a new key takes effect at once, not at the next app start")
+    }
+
+    private fun state(test: DonationTest, status: DonationStatus, kind: DonationSourceKind = DonationSourceKind.DonoLink, hasKey: Boolean = true) =
+        DonationsCardState(kind, hasKey, test, minimumCents = 0, health = DonationHealth(kind, status), keyDaysLeft = null)
+
+    @Test
+    fun aKeyIsConfirmedOnlyOnceItsTestPassed() {
+        assertFalse(state(DonationTest.Testing, DonationStatus.Connecting).confirmed(), "saved, still being tested")
+        assertTrue(state(DonationTest.Ok("DIMENTS", null), DonationStatus.Connecting).confirmed())
+        assertFalse(state(DonationTest.Refused, DonationStatus.Connecting).confirmed())
+    }
+
+    @Test
+    fun aSavedKeyThatConnectsIsConfirmed() {
+        assertTrue(state(DonationTest.Idle, DonationStatus.Connected).confirmed(), "a key from before, working")
+        assertFalse(state(DonationTest.Idle, DonationStatus.Connecting).confirmed())
+        assertFalse(state(DonationTest.Idle, DonationStatus.KeyRefused).confirmed())
+        assertFalse(state(DonationTest.Ok("x", null), DonationStatus.Off, kind = DonationSourceKind.None).confirmed())
+        assertFalse(state(DonationTest.Ok("x", null), DonationStatus.Connected, hasKey = false).confirmed())
     }
 }

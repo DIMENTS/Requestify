@@ -126,6 +126,7 @@ import nl.diments.requestify.ui.settings.AboutViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 import nl.diments.requestify.ui.setup.TwitchBotSetupViewModel
+import nl.diments.requestify.ui.setup.confirmed
 import nl.diments.requestify.ui.setup.TwitchSetupViewModel
 
 /** The most the exit waits for Twitch to pause the reward. */
@@ -455,21 +456,14 @@ class AppGraph(
             .stateIn(scope, SharingStarted.Eagerly, auth.status.value == SpotifyAuthStatus.LoggedIn)
         fun donationsOk(s: DonationsCardState) =
             s.kind != DonationSourceKind.None && s.hasKey && s.test != DonationTest.Refused && s.health.status != DonationStatus.KeyRefused
-        val donationsConnected = donationsSetup.state.map(::donationsOk)
-            .stateIn(scope, SharingStarted.Eagerly, donationsOk(donationsSetup.state.value))
         WelcomeWizardViewModel.markExistingUser(
             settings,
-            anyConnectionSaved = spotifyConnected.value || twitchConnected.value || donationsConnected.value,
+            anyConnectionSaved = spotifyConnected.value || twitchConnected.value || donationsOk(donationsSetup.state.value),
         )
-        fun offersPoints(s: Settings) =
-            s.twitch.account?.broadcasterType in setOf("affiliate", "partner") && !s.twitch.channelPoints.enabled
-        val twitchOffersPoints = settings.settings.map(::offersPoints)
-            .stateIn(scope, SharingStarted.Eagerly, offersPoints(settings.settings.value))
-        WelcomeWizardViewModel(
-            settings, spotifyConnected, twitchConnected, donationsConnected, scope,
-            enabled = welcomeWizard,
-            twitchOffersPoints = twitchOffersPoints,
-        )
+        // The wizard celebrates donations once the key works, not as soon as it is saved.
+        val donationsConnected = donationsSetup.state.map { it.confirmed() }
+            .stateIn(scope, SharingStarted.Eagerly, donationsSetup.state.value.confirmed())
+        WelcomeWizardViewModel(settings, spotifyConnected, twitchConnected, donationsConnected, scope, enabled = welcomeWizard)
     }
 
     /**

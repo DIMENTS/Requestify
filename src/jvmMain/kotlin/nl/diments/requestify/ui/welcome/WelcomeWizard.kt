@@ -85,6 +85,7 @@ import nl.diments.requestify.ui.setup.DonationsSetupViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupContent
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
 import nl.diments.requestify.ui.setup.TwitchCode
+import nl.diments.requestify.ui.setup.TwitchBotSetupViewModel
 import nl.diments.requestify.ui.setup.TwitchSetupContent
 import nl.diments.requestify.ui.setup.TwitchSetupViewModel
 import nl.diments.requestify.ui.theme.LocalReducedMotion
@@ -125,7 +126,13 @@ private data class CardKey(val step: WizardStep, val celebrating: WizardPlatform
  * window, while the card's content scrolls.
  */
 @Composable
-fun WelcomeWizard(vm: WelcomeWizardViewModel, spotify: SpotifySetupViewModel, twitch: TwitchSetupViewModel, donations: DonationsSetupViewModel) {
+fun WelcomeWizard(
+    vm: WelcomeWizardViewModel,
+    spotify: SpotifySetupViewModel,
+    twitch: TwitchSetupViewModel,
+    donations: DonationsSetupViewModel,
+    twitchBot: TwitchBotSetupViewModel? = null,
+) {
     val state by vm.state.collectAsState()
     val donationsState by donations.state.collectAsState()
     val twitchSettings by twitch.settings.collectAsState()
@@ -197,9 +204,9 @@ fun WelcomeWizard(vm: WelcomeWizardViewModel, spotify: SpotifySetupViewModel, tw
                                     WizardStep.Spotify -> SpotifySetupContent(spotify.state.collectAsState().value, spotify)
                                     // The Twitch content brings its own side margins (its card has none): cancel the wizard's.
                                     WizardStep.Twitch -> Box(Modifier.bleedHorizontally(Spacing.xl)) {
-                                        TwitchSetupContent(twitch, code = { if (reduced) TwitchCode(it) else PoppingCode(it) })
+                                        TwitchSetupContent(twitch, twitchBot, code = { if (reduced) TwitchCode(it) else PoppingCode(it) }, compactBot = true)
                                     }
-                                    else -> DonationsSetupContent(donationsState, donations)
+                                    else -> DonationsSetupContent(donationsState, donations, onChoseNone = vm::later)
                                 }
                             }
                         }

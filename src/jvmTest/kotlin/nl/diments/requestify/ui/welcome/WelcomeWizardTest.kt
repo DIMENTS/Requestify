@@ -128,4 +128,37 @@ class WelcomeWizardTest {
         click("Let's go")
         onNodeWithText("Later").assertIsDisplayed() // the card scrolls; its way out stays in view
     }
+
+    @Test
+    fun choosingNoneMovesTheWizardOn() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        setContent { AppScaffold(graph()) }
+        click("Let's go")
+        click("Later") // Spotify
+        click("Later") // Twitch
+        onNodeWithText("Connect donations").assertIsDisplayed()
+        click("None")
+        onNodeWithText("Ready to rock!").assertIsDisplayed()
+    }
+
+    @Test
+    fun theWizardTwitchCardOffersTheBot() = runDesktopComposeUiTest(width = 1180, height = 760) {
+        val secrets = InMemorySecretStore().apply { put(nl.diments.requestify.core.secrets.SecretKeys.TWITCH_REFRESH_TOKEN, "r0") }
+        val graph = AppGraph(
+            AppPaths(dir, updatesDir = dir.resolve("updates")), secrets,
+            MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope, welcomeWizard = true,
+        )
+        setContent { AppScaffold(graph) }
+        click("Let's go")
+        click("Later") // Spotify
+        onNodeWithText("Connect Twitch").assertIsDisplayed()
+        graph.settings.tryUpdate { it.copy(twitch = it.twitch.copy(account = TwitchAccount("42", "diments", "DIMENTS"))) } // logged in
+        waitUntil(timeoutMillis = 5_000) {
+            onAllNodesWithText("Optional: let your bot send the replies.").fetchSemanticsNodes().isNotEmpty()
+        }
+        mainClock.advanceTimeBy(5_000) // past the celebration
+        waitForIdle()
+        onNodeWithText("Connect Twitch").assertExists() // the card stays
+        onNodeWithText("Optional: let your bot send the replies.").assertExists()
+        onNode(hasText("Continue") and hasClickAction()).assertExists()
+    }
 }

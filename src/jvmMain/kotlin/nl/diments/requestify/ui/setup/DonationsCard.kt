@@ -99,16 +99,22 @@ fun DonationsCard(vm: DonationsSetupViewModel) {
     }
 }
 
-/** What the donations setup asks (the platform, its key, the minimum), shared by the card and the welcome wizard. */
+/**
+ * What the donations setup asks (the platform, its key, the minimum), shared by the card and the welcome wizard.
+ * [onChoseNone]: the wizard moves on when "Geen" is chosen, like "Later doen".
+ */
 @Composable
-internal fun DonationsSetupContent(state: DonationsCardState, vm: DonationsSetupViewModel) {
+internal fun DonationsSetupContent(state: DonationsCardState, vm: DonationsSetupViewModel, onChoseNone: (() -> Unit)? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
         Text(
             stringResource(Res.string.donations_intro),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        SourceChoice(state.kind, vm::choose)
+        SourceChoice(state.kind) { kind ->
+            vm.choose(kind)
+            if (kind == DonationSourceKind.None) onChoseNone?.invoke()
+        }
         if (state.kind != DonationSourceKind.None) Setup(state, vm)
     }
 }

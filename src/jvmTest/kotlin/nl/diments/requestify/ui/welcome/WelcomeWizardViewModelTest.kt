@@ -159,20 +159,18 @@ class WelcomeWizardViewModelTest {
     }
 
     @Test
-    fun anAffiliateStaysForChannelPoints() = runTest {
-        val offersPoints = MutableStateFlow(false)
-        val wizard = WelcomeWizardViewModel(settings, spotify, twitch, donations, backgroundScope, twitchOffersPoints = offersPoints)
+    fun theTwitchCardStaysAfterItsCelebration() = runTest {
+        val wizard = WelcomeWizardViewModel(settings, spotify, twitch, donations, backgroundScope)
         runCurrent()
         wizard.begin()
         wizard.later() // Spotify
         runCurrent()
-        offersPoints.value = true // logged in as an Affiliate: the Channel Points reward can be set up here
-        twitch.value = true
+        twitch.value = true // any account: the card offers the optional bot (and Kanaalpunten to an Affiliate)
         runCurrent()
         assertEquals(WizardPlatform.Twitch, wizard.state.value.celebrating)
         wizard.celebrated()
         runCurrent()
-        assertEquals(WizardStep.Twitch, wizard.state.value.step, "the card stays, now showing the Channel Points section")
+        assertEquals(WizardStep.Twitch, wizard.state.value.step, "the card stays, now showing the bot and the Kanaalpunten")
         assertNull(wizard.state.value.celebrating)
         spotify.value = true // something else connects meanwhile
         runCurrent()

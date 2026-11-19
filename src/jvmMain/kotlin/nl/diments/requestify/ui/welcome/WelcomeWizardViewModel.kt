@@ -41,10 +41,8 @@ class WelcomeWizardViewModel(
     private val scope: CoroutineScope,
     /** False: never shown (tests and renders of the rest of the app). */
     private val enabled: Boolean = true,
-    /** Logged in as an Affiliate or Partner without the Channel Points reward yet: the Twitch card stays for it. */
-    private val twitchOffersPoints: StateFlow<Boolean> = MutableStateFlow(false),
 ) {
-    /** Platforms celebrated in this round: one that stays on screen (Channel Points) is not celebrated again. */
+    /** Platforms celebrated in this round: one that stays on screen (Twitch, for the bot) is not celebrated again. */
     private val celebratedAlready = mutableSetOf<WizardPlatform>()
     private fun connectedNow(): Set<WizardPlatform> = buildSet {
         if (spotifyConnected.value) add(WizardPlatform.Spotify)
@@ -90,13 +88,13 @@ class WelcomeWizardViewModel(
     }
 
     /**
-     * The UI finished celebrating a connection: on to the next card. An Affiliate or Partner stays on the Twitch card,
-     * which now shows the Channel Points reward, until "Verder" ([continueOn]).
+     * The UI finished celebrating a connection: on to the next card. The Twitch card stays: it now offers the optional
+     * bot account (and the Kanaalpunten reward to an Affiliate or Partner), until "Verder" ([continueOn]).
      */
     fun celebrated() {
         val celebrated = celebrating.value
         celebrating.value = null
-        if (celebrated == WizardPlatform.Twitch && twitchOffersPoints.value) return
+        if (celebrated == WizardPlatform.Twitch) return
         moveTo(next(step.value))
     }
 

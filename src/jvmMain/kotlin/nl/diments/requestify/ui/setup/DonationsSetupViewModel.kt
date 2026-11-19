@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import nl.diments.requestify.core.health.clockTicks
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
+import nl.diments.requestify.core.donations.DonationStatus
 import nl.diments.requestify.core.donations.DonationCursorStore
 import nl.diments.requestify.core.donations.DonationHealth
 import nl.diments.requestify.core.donations.donolink.DonoLinkFeed
@@ -46,6 +47,14 @@ data class DonationsCardState(
     /** False for StreamElements while its channel's currency is unknown: the minimum is then compared in each tip's currency. */
     val currencyKnown: Boolean = true,
 )
+
+/**
+ * Whether the chosen source is known to work, for the welcome wizard's celebration: its key passed the test just now,
+ * or a key saved before is connected. A key that is merely saved (still being tested, or refused) is not.
+ */
+fun DonationsCardState.confirmed(): Boolean =
+    kind != DonationSourceKind.None && hasKey && health.status != DonationStatus.KeyRefused &&
+        (test is DonationTest.Ok || (test == DonationTest.Idle && health.status == DonationStatus.Connected))
 
 /**
  * The Donations card: one source at a time (none, DonoLink or StreamElements). Switching a source on starts it at
