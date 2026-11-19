@@ -35,6 +35,17 @@ internal class FakeTwitch(private val now: () -> Long = { 0L }, dispatcher: Coro
     var userCode = "ABCDEFGH"
     var broadcasterType = "affiliate"
 
+    /** The account the logins belong to (validate and `/helix/users`): the streamer's by default, a bot's when set. */
+    var userId = "42"
+    var login = "diments"
+    var displayName = "DIMENTS"
+
+    /** The channels the user moderates (`/helix/moderation/channels`). */
+    val moderatedChannels: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
+
+    /** The bodies of the chat messages sent; each is answered as sent. */
+    val sentChats: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
+
     /** When each `/oauth2/validate` was asked. */
     val validations = mutableListOf<Long>()
 
@@ -70,7 +81,7 @@ internal class FakeTwitch(private val now: () -> Long = { 0L }, dispatcher: Coro
                             validateGate?.await()
                             validations += now()
                             respond(
-                                """{"client_id":"cid","login":"diments","scopes":[],"user_id":"42","expires_in":5000}""",
+                                """{"client_id":"cid","login":"$login","scopes":[],"user_id":"$userId","expires_in":5000}""",
                                 HttpStatusCode.OK,
                                 json,
                             )
@@ -78,17 +89,26 @@ internal class FakeTwitch(private val now: () -> Long = { 0L }, dispatcher: Coro
                         path == "/helix/users" && usersGate != null -> {
                             usersGate?.await()
                             respond(
-                                """{"data":[{"id":"42","login":"diments","display_name":"DIMENTS","broadcaster_type":"$broadcasterType"}]}""",
+                                """{"data":[{"id":"$userId","login":"$login","display_name":"$displayName","broadcaster_type":"$broadcasterType"}]}""",
                                 HttpStatusCode.OK,
                                 json,
                             )
                         }
                         path == "/helix/users" && usersDown -> respondError(HttpStatusCode.ServiceUnavailable)
                         path == "/helix/users" -> respond(
-                            """{"data":[{"id":"42","login":"diments","display_name":"DIMENTS","broadcaster_type":"$broadcasterType"}]}""",
+                            """{"data":[{"id":"$userId","login":"$login","display_name":"$displayName","broadcaster_type":"$broadcasterType"}]}""",
                             HttpStatusCode.OK,
                             json,
                         )
+                        path == "/helix/moderation/channels" -> respond(
+                            """{"data":[${moderatedChannels.joinToString(",") { """{"broadcaster_id":"$it"}""" }}],"pagination":{}}""",
+                            HttpStatusCode.OK,
+                            json,
+                        )
+                        path == "/helix/chat/messages" -> {
+                            sentChats += (request.body as? io.ktor.http.content.TextContent)?.text.orEmpty()
+                            respond("""{"data":[{"message_id":"m${sentChats.size}","is_sent":true}]}""", HttpStatusCode.OK, json)
+                        }
                         path == "/helix/eventsub/subscriptions" -> respond(
                             """{"data":[{"id":"sub","status":"enabled"}],"total":1,"total_cost":0,"max_total_cost":10}""",
                             HttpStatusCode.Accepted,
