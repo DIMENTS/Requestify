@@ -1,5 +1,11 @@
 package nl.diments.requestify.ui.setup
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +70,8 @@ import nl.diments.requestify.ui.common.formatShortDate
 import nl.diments.requestify.ui.common.PlatformLogo
 import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.fadeThrough
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -70,6 +79,7 @@ import org.jetbrains.compose.resources.stringResource
  * and the minimum per request. A DonoLink key shows who it belongs to and until when it works; StreamElements says
  * that tips made while Requestify is off are not picked up.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DonationsCard(vm: DonationsSetupViewModel) {
     val state by vm.state.collectAsState()
@@ -83,7 +93,12 @@ fun DonationsCard(vm: DonationsSetupViewModel) {
                 PlatformLogo(PlatformMark.Donations, Modifier.padding(end = Spacing.m))
                 Text(stringResource(Res.string.donations_title), style = MaterialTheme.typography.titleLargeEmphasized)
                 Box(Modifier.weight(1f))
-                if (state.kind != DonationSourceKind.None) {
+                val motion = MaterialTheme.motionScheme
+                AnimatedVisibility(
+                    visible = state.kind != DonationSourceKind.None,
+                    enter = fadeIn(motion.defaultEffectsSpec()) + scaleIn(motion.fastSpatialSpec(), initialScale = 0.8f),
+                    exit = fadeOut(motion.fastEffectsSpec()) + scaleOut(motion.fastSpatialSpec(), targetScale = 0.8f),
+                ) {
                     ConnectionBadge(
                         when (state.health.status) {
                             DonationStatus.Connected -> LoginStatus.Connected
@@ -103,6 +118,7 @@ fun DonationsCard(vm: DonationsSetupViewModel) {
  * What the donations setup asks (the platform, its key, the minimum), shared by the card and the welcome wizard.
  * [onChoseNone]: the wizard moves on when "Geen" is chosen, like "Later doen".
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun DonationsSetupContent(state: DonationsCardState, vm: DonationsSetupViewModel, onChoseNone: (() -> Unit)? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.l)) {
@@ -115,7 +131,16 @@ internal fun DonationsSetupContent(state: DonationsCardState, vm: DonationsSetup
             vm.choose(kind)
             if (kind == DonationSourceKind.None) onChoseNone?.invoke()
         }
-        if (state.kind != DonationSourceKind.None) Setup(state, vm)
+        // The setup grows open when a platform is chosen, closes for "Geen", and fades through between the two platforms.
+        val motion = MaterialTheme.motionScheme
+        AnimatedContent(
+            targetState = state.kind,
+            transitionSpec = { motion.fadeThrough() using motion.sizeTransform(clip = true) },
+            modifier = Modifier.fillMaxWidth(), // only the height changes: the setup grows open downward
+        ) { kind ->
+            // The leaving platform keeps its own texts while it fades.
+            if (kind != DonationSourceKind.None) Setup(state.copy(kind = kind), vm)
+        }
     }
 }
 
@@ -156,7 +181,7 @@ private fun Setup(state: DonationsCardState, vm: DonationsSetupViewModel) {
             stringResource(if (streamElements) Res.string.donations_streamelements_help else Res.string.donations_donolink_help),
             style = MaterialTheme.typography.bodyMedium,
         )
-        TextButton(onClick = vm::openDashboard) { Text(stringResource(Res.string.donations_open_dashboard)) }
+        TextButton(onClick = vm::openDashboard, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.donations_open_dashboard)) }
 
         var key by remember(state.kind) { mutableStateOf("") }
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m), verticalAlignment = Alignment.CenterVertically) {
@@ -174,6 +199,7 @@ private fun Setup(state: DonationsCardState, vm: DonationsSetupViewModel) {
                     key = ""
                 },
                 enabled = key.isNotBlank(),
+                shapes = ButtonDefaults.shapes(),
             ) { Text(stringResource(Res.string.donations_save_test)) }
         }
 

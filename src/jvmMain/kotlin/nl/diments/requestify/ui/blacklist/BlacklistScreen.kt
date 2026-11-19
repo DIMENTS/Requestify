@@ -2,10 +2,6 @@ package nl.diments.requestify.ui.blacklist
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -89,6 +85,8 @@ import nl.diments.requestify.ui.home.RowGap
 import nl.diments.requestify.ui.home.connectedShape
 import nl.diments.requestify.ui.home.kindName
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
 import nl.diments.requestify.ui.theme.fadeThrough
 import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.stringResource
@@ -108,8 +106,8 @@ fun BlacklistScreen(vm: BlacklistViewModel) {
     PageScaffold(stringResource(Res.string.nav_blacklist), subtitle = stringResource(Res.string.blacklist_subtitle), scrolls = false) {
         AnimatedVisibility(
             visible = state.blockFailing,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             ProblemBanner(stringResource(Res.string.save_failed))
         }

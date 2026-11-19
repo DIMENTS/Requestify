@@ -2,10 +2,6 @@ package nl.diments.requestify.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -92,6 +88,8 @@ import nl.diments.requestify.ui.setup.SpotifySetupScreen
 import nl.diments.requestify.ui.setup.isValidSpotifyClientId
 import nl.diments.requestify.ui.theme.RequestifyTheme
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
 import nl.diments.requestify.ui.theme.albumSeedFrom
 import nl.diments.requestify.ui.theme.albumSeedOrPrevious
 import nl.diments.requestify.ui.theme.fadeThrough
@@ -201,8 +199,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                         // The defaults are in use and nothing is saved over the file; it is read again in the background.
                         AnimatedVisibility(
                             visible = settingsUnreadable,
-                            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                            enter = motion.appear(),
+                            exit = motion.disappear(),
                         ) {
                             ProblemBanner(
                                 stringResource(Res.string.settings_load_failed),
@@ -214,8 +212,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                         // technical reason is in the Log.
                         AnimatedVisibility(
                             visible = saveProblems.isNotEmpty(),
-                            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                            enter = motion.appear(),
+                            exit = motion.disappear(),
                         ) {
                             val shown = saveProblems.ifEmpty { lastSaveProblems }
                             ProblemBanner(
@@ -228,8 +226,8 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                         val updated = justUpdated
                         AnimatedVisibility(
                             visible = destination == Destination.Home && showUpdatedCard(updated, settings.lastUpdateCardVersion),
-                            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                            enter = motion.appear(),
+                            exit = motion.disappear(),
                         ) {
                             if (updated != null) {
                                 UpdatedCard(

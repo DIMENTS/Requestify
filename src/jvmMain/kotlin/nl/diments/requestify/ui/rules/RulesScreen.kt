@@ -1,10 +1,7 @@
 package nl.diments.requestify.ui.rules
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,6 +63,10 @@ import nl.diments.requestify.ui.common.PageScaffold
 import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
+import nl.diments.requestify.ui.theme.roll
+import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.stringResource
 
 /** The bounds and steps of the steppers: a value outside them (a hand-edited file) steps back inside them. */
@@ -101,8 +102,8 @@ fun RulesScreen(settings: SettingsStore) {
     PageScaffold(stringResource(Res.string.nav_rules), subtitle = stringResource(Res.string.rules_subtitle)) {
         AnimatedVisibility(
             visible = saveFailed,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             ProblemBanner(stringResource(Res.string.save_failed))
         }
@@ -144,8 +145,8 @@ fun RulesScreen(settings: SettingsStore) {
             )
             AnimatedVisibility(
                 visible = rules.noDuplicates,
-                enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                enter = motion.appear(),
+                exit = motion.disappear(),
             ) {
                 Column {
                     RowDivider()
@@ -349,19 +350,28 @@ internal fun Stepper(
     decreaseLabel: String,
     increaseLabel: String,
 ) {
+    val motion = MaterialTheme.motionScheme
+    // Which way the number rolls: up after +, down after -. (A value changed elsewhere rolls up.)
+    var up by remember { mutableStateOf(true) }
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onDecrease, enabled = canDecrease, shapes = IconButtonDefaults.shapes()) {
+            IconButton(onClick = { up = false; onDecrease() }, enabled = canDecrease, shapes = IconButtonDefaults.shapes()) {
                 Icon(AppIcons.Remove, contentDescription = decreaseLabel)
             }
-            Text(
-                value,
-                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
-                textAlign = TextAlign.Center,
+            AnimatedContent(
+                targetState = value,
+                transitionSpec = { motion.roll(up) using motion.sizeTransform(clip = true) },
+                contentAlignment = Alignment.Center,
                 modifier = Modifier.widthIn(min = 56.dp),
-                maxLines = 1,
-            )
-            IconButton(onClick = onIncrease, enabled = canIncrease, shapes = IconButtonDefaults.shapes()) {
+            ) { shown ->
+                Text(
+                    shown,
+                    style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+            IconButton(onClick = { up = true; onIncrease() }, enabled = canIncrease, shapes = IconButtonDefaults.shapes()) {
                 Icon(AppIcons.Add, contentDescription = increaseLabel)
             }
         }

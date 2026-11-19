@@ -2,10 +2,6 @@ package nl.diments.requestify.ui.setup
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -107,6 +103,8 @@ import nl.diments.requestify.ui.common.SpotifyStatusChip
 import nl.diments.requestify.ui.common.PlatformLogo
 import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
 import nl.diments.requestify.ui.theme.fadeThrough
 import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.StringResource
@@ -431,8 +429,8 @@ private fun LoginControls(state: SpotifySetupState, vm: SpotifySetupViewModel) {
         val url = state.pendingLoginUrl
         AnimatedVisibility(
             visible = url != null && state.loggingIn,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
                 Text(stringResource(Res.string.setup_browser_failed), style = MaterialTheme.typography.bodyMedium)

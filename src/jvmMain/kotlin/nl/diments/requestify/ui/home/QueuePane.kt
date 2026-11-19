@@ -2,10 +2,10 @@ package nl.diments.requestify.ui.home
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -66,6 +65,8 @@ import nl.diments.requestify.ui.common.AppIcons
 import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.common.formatDuration
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
 import nl.diments.requestify.ui.theme.fadeThrough
 import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.stringResource
@@ -116,15 +117,15 @@ fun QueuePane(
         }
         AnimatedVisibility(
             visible = state.loadFailing,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             ProblemBanner(stringResource(Res.string.home_load_failing), compact = compact)
         }
         AnimatedVisibility(
             visible = state.blockFailing,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             ProblemBanner(stringResource(Res.string.home_block_failing), compact = compact)
         }
@@ -196,13 +197,18 @@ private fun QueueTabs(
             modifier = Modifier.semantics { role = Role.RadioButton },
         ) {
             Text(stringResource(Res.string.home_rejected_tab))
-            if (rejectedBadge > 0) {
+            // The badge grows in beside the label when a paid request is turned away, instead of popping the button wider.
+            val motion = MaterialTheme.motionScheme
+            AnimatedVisibility(
+                visible = rejectedBadge > 0,
+                enter = expandHorizontally(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
+                exit = shrinkHorizontally(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            ) {
                 val paid = stringResource(Res.string.home_rejected_paid_badge, rejectedBadge)
-                Spacer(Modifier.width(Spacing.s))
                 Badge(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError,
-                    modifier = Modifier.semantics { contentDescription = paid },
+                    modifier = Modifier.padding(start = Spacing.s).semantics { contentDescription = paid },
                 ) {
                     Text(rejectedBadge.toString())
                 }

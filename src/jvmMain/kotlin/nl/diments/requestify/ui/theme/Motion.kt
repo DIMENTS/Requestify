@@ -4,6 +4,7 @@ package nl.diments.requestify.ui.theme
 
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.AnimationVector
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -12,8 +13,12 @@ import androidx.compose.animation.core.TwoWayConverter
 import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MotionScheme
@@ -33,6 +38,22 @@ const val FADE_THROUGH_DELAY_MS = 70
 fun MotionScheme.fadeThrough(initialScale: Float? = null): ContentTransform {
     val grow = initialScale?.let { scaleIn(defaultSpatialSpec(), initialScale = it) } ?: EnterTransition.None
     return (fadeIn(delayed(FADE_THROUGH_DELAY_MS, defaultEffectsSpec())) + grow) togetherWith fadeOut(fastEffectsSpec())
+}
+
+/** How a banner or a section comes in: it grows open from the top while it fades in. */
+fun MotionScheme.appear(): EnterTransition = expandVertically(defaultSpatialSpec()) + fadeIn(defaultEffectsSpec())
+
+/** How a banner or a section goes: a little faster than it came, closing up while it fades. */
+fun MotionScheme.disappear(): ExitTransition = shrinkVertically(fastSpatialSpec()) + fadeOut(fastEffectsSpec())
+
+/**
+ * A number that counts [up] (or down) rolls: the old one leaves upward and the new one comes from below (or the other
+ * way round), quickly, while they cross-fade. On the spatial spec, so with animation effects off it only fades.
+ */
+fun MotionScheme.roll(up: Boolean): ContentTransform {
+    val direction = if (up) 1 else -1
+    return (slideInVertically(fastSpatialSpec()) { it / 2 * direction } + fadeIn(fastEffectsSpec())) togetherWith
+        (slideOutVertically(fastSpatialSpec()) { -it / 2 * direction } + fadeOut(fastEffectsSpec()))
 }
 
 /**

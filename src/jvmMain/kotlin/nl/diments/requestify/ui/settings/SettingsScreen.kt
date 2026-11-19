@@ -2,12 +2,10 @@ package nl.diments.requestify.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +86,8 @@ import nl.diments.requestify.ui.common.PageScaffold
 import nl.diments.requestify.ui.common.ProblemBanner
 import nl.diments.requestify.ui.theme.BrandSeed
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -134,8 +134,8 @@ fun SettingsScreen(settings: SettingsStore, autostart: Autostart = NoAutostart, 
                 Text(stringResource(Res.string.settings_appearance), style = MaterialTheme.typography.titleLargeEmphasized)
                 AnimatedVisibility(
                     visible = saveFailed,
-                    enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-                    exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+                    enter = motion.appear(),
+                    exit = motion.disappear(),
                 ) {
                     ProblemBanner(stringResource(Res.string.save_failed))
                 }
@@ -238,8 +238,8 @@ private fun ColourSetting(mode: ThemeMode, onChange: (ThemeMode) -> Unit) {
         )
         AnimatedVisibility(
             visible = mode is ThemeMode.Custom,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             val selectedArgb = (mode as? ThemeMode.Custom)?.seedArgb
             SwatchRow(selectedArgb, onPick = { onChange(ThemeMode.Custom(it.toArgb())) })

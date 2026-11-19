@@ -3,10 +3,6 @@ package nl.diments.requestify.ui.setup
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -118,6 +114,8 @@ import nl.diments.requestify.ui.rules.Stepper
 import nl.diments.requestify.ui.common.PlatformLogo
 import nl.diments.requestify.ui.common.PlatformMark
 import nl.diments.requestify.ui.theme.Spacing
+import nl.diments.requestify.ui.theme.appear
+import nl.diments.requestify.ui.theme.disappear
 import nl.diments.requestify.ui.theme.fadeThrough
 import nl.diments.requestify.ui.theme.sizeTransform
 import org.jetbrains.compose.resources.StringResource
@@ -644,8 +642,8 @@ private fun CommandsRow(vm: TwitchSetupViewModel) {
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(motion.defaultSpatialSpec()) + fadeIn(motion.defaultEffectsSpec()),
-            exit = shrinkVertically(motion.fastSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
+            enter = motion.appear(),
+            exit = motion.disappear(),
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = Spacing.xl).padding(top = Spacing.xs, bottom = Spacing.s),
