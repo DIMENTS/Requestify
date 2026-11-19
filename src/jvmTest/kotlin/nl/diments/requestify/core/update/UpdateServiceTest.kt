@@ -390,4 +390,35 @@ class UpdateServiceTest {
         val service = service()
         assertIs<UpdateState.InstallFailed>(service.state.value, "not offered again and again: download it yourself")
     }
+
+    @Test
+    fun aPendingRestartIsNotInstalledAgain() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("0")
+        val service = service()
+        assertNull(service.prepareInstallAtStart(), "installing again cannot help before Windows restarts")
+        assertEquals(1, store.pending()?.attempts, "no attempt counted")
+        assertEquals(false, service.canInstallNow.value, "Nu bijwerken is off meanwhile")
+    }
+
+    @Test
+    fun aPendingRestartSurvivesACheckOfTheSameRelease() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("0")
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        val service = service()
+        service.start()
+        advanceTimeBy(120_001)
+        assertEquals(true, assertIs<UpdateState.Ready>(service.state.value).restartPending)
+    }
+
+    @Test
+    fun aSecondStartWithoutARebootStillSaysRestart() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("0")
+        service()
+        val second = service() // Windows was not restarted yet
+        assertEquals(emptyList(), events(second), "no failure")
+        assertEquals(true, assertIs<UpdateState.Ready>(second.state.value).restartPending)
+    }
 }

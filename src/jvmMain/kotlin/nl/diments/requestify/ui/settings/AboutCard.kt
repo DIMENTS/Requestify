@@ -137,15 +137,17 @@ fun AboutCard(
                 }
                 is UpdateState.Ready -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
                     Text(stringResource(Res.string.about_ready, state.version.toString()), style = MaterialTheme.typography.titleMedium)
-                    Text(stringResource(Res.string.about_ready_hint), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                     if (state.restartPending) {
+                        // Windows Installer is done; a restart of Windows completes it (installing again would not help).
                         Text(stringResource(Res.string.about_restart_pending), style = MaterialTheme.typography.bodyMedium, color = scheme.primary)
+                    } else {
+                        Text(stringResource(Res.string.about_ready_hint), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = actions.install, enabled = canInstallNow) { Text(stringResource(Res.string.about_update_now)) }
                         TextButton(onClick = actions.openRelease) { Text(stringResource(Res.string.about_whats_new)) }
                     }
-                    if (!canInstallNow) {
+                    if (!canInstallNow && !state.restartPending) {
                         Text(stringResource(Res.string.about_update_when_offline), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     }
                 }

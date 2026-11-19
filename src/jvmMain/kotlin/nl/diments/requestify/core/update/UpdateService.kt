@@ -86,8 +86,11 @@ class UpdateService(
     private val _justUpdated = MutableStateFlow<JustUpdated?>(null)
     val justUpdated: StateFlow<JustUpdated?> = _justUpdated.asStateFlow()
 
-    val canInstallNow: StateFlow<Boolean> = combine(_state, gate) { s, g -> s is UpdateState.Ready && canInstallNow(g) }
-        .stateIn(scope, SharingStarted.Eagerly, _state.value is UpdateState.Ready && canInstallNow(gate.value))
+    /** "Nu bijwerken" may run: an update is ready (not one waiting for a restart of Windows) and the stream allows it. */
+    val canInstallNow: StateFlow<Boolean> = combine(_state, gate) { s, g -> installable(s) && canInstallNow(g) }
+        .stateIn(scope, SharingStarted.Eagerly, installable(_state.value) && canInstallNow(gate.value))
+
+    private fun installable(s: UpdateState) = s is UpdateState.Ready && !s.restartPending
 
     private val _installRequests = MutableSharedFlow<PendingUpdate>(extraBufferCapacity = 1)
     val installRequests: SharedFlow<PendingUpdate> = _installRequests.asSharedFlow()
@@ -136,8 +139,8 @@ class UpdateService(
         val exitCode = store.lastExitCode()
         if (pending.attempts > 0 && exitCode == 0 && pending.attempts < maxAttempts) {
             // msiexec succeeded (3010/1641 count as success), yet the old version runs: Windows finishes it at its next
-            // restart. No failure; the update stays ready, and Over Requestify says to restart Windows.
-            store.clearExitCode()
+            // restart. No failure; the update stays ready, and Over Requestify says to restart Windows. The exit code stays,
+            // so every start until then says the same (the next attempt, or the restart's Updated, clears it).
             _state.value = UpdateState.Ready(target, pending.notes, pending.pageUrl, restartPending = true)
             return
         }
@@ -243,7 +246,9 @@ class UpdateService(
         when (val result = download(release)) {
             is DownloadResult.Ready -> {
                 store.clearFailedDownload()
-                _state.value = UpdateState.Ready(release.version, release.notes, release.pageUrl)
+                // The same update ready before (it may be waiting for a restart of Windows) stays as it was.
+                _state.value = (before as? UpdateState.Ready)?.takeIf { it.version == release.version }
+                    ?: UpdateState.Ready(release.version, release.notes, release.pageUrl)
             }
             is DownloadResult.Failed -> {
                 // One Log row per version, also across runs: a retry of the same version that fails again is quiet.
@@ -270,7 +275,11 @@ class UpdateService(
     fun installRequestFailed() = installRequested.set(false)
 
     /** Counts the attempt (and which version starts it) before the install; null when nothing is pending. */
-    fun prepareInstallAtStart(): PendingUpdate? = store.markAttempt(from = running?.toString())
+    fun prepareInstallAtStart(): PendingUpdate? {
+        // Installing again cannot help an update that waits for a restart of Windows.
+        if ((_state.value as? UpdateState.Ready)?.restartPending == true) return null
+        return store.markAttempt(from = running?.toString())
+    }
 
     fun dismissJustUpdated() {
         store.clearJustUpdated()

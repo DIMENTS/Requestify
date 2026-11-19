@@ -145,4 +145,16 @@ class AboutCardTest {
         }
         onNodeWithText("Restart Windows to finish the update.").assertIsDisplayed()
     }
+
+    @Test
+    fun aPendingRestartReplacesTheReadyHint() = runDesktopComposeUiTest(width = 900, height = 900) {
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                AboutCard("0.3.0", UpdateState.Ready(AppVersion(0, 3, 1), "notes", page, restartPending = true), canInstallNow = false, hasWizard = false, actions = AboutActions())
+            }
+        }
+        onNodeWithText("Restart Windows to finish the update.").assertIsDisplayed()
+        onNodeWithText("It installs at the next start", substring = true).assertDoesNotExist()
+        onNodeWithText("You can update while you're offline", substring = true).assertDoesNotExist()
+    }
 }
