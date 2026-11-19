@@ -60,6 +60,7 @@ import nl.diments.requestify.resources.wizard_connect_donations
 import nl.diments.requestify.resources.wizard_connect_spotify
 import nl.diments.requestify.resources.wizard_connect_twitch
 import nl.diments.requestify.resources.wizard_connected
+import nl.diments.requestify.resources.wizard_continue
 import nl.diments.requestify.resources.wizard_connected_as
 import nl.diments.requestify.resources.wizard_done_connected
 import nl.diments.requestify.resources.wizard_done_connected_plain
@@ -185,7 +186,13 @@ fun WelcomeWizard(vm: WelcomeWizardViewModel, spotify: SpotifySetupViewModel, tw
                             key.celebrating != null -> Celebration(key.celebrating, accounts[key.celebrating], state.remaining, !reduced)
                             key.step == WizardStep.Welcome -> WelcomeCard(onBegin = vm::begin, onSkip = vm::skipAll)
                             key.step == WizardStep.Done -> DoneCard(state.connected, accounts, !reduced, onOpen = vm::finish)
-                            else -> PlatformCard(key.step, onLater = vm::later, onLogoPositioned = { headerLogo = it }) {
+                            else -> PlatformCard(
+                                key.step,
+                                connected = key.step.platform in state.connected,
+                                onLater = vm::later,
+                                onContinue = vm::continueOn,
+                                onLogoPositioned = { headerLogo = it },
+                            ) {
                                 when (key.step) {
                                     WizardStep.Spotify -> SpotifySetupContent(spotify.state.collectAsState().value, spotify)
                                     // The Twitch content brings its own side margins (its card has none): cancel the wizard's.
@@ -305,7 +312,14 @@ private fun WelcomeCard(onBegin: () -> Unit, onSkip: () -> Unit) = Centred {
 }
 
 @Composable
-private fun PlatformCard(step: WizardStep, onLater: () -> Unit, onLogoPositioned: (Offset) -> Unit, content: @Composable () -> Unit) {
+private fun PlatformCard(
+    step: WizardStep,
+    connected: Boolean,
+    onLater: () -> Unit,
+    onContinue: () -> Unit,
+    onLogoPositioned: (Offset) -> Unit,
+    content: @Composable () -> Unit,
+) {
     val platform = checkNotNull(step.platform)
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.xl)) {
@@ -329,7 +343,12 @@ private fun PlatformCard(step: WizardStep, onLater: () -> Unit, onLogoPositioned
             content()
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
-            TextButton(onClick = onLater) { Text(stringResource(Res.string.wizard_later)) }
+            // Connected (an Affiliate stays for the Channel Points reward): on to the next card. Else: later.
+            if (connected) {
+                Button(onClick = onContinue) { Text(stringResource(Res.string.wizard_continue)) }
+            } else {
+                TextButton(onClick = onLater) { Text(stringResource(Res.string.wizard_later)) }
+            }
         }
     }
 }

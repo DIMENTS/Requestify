@@ -429,7 +429,15 @@ class AppGraph(
             settings,
             anyConnectionSaved = spotifyConnected.value || twitchConnected.value || donationsConnected.value,
         )
-        WelcomeWizardViewModel(settings, spotifyConnected, twitchConnected, donationsConnected, scope, enabled = welcomeWizard)
+        fun offersPoints(s: Settings) =
+            s.twitch.account?.broadcasterType in setOf("affiliate", "partner") && !s.twitch.channelPoints.enabled
+        val twitchOffersPoints = settings.settings.map(::offersPoints)
+            .stateIn(scope, SharingStarted.Eagerly, offersPoints(settings.settings.value))
+        WelcomeWizardViewModel(
+            settings, spotifyConnected, twitchConnected, donationsConnected, scope,
+            enabled = welcomeWizard,
+            twitchOffersPoints = twitchOffersPoints,
+        )
     }
 
     /**

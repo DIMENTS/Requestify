@@ -525,6 +525,7 @@
     <string name="wizard_lets_go">Let's go</string>
     <string name="wizard_skip">Skip</string>
     <string name="wizard_later">Later</string>
+    <string name="wizard_continue">Continue</string>
     <string name="wizard_connect_spotify">Connect Spotify</string>
     <string name="wizard_connect_twitch">Connect Twitch</string>
     <string name="wizard_connect_donations">Connect donations</string>

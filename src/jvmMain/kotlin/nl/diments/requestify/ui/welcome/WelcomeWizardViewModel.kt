@@ -41,7 +41,11 @@ class WelcomeWizardViewModel(
     private val scope: CoroutineScope,
     /** False: never shown (tests and renders of the rest of the app). */
     private val enabled: Boolean = true,
+    /** Logged in as an Affiliate or Partner without the Channel Points reward yet: the Twitch card stays for it. */
+    private val twitchOffersPoints: StateFlow<Boolean> = MutableStateFlow(false),
 ) {
+    /** Platforms celebrated in this round: one that stays on screen (Channel Points) is not celebrated again. */
+    private val celebratedAlready = mutableSetOf<WizardPlatform>()
     private fun connectedNow(): Set<WizardPlatform> = buildSet {
         if (spotifyConnected.value) add(WizardPlatform.Spotify)
         if (twitchConnected.value) add(WizardPlatform.Twitch)
@@ -68,7 +72,10 @@ class WelcomeWizardViewModel(
         scope.launch {
             connected.collect { now ->
                 val here = step.value.platform
-                if (here != null && here in now && celebrating.value == null && state.value.visible) celebrating.value = here
+                if (here != null && here in now && here !in celebratedAlready && celebrating.value == null && state.value.visible) {
+                    celebratedAlready += here
+                    celebrating.value = here
+                }
             }
         }
     }
@@ -82,11 +89,19 @@ class WelcomeWizardViewModel(
         moveTo(next(step.value))
     }
 
-    /** The UI finished celebrating a connection: on to the next card. */
+    /**
+     * The UI finished celebrating a connection: on to the next card. An Affiliate or Partner stays on the Twitch card,
+     * which now shows the Channel Points reward, until "Verder" ([continueOn]).
+     */
     fun celebrated() {
+        val celebrated = celebrating.value
         celebrating.value = null
+        if (celebrated == WizardPlatform.Twitch && twitchOffersPoints.value) return
         moveTo(next(step.value))
     }
+
+    /** "Verder" on a card whose platform is connected: on to the next card (no "later" for it). */
+    fun continueOn() = moveTo(next(step.value))
 
     /** "Overslaan" on the welcome card. */
     fun skipAll() = end()
@@ -97,6 +112,7 @@ class WelcomeWizardViewModel(
     /** Settings → Over Requestify → "Welkomstwizard openen": a fresh round from the welcome card. */
     fun reopen() {
         later.value = emptySet()
+        celebratedAlready.clear()
         celebrating.value = null
         step.value = WizardStep.Welcome
         settings.tryUpdate { it.copy(welcomeDone = false, welcomeStep = WizardStep.Welcome) }

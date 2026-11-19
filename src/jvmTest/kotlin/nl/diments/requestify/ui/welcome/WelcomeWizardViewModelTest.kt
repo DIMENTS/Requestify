@@ -159,6 +159,31 @@ class WelcomeWizardViewModelTest {
     }
 
     @Test
+    fun anAffiliateStaysForChannelPoints() = runTest {
+        val offersPoints = MutableStateFlow(false)
+        val wizard = WelcomeWizardViewModel(settings, spotify, twitch, donations, backgroundScope, twitchOffersPoints = offersPoints)
+        runCurrent()
+        wizard.begin()
+        wizard.later() // Spotify
+        runCurrent()
+        offersPoints.value = true // logged in as an Affiliate: the Channel Points reward can be set up here
+        twitch.value = true
+        runCurrent()
+        assertEquals(WizardPlatform.Twitch, wizard.state.value.celebrating)
+        wizard.celebrated()
+        runCurrent()
+        assertEquals(WizardStep.Twitch, wizard.state.value.step, "the card stays, now showing the Channel Points section")
+        assertNull(wizard.state.value.celebrating)
+        spotify.value = true // something else connects meanwhile
+        runCurrent()
+        assertNull(wizard.state.value.celebrating, "Twitch is not celebrated twice")
+        wizard.continueOn()
+        runCurrent()
+        assertEquals(WizardStep.Donations, wizard.state.value.step)
+        assertEquals(emptySet(), wizard.state.value.later - WizardPlatform.Spotify, "Verder is no 'later'")
+    }
+
+    @Test
     fun remainingCountsWhatIsLeft() = runTest {
         val wizard = wizard()
         assertEquals(3, wizard.state.value.remaining)

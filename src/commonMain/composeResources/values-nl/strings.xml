@@ -525,6 +525,7 @@
     <string name="wizard_lets_go">Let's go</string>
     <string name="wizard_skip">Overslaan</string>
     <string name="wizard_later">Later doen</string>
+    <string name="wizard_continue">Verder</string>
     <string name="wizard_connect_spotify">Spotify koppelen</string>
     <string name="wizard_connect_twitch">Twitch koppelen</string>
     <string name="wizard_connect_donations">Donaties koppelen</string>
