@@ -30,8 +30,11 @@ sealed interface UpdateState {
     data class Checking(val manual: Boolean) : UpdateState
     data class UpToDate(val checkedAtMs: Long) : UpdateState
 
-    /** Downloaded and verified: installs at a quiet start, or on "Nu bijwerken". */
-    data class Ready(val version: AppVersion, val notes: String, val pageUrl: String) : UpdateState
+    /**
+     * Downloaded and verified: installs at a quiet start, or on "Nu bijwerken". [restartPending]: Windows Installer
+     * finished but the old version still runs: a restart of Windows completes it.
+     */
+    data class Ready(val version: AppVersion, val notes: String, val pageUrl: String, val restartPending: Boolean = false) : UpdateState
 
     /** GitHub could not be asked. Only a check by hand says so; an automatic one shows as "not checked". */
     data class CheckFailed(val manual: Boolean) : UpdateState
@@ -131,13 +134,14 @@ class UpdateService(
             return
         }
         val exitCode = store.lastExitCode()
-        if (pending.attempts > 0 && exitCode == 0) {
+        if (pending.attempts > 0 && exitCode == 0 && pending.attempts < maxAttempts) {
             // msiexec succeeded (3010/1641 count as success), yet the old version runs: Windows finishes it at its next
-            // restart. No failure; the update stays ready.
+            // restart. No failure; the update stays ready, and Over Requestify says to restart Windows.
             store.clearExitCode()
-            _state.value = UpdateState.Ready(target, pending.notes, pending.pageUrl)
+            _state.value = UpdateState.Ready(target, pending.notes, pending.pageUrl, restartPending = true)
             return
         }
+        // (Still the old version after the last attempt, code 0 or not: a failure, so it is not offered without end.)
         if (pending.attempts > 0) {
             val failure = UpdateEvent.InstallFailed(target, exitCode)
             startFailure = failure

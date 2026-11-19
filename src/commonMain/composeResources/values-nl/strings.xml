@@ -538,6 +538,7 @@
     <string name="about_waiting_offline">Versie %1$s gevonden; hij wordt gedownload zodra je offline bent.</string>
     <string name="about_ready">Versie %1$s staat klaar</string>
     <string name="about_ready_hint">Hij wordt geïnstalleerd bij de volgende start, of nu meteen. Spotify speelt intussen gewoon door.</string>
+    <string name="about_restart_pending">Herstart Windows om de update af te maken.</string>
     <string name="about_update_now">Nu bijwerken</string>
     <string name="about_update_when_offline">Bijwerken kan als je offline bent en de verzoeken dicht zijn</string>
     <string name="about_whats_new">Wat is er nieuw</string>

@@ -197,7 +197,14 @@ class TwitchAuth(
         accept: (userId: String) -> Boolean,
     ): DeviceLoginResult {
         val who = whoAmI(access) as? Identity.Known ?: return DeviceLoginResult.Failed("could not read the Twitch account")
-        if (!accept(who.userId)) return DeviceLoginResult.WrongAccount(who.userId, who.login)
+        if (!accept(who.userId)) {
+            // Not saved, and not left granted at Twitch either: withdrawn (best effort; a failure changes nothing).
+            post("/oauth2/revoke") {
+                append("client_id", TWITCH_CLIENT_ID)
+                append("token", access)
+            }
+            return DeviceLoginResult.WrongAccount(who.userId, who.login)
+        }
         synchronized(stateLock) {
             if (generation != startGeneration) return DeviceLoginResult.Failed("cancelled")
             try {

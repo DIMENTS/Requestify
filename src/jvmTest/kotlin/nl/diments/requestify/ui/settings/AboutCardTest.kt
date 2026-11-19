@@ -135,4 +135,14 @@ class AboutCardTest {
         assertEquals("https://github.com/DIMENTS/Requestify/releases", runningReleasePage("dev"))
         assertEquals("https://github.com/DIMENTS/Requestify/releases", runningReleasePage("0.0.4711"), "a local build has no page")
     }
+
+    @Test
+    fun aPendingRestartIsSaid() = runDesktopComposeUiTest(width = 900, height = 900) {
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                AboutCard("0.3.0", UpdateState.Ready(AppVersion(0, 3, 1), "notes", page, restartPending = true), canInstallNow = true, hasWizard = false, actions = AboutActions())
+            }
+        }
+        onNodeWithText("Restart Windows to finish the update.").assertIsDisplayed()
+    }
 }

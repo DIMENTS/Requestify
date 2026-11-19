@@ -374,4 +374,20 @@ class UpdateServiceTest {
         assertIs<UpdateState.Ready>(service.state.value, "downloaded already: it waits for the install, not for a download")
         assertEquals(0, downloads)
     }
+
+    @Test
+    fun anInstallWaitingForARebootSaysRestartWindows() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 1, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("0")
+        val service = service()
+        assertEquals(true, assertIs<UpdateState.Ready>(service.state.value).restartPending)
+    }
+
+    @Test
+    fun anInstallThatKeepsWaitingForARebootGivesUp() = runTest {
+        store.savePending(pendingOf(release("0.2.1"), attempts = 2, from = "0.2.0"))
+        dir.resolve("install-exit-code.txt").writeText("0")
+        val service = service()
+        assertIs<UpdateState.InstallFailed>(service.state.value, "not offered again and again: download it yourself")
+    }
 }

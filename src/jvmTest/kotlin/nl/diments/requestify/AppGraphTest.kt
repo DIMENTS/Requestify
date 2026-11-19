@@ -399,6 +399,7 @@ class AppGraphTest {
             services.lastSocket.push(chat("msg-1", "!sr https://open.spotify.com/track/$TRACK_A"))
             await("the reply") { services.sends.isNotEmpty() }
             assertEquals("700", services.sends.single().senderId, "the bot answers, in the streamer's channel")
+            assertEquals("Bearer bot-tw", services.sends.single().authorization, "with the bot's own token")
         }
     }
 
@@ -690,7 +691,7 @@ class AppGraphTest {
      * whole graph, plus the fake EventSub. Records the calls and the chat messages sent.
      */
     private class Services {
-        data class Sent(val message: String, val replyTo: String?, val senderId: String? = null)
+        data class Sent(val message: String, val replyTo: String?, val senderId: String? = null, val authorization: String? = null)
 
         val connector = FakeConnector()
         val sends = CopyOnWriteArrayList<Sent>()
@@ -735,11 +736,16 @@ class AppGraphTest {
                 }
                 host == "api.spotify.com" && path == "/v1/me/player/currently-playing" -> respond("", HttpStatusCode.NoContent)
                 host == "api.spotify.com" -> respondError(HttpStatusCode.ServiceUnavailable)
-                host == "id.twitch.tv" && path == "/oauth2/token" -> respond(
-                    """{"access_token":"tw","expires_in":14000,"refresh_token":"t2","scope":[],"token_type":"bearer"}""",
-                    HttpStatusCode.OK,
-                    json,
-                )
+                host == "id.twitch.tv" && path == "/oauth2/token" -> {
+                    // The bot's login (refresh token b1) gets an access token of its own, so a test can tell who sent.
+                    val form = (request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString().orEmpty()
+                    val access = if ("refresh_token=b1" in form) "bot-tw" else "tw"
+                    respond(
+                        """{"access_token":"$access","expires_in":14000,"refresh_token":"t2","scope":[],"token_type":"bearer"}""",
+                        HttpStatusCode.OK,
+                        json,
+                    )
+                }
                 host == "id.twitch.tv" && path == "/oauth2/validate" -> respond(
                     """{"client_id":"cid","login":"diments","scopes":[],"user_id":"42","expires_in":5000}""",
                     HttpStatusCode.OK,
@@ -763,6 +769,7 @@ class AppGraphTest {
                         body.getValue("message").jsonPrimitive.content,
                         body["reply_parent_message_id"]?.jsonPrimitive?.content,
                         body["sender_id"]?.jsonPrimitive?.content,
+                        request.headers[HttpHeaders.Authorization],
                     )
                     respond(
                         """{"data":[{"message_id":"own-${sentIds.incrementAndGet()}","is_sent":true}]}""",

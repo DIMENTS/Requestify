@@ -538,6 +538,7 @@
     <string name="about_waiting_offline">Version %1$s found; it downloads once you are offline.</string>
     <string name="about_ready">Version %1$s is ready</string>
     <string name="about_ready_hint">It installs at the next start, or now. Spotify keeps playing meanwhile.</string>
+    <string name="about_restart_pending">Restart Windows to finish the update.</string>
     <string name="about_update_now">Update now</string>
     <string name="about_update_when_offline">You can update while you're offline and requests are closed</string>
     <string name="about_whats_new">What's new</string>

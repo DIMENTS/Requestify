@@ -660,4 +660,23 @@ class TwitchAuthTest {
         assertEquals(null, stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
         assertEquals(TwitchAuthStatus.LoggedOut, a.status.value)
     }
+
+    @Test
+    fun aRefusedAccountIsRevokedAtTwitch() = runTest {
+        var revoked: Parameters? = null
+        val a = botAuth(InMemorySecretStore(), this) { req ->
+            when (req.url.encodedPath) {
+                "/oauth2/token" -> tokens("a1", "r1")
+                "/oauth2/revoke" -> {
+                    revoked = form(req)
+                    respond("", HttpStatusCode.OK)
+                }
+                else -> valid()
+            }
+        }
+        val code = DeviceCode("dc", "ABCDEFGH", "https://x", expiresAtEpochMs = 1_800_000, intervalMs = 5_000)
+        assertIs<DeviceLoginResult.WrongAccount>(a.awaitDeviceLogin(code, accept = { false }))
+        assertEquals("a1", revoked?.get("token"), "the streamer's grant to the bot's login is withdrawn")
+        assertEquals("wu2hg6lvxw5lqb2qbs046ou19nupnp", revoked?.get("client_id"))
+    }
 }

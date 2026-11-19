@@ -35,6 +35,7 @@ import nl.diments.requestify.resources.about_licence
 import nl.diments.requestify.resources.about_open_wizard
 import nl.diments.requestify.resources.about_ready
 import nl.diments.requestify.resources.about_ready_hint
+import nl.diments.requestify.resources.about_restart_pending
 import nl.diments.requestify.resources.about_title
 import nl.diments.requestify.resources.about_up_to_date
 import nl.diments.requestify.resources.about_update_now
@@ -137,6 +138,9 @@ fun AboutCard(
                 is UpdateState.Ready -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.s)) {
                     Text(stringResource(Res.string.about_ready, state.version.toString()), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(Res.string.about_ready_hint), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                    if (state.restartPending) {
+                        Text(stringResource(Res.string.about_restart_pending), style = MaterialTheme.typography.bodyMedium, color = scheme.primary)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = actions.install, enabled = canInstallNow) { Text(stringResource(Res.string.about_update_now)) }
                         TextButton(onClick = actions.openRelease) { Text(stringResource(Res.string.about_whats_new)) }
