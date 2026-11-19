@@ -81,14 +81,18 @@ Alle commando's zijn voor PowerShell, vanuit de projectmap.
     `msiexec /i "<pad>\Requestify-0.3.0.msi" /qb INSTALLDIR="Q:\Bestaat-niet\\"` (kies een schijfletter die je niet hebt).
     - [ ] De installatie mislukt met een foutmelding.
     - [ ] `%LOCALAPPDATA%\Requestify\Requestify.exe` bestaat nog en Requestify start gewoon (de oude versie is terug).
-    - [ ] Kijk in *Windows-beveiliging* → *Beveiligingsgeschiedenis*: Defender heeft de update-helper van Requestify
-      niet tegengehouden (vanaf 0.3.0 een leesbaar PowerShell-commando, geen versleuteld).
-17. **Pre-release:** publiceer `v0.3.1` als *pre-release*.
-    - [ ] Requestify biedt hem niet aan ("Je hebt de nieuwste versie" na *Zoeken naar updates*).
-    - [ ] Met `$env:REQUESTIFY_UPDATE_PRERELEASES = "1"` en Requestify vanuit die PowerShell gestart, wordt hij wél
-      aangeboden. (Sluit die Requestify daarna af.)
-    - [ ] Opruimen: verwijder de pre-release `v0.3.1` op GitHub, en daarna `%LOCALAPPDATA%\Requestify-updates\pending.json`
-      en de `.msi` ernaast, zodat er geen pre-release blijft klaarstaan.
+17. **Pre-release, en de update-hulp van 0.3.0:** zet tag `v0.3.1` op dezelfde commit als `v0.3.0` en publiceer hem als
+    *pre-release*. (Stap 15 gebruikte nog de update-hulp van 0.2.0; dit is de eerste keer dat die van 0.3.0 draait.)
+    - [ ] Requestify (0.3.0) biedt hem niet aan ("Je hebt de nieuwste versie" na *Zoeken naar updates*).
+    - [ ] Sluit Requestify af, zet `$env:REQUESTIFY_UPDATE_PRERELEASES = "1"` en start
+      `& "$env:LOCALAPPDATA\Requestify\Requestify.exe"` vanuit die PowerShell: na ruim 2 minuten staat 0.3.1 klaar.
+    - [ ] Ga offline, sluit de verzoeken en klik op **Nu bijwerken**: Requestify sluit, installeert zonder vragen en
+      komt vanzelf terug als 0.3.1 (kaartje "Bijgewerkt naar 0.3.1", en het Logboek zegt "Bijgewerkt van 0.3.0 naar
+      0.3.1").
+    - [ ] Kijk in *Windows-beveiliging* → *Beveiligingsgeschiedenis*: Defender heeft de update-helper niet tegengehouden
+      (vanaf 0.3.0 een leesbaar PowerShell-commando, geen versleuteld).
+    - [ ] Opruimen: verwijder de pre-release `v0.3.1` op GitHub. Je blijft zelf op 0.3.1 (dezelfde code); de volgende
+      echte release krijgt een hoger nummer dan 0.3.1 (bijvoorbeeld `v0.3.2`).
 
 ## F. Verwijderen en opnieuw installeren
 
