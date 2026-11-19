@@ -374,4 +374,68 @@ class Renders {
             }
         }
     }
+
+    /** The bot section of the Twitch card in each of its states; Dutch, dark. */
+    @Test
+    fun botSection() {
+        if (out == null) return
+        val streamer = nl.diments.requestify.core.settings.TwitchAccount("42", "diments", "DIMENTS", "affiliate")
+        val bot = nl.diments.requestify.core.settings.TwitchAccount("7", "mijnbot", "MijnBot")
+        fun shot(
+            name: String,
+            botAccount: nl.diments.requestify.core.settings.TwitchAccount?,
+            botLoggedIn: Boolean = botAccount != null,
+            ready: (nl.diments.requestify.ui.setup.TwitchSetupParts) -> Boolean = { true },
+            setup: (nl.diments.requestify.ui.setup.TwitchSetupParts) -> Unit = {},
+        ) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val dir = createTempDirectory("requestify-render")
+            try {
+                runDesktopComposeUiTest(width = 900, height = 1100) {
+                    val p = nl.diments.requestify.ui.setup.TwitchSetupParts(
+                        dir,
+                        scope,
+                        nl.diments.requestify.core.twitch.FakeTwitch(),
+                        loggedIn = true,
+                        account = streamer,
+                        botAccount = botAccount,
+                        botLoggedIn = botLoggedIn,
+                    )
+                    setup(p)
+                    setContent {
+                        nl.diments.requestify.ui.theme.RequestifyTheme(nl.diments.requestify.ui.theme.BrandSeed, dark = true) {
+                            nl.diments.requestify.ui.setup.TwitchCard(p.vm, p.botVm)
+                        }
+                    }
+                    waitUntil(timeoutMillis = 15_000) { ready(p) }
+                    Thread.sleep(300)
+                    waitForIdle()
+                    capture("bot-$name")
+                }
+            } finally {
+                scope.cancel()
+            }
+        }
+        dutch {
+            shot("not-connected", null)
+            shot("code", null, ready = { it.botVm.login.value is nl.diments.requestify.ui.setup.TwitchLoginState.ShowingCode }) {
+                it.twitch.pendingPolls = Int.MAX_VALUE
+                it.botVm.onConnect()
+            }
+            // The browser was logged in as the streamer: Twitch answers with the streamer's own account.
+            shot("own-account", null, ready = { it.botVm.login.value == nl.diments.requestify.ui.setup.TwitchLoginState.OwnAccount }) {
+                it.twitch.pendingPolls = 0
+                it.botVm.onConnect()
+            }
+            shot("connected-tip", bot) {
+                kotlinx.coroutines.runBlocking { it.bot.checkModerator() }
+                it.bot.onDropped(nl.diments.requestify.core.twitch.DropReason("followers_only_mode", "Alleen volgers mogen chatten"))
+            }
+            shot("connected-moderator", bot) {
+                it.twitch.moderatedChannels += "42"
+                kotlinx.coroutines.runBlocking { it.bot.checkModerator() }
+            }
+            shot("dead-login", bot, botLoggedIn = false)
+        }
+    }
 }

@@ -125,6 +125,7 @@ import nl.diments.requestify.ui.blacklist.BlacklistViewModel
 import nl.diments.requestify.ui.settings.AboutViewModel
 import nl.diments.requestify.ui.home.HomeViewModel
 import nl.diments.requestify.ui.setup.SpotifySetupViewModel
+import nl.diments.requestify.ui.setup.TwitchBotSetupViewModel
 import nl.diments.requestify.ui.setup.TwitchSetupViewModel
 
 /** The most the exit waits for Twitch to pause the reward. */
@@ -359,6 +360,15 @@ class AppGraph(
         auth = twitchAuth,
         api = twitchApi,
         rewards = rewardManager,
+        settings = settings,
+        scope = scope,
+        openBrowser = { url -> browse(url) },
+        copyToClipboard = ::copyToClipboard,
+    )
+
+    /** The bot section of the Twitch card (Connections and the welcome wizard). */
+    val twitchBotSetup = TwitchBotSetupViewModel(
+        bot = twitchBot,
         settings = settings,
         scope = scope,
         openBrowser = { url -> browse(url) },

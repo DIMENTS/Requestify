@@ -259,7 +259,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
                                             }
                                         }
                                     }
-                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup, graph.twitchSetup, graph.donationsSetup)
+                                    Destination.Connections -> SpotifySetupScreen(graph.spotifySetup, graph.twitchSetup, graph.donationsSetup, graph.twitchBotSetup)
                                     Destination.Rules -> RulesScreen(graph.settings)
                                     Destination.Blacklist -> BlacklistScreen(graph.blacklistScreen)
                                     Destination.Log -> LogScreen(graph.logScreen)

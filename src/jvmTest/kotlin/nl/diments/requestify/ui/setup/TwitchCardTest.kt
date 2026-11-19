@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
@@ -53,13 +54,18 @@ class TwitchCardTest {
         Locale.setDefault(originalLocale)
     }
 
-    private fun parts(loggedIn: Boolean = false, account: TwitchAccount? = null, twitch: FakeTwitch = FakeTwitch()) =
-        TwitchSetupParts(dir, scope, twitch, loggedIn, account)
+    private fun parts(
+        loggedIn: Boolean = false,
+        account: TwitchAccount? = null,
+        twitch: FakeTwitch = FakeTwitch(),
+        botAccount: TwitchAccount? = null,
+        botLoggedIn: Boolean = botAccount != null,
+    ) = TwitchSetupParts(dir, scope, twitch, loggedIn, account, botAccount = botAccount, botLoggedIn = botLoggedIn)
 
     private val affiliate = TwitchAccount("42", "diments", "DIMENTS", "affiliate")
 
     private fun ComposeUiTest.show(p: TwitchSetupParts) =
-        setContent { RequestifyTheme(BrandSeed, dark = true) { TwitchCard(p.vm) } }
+        setContent { RequestifyTheme(BrandSeed, dark = true) { TwitchCard(p.vm, p.botVm) } }
 
     @Test
     fun loggedOutShowsLoginButton() = runDesktopComposeUiTest(width = 900, height = 900) {
@@ -361,5 +367,42 @@ class TwitchCardTest {
         waitUntil(timeoutMillis = 10_000) { p.settings.settings.value.twitch.channelPoints.rewardId == "new-1" }
         assertEquals(false, p.settings.settings.value.twitch.channelPoints.rewardRemoved)
         assertEquals("Song request", p.helix.creates.single().body!!.getValue("title").jsonPrimitive.content)
+    }
+
+    private val bot = TwitchAccount("7", "mybot", "MyBot")
+
+    @Test
+    fun theBotSectionOffersToConnect() = runDesktopComposeUiTest(width = 900, height = 1400) {
+        show(parts(loggedIn = true, account = affiliate))
+        onNodeWithText("Bot account (optional)").assertIsDisplayed()
+        onNode(hasText("Connect bot") and hasClickAction()).assertIsDisplayed()
+    }
+
+    @Test
+    fun aConnectedBotShowsWhoRepliesAndTheModTip() = runDesktopComposeUiTest(width = 900, height = 1400) {
+        val p = parts(loggedIn = true, account = affiliate, botAccount = bot)
+        p.bot.reset() // moderator unknown...
+        kotlinx.coroutines.runBlocking { p.bot.checkModerator() } // ...then Twitch says: not a moderator
+        show(p)
+        onNodeWithText("Replies come from @MyBot").assertIsDisplayed()
+        onNode(hasText("Disconnect") and hasClickAction()).assertIsDisplayed()
+        onNodeWithText("Make your bot a moderator", substring = true).assertIsDisplayed()
+        onNodeWithText("/mod mybot").assertIsDisplayed()
+        onAllNodes(hasText("Copy") and hasClickAction()).onFirst().performClick()
+        assertEquals(listOf("/mod mybot"), p.copied)
+        onNode(hasText("Check again") and hasClickAction()).assertIsDisplayed()
+    }
+
+    @Test
+    fun theBotsDeadLoginShowsTheBanner() = runDesktopComposeUiTest(width = 900, height = 1400) {
+        show(parts(loggedIn = true, account = affiliate, botAccount = bot, botLoggedIn = false))
+        onNodeWithText("The bot needs to log in again").assertIsDisplayed()
+        onNode(hasText("Log in again") and hasClickAction()).assertIsDisplayed()
+    }
+
+    @Test
+    fun noBotSectionWhileLoggedOut() = runDesktopComposeUiTest(width = 900, height = 900) {
+        show(parts())
+        onNodeWithText("Bot account (optional)").assertDoesNotExist()
     }
 }

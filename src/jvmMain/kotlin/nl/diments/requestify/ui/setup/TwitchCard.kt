@@ -72,6 +72,7 @@ import nl.diments.requestify.resources.setup_cancel_login
 import nl.diments.requestify.resources.setup_copied
 import nl.diments.requestify.resources.setup_copy
 import nl.diments.requestify.resources.setup_logout
+import nl.diments.requestify.resources.twitch_bot_copy_link
 import nl.diments.requestify.resources.twitch_bits_hint
 import nl.diments.requestify.resources.twitch_bits_not_affiliate
 import nl.diments.requestify.resources.twitch_bits_title
@@ -138,7 +139,7 @@ private enum class Phase { LoggedOut, LoggingIn, LoggedIn }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun TwitchCard(vm: TwitchSetupViewModel) {
+fun TwitchCard(vm: TwitchSetupViewModel, bot: TwitchBotSetupViewModel? = null) {
     val login by vm.login.collectAsState()
     val status by vm.authStatus.collectAsState()
     val settings by vm.settings.collectAsState()
@@ -172,7 +173,7 @@ fun TwitchCard(vm: TwitchSetupViewModel) {
                     },
                 )
             }
-            TwitchSetupContent(vm)
+            TwitchSetupContent(vm, bot)
         }
     }
 }
@@ -191,12 +192,18 @@ internal fun TwitchCode(code: String) {
 }
 
 /**
- * The Twitch setup under its header: log in (with the device code, drawn by [code]), and once logged in the sources
- * and the Channel Points reward. Shared by the Connections card and the welcome wizard.
+ * The Twitch setup under its header: log in (with the device code, drawn by [code]), and once logged in the sources,
+ * the optional bot account ([bot]; in fewer words when [compactBot]) and the Channel Points reward. Shared by the
+ * Connections card and the welcome wizard.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun TwitchSetupContent(vm: TwitchSetupViewModel, code: @Composable (String) -> Unit = { TwitchCode(it) }) {
+internal fun TwitchSetupContent(
+    vm: TwitchSetupViewModel,
+    bot: TwitchBotSetupViewModel? = null,
+    code: @Composable (String) -> Unit = { TwitchCode(it) },
+    compactBot: Boolean = false,
+) {
     val login by vm.login.collectAsState()
     val status by vm.authStatus.collectAsState()
     val settings by vm.settings.collectAsState()
@@ -219,8 +226,17 @@ internal fun TwitchSetupContent(vm: TwitchSetupViewModel, code: @Composable (Str
         ) { shown ->
             when (shown) {
                 Phase.LoggedOut -> LoggedOutContent(login, status, vm)
-                Phase.LoggingIn -> CodePanel(login, vm, code)
-                Phase.LoggedIn -> if (account != null) LoggedInContent(account, login, status != TwitchAuthStatus.LoggedIn, vm) else Box(Modifier)
+                Phase.LoggingIn -> CodePanel(login, vm::onCopyCode, vm::onOpenBrowser, vm::onCancelLogin, code)
+                Phase.LoggedIn -> if (account != null) {
+                    LoggedInContent(account, login, status != TwitchAuthStatus.LoggedIn, vm) {
+                        if (bot != null) {
+                            TwitchBotSection(bot, compactBot, code)
+                            RowDivider()
+                        }
+                    }
+                } else {
+                    Box(Modifier)
+                }
             }
         }
         if (saveFailed) {
@@ -254,7 +270,7 @@ private fun LoggedOutContent(login: TwitchLoginState, status: TwitchAuthStatus, 
 
 /** Why the last login did not work, in the card's own words; nothing when it did not fail. */
 @Composable
-private fun LoginErrorText(login: TwitchLoginState) {
+internal fun LoginErrorText(login: TwitchLoginState) {
     when (login) {
         TwitchLoginState.Expired -> ErrorText(stringResource(Res.string.twitch_code_expired))
         TwitchLoginState.Failed -> ErrorText(stringResource(Res.string.twitch_login_failed))
@@ -282,14 +298,26 @@ private fun DeadLoginBanner(account: TwitchAccount, login: TwitchLoginState, vm:
     }
 }
 
-/** The device code: big, with Copy and Open browser, and a loading shape until the user confirms at Twitch. */
+/**
+ * The device code: big, with Copy and Open browser, and a loading shape until the user confirms at Twitch. The bot's
+ * login adds a [note] (log in with the bot, in a private window) and Copy link ([onCopyLink]).
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel, codeText: @Composable (String) -> Unit) {
+internal fun CodePanel(
+    login: TwitchLoginState,
+    onCopyCode: () -> Unit,
+    onOpenBrowser: () -> Unit,
+    onCancel: () -> Unit,
+    codeText: @Composable (String) -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl).padding(top = Spacing.m),
+    note: (@Composable () -> Unit)? = null,
+    onCopyLink: (() -> Unit)? = null,
+) {
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl).padding(top = Spacing.m),
+        modifier = modifier,
     ) {
         Column(Modifier.padding(Spacing.l), verticalArrangement = Arrangement.spacedBy(Spacing.m)) {
             val code = (login as? TwitchLoginState.ShowingCode)?.code
@@ -298,7 +326,7 @@ private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel, codeTex
                     LoadingIndicator(Modifier.size(40.dp))
                     Text(stringResource(Res.string.twitch_requesting_code), style = MaterialTheme.typography.bodyMedium)
                     Box(Modifier.weight(1f))
-                    TextButton(onClick = vm::onCancelLogin, shapes = ButtonDefaults.shapes()) {
+                    TextButton(onClick = onCancel, shapes = ButtonDefaults.shapes()) {
                         Text(stringResource(Res.string.setup_cancel_login))
                     }
                 }
@@ -310,10 +338,12 @@ private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel, codeTex
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            note?.invoke()
             codeText(code.userCode)
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                CopyCodeButton(onCopy = vm::onCopyCode)
-                Button(onClick = vm::onOpenBrowser, shapes = ButtonDefaults.shapes()) {
+                CopyCodeButton(onCopy = onCopyCode)
+                if (onCopyLink != null) CopyCodeButton(onCopy = onCopyLink, label = Res.string.twitch_bot_copy_link)
+                Button(onClick = onOpenBrowser, shapes = ButtonDefaults.shapes()) {
                     ButtonIcon(AppIcons.OpenInNew)
                     Text(stringResource(Res.string.twitch_open_browser))
                 }
@@ -326,7 +356,7 @@ private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel, codeTex
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Box(Modifier.weight(1f))
-                TextButton(onClick = vm::onCancelLogin, shapes = ButtonDefaults.shapes()) {
+                TextButton(onClick = onCancel, shapes = ButtonDefaults.shapes()) {
                     Text(stringResource(Res.string.setup_cancel_login))
                 }
             }
@@ -334,10 +364,10 @@ private fun CodePanel(login: TwitchLoginState, vm: TwitchSetupViewModel, codeTex
     }
 }
 
-/** Copy, which says "Copied" for a moment after it copied. */
+/** Copy ([label]), which says "Copied" for a moment after it copied. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun CopyCodeButton(onCopy: () -> Unit) {
+internal fun CopyCodeButton(onCopy: () -> Unit, label: StringResource = Res.string.setup_copy) {
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -353,13 +383,19 @@ private fun CopyCodeButton(onCopy: () -> Unit) {
         shapes = ButtonDefaults.shapes(),
     ) {
         ButtonIcon(if (copied) AppIcons.Check else AppIcons.ContentCopy)
-        Text(stringResource(if (copied) Res.string.setup_copied else Res.string.setup_copy))
+        Text(stringResource(if (copied) Res.string.setup_copied else label))
     }
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun LoggedInContent(account: TwitchAccount, login: TwitchLoginState, loginDead: Boolean, vm: TwitchSetupViewModel) {
+private fun LoggedInContent(
+    account: TwitchAccount,
+    login: TwitchLoginState,
+    loginDead: Boolean,
+    vm: TwitchSetupViewModel,
+    afterChat: @Composable () -> Unit = {},
+) {
     val settings by vm.settings.collectAsState()
     val twitch = settings.twitch
     val eligibleForBits = account.broadcasterType == "affiliate" || account.broadcasterType == "partner"
@@ -377,6 +413,8 @@ private fun LoggedInContent(account: TwitchAccount, login: TwitchLoginState, log
             PermissionMenu(twitch.chatPermission, onPick = vm::onChatPermission)
         }
         RowDivider()
+
+        afterChat()
 
         ChannelPointsSection(vm, eligible = eligibleForBits)
         RowDivider()

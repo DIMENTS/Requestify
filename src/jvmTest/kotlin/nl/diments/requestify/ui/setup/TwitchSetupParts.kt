@@ -16,7 +16,9 @@ import nl.diments.requestify.core.settings.TwitchSettings
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.twitch.FakeTwitch
 import nl.diments.requestify.core.twitch.TwitchApi
+import nl.diments.requestify.core.twitch.auth.TWITCH_BOT_SCOPES
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
+import nl.diments.requestify.core.twitch.bot.TwitchBot
 import nl.diments.requestify.core.twitch.eventsub.EventSubEvent
 import nl.diments.requestify.core.twitch.points.FakeRewardsHelix
 import nl.diments.requestify.core.twitch.points.RewardManager
@@ -31,13 +33,16 @@ internal class TwitchSetupParts(
     clock: () -> Long = { 0L },
     points: ChannelPointsSettings = ChannelPointsSettings(),
     val helix: FakeRewardsHelix = FakeRewardsHelix(),
+    botAccount: TwitchAccount? = null,
+    botLoggedIn: Boolean = botAccount != null,
 ) {
     val opened = mutableListOf<String>()
     val copied = mutableListOf<String>()
     val secrets = InMemorySecretStore().apply { if (loggedIn) put(SecretKeys.TWITCH_REFRESH_TOKEN, "r0") }
+        .apply { if (botLoggedIn) put(SecretKeys.TWITCH_BOT_REFRESH_TOKEN, "b0") }
     val auth = TwitchAuth(twitch.http, secrets, clock)
     val settings = SettingsStore(JsonFileStore(dir.resolve("twitch-settings.json"), Settings.serializer()) { Settings() }, inCallerSaveContext())
-        .apply { update { it.copy(twitch = TwitchSettings(account = account, channelPoints = points)) } }
+        .apply { update { it.copy(twitch = TwitchSettings(account = account, channelPoints = points, bot = botAccount)) } }
     private val api = TwitchApi(
         twitch.http,
         token = { force -> auth.token(force) },
@@ -48,4 +53,13 @@ internal class TwitchSetupParts(
     val rewardEvents = MutableSharedFlow<EventSubEvent>(extraBufferCapacity = 16)
     val rewards = RewardManager(helix.api, settings, rewardEvents, {}, requestsOpen, { AppLanguage.English }, scope, retryFirstMs = 20, retryMaxMs = 80)
     val vm = TwitchSetupViewModel(auth, api, rewards, settings, scope, openBrowser = { opened += it }, copyToClipboard = { copied += it })
+
+    val botAuth = TwitchAuth(twitch.http, secrets, clock, secretKey = SecretKeys.TWITCH_BOT_REFRESH_TOKEN, scopes = TWITCH_BOT_SCOPES)
+    val bot = TwitchBot(
+        botAuth,
+        TwitchApi(twitch.http, token = { force -> botAuth.token(force) }, broadcasterId = { settings.settings.value.twitch.account?.userId }),
+        settings,
+        scope,
+    )
+    val botVm = TwitchBotSetupViewModel(bot, settings, scope, openBrowser = { opened += it }, copyToClipboard = { copied += it })
 }

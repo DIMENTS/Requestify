@@ -45,6 +45,9 @@ sealed interface TwitchLoginState {
 
     /** Twitch could not be reached for a code. */
     data object Unreachable : TwitchLoginState
+
+    /** The bot's code was approved by the streamer's own account (the bot section only); nothing was saved. */
+    data object OwnAccount : TwitchLoginState
 }
 
 /** The seven chat commands, in the order the card shows them. */
