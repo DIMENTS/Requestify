@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
@@ -144,8 +145,8 @@ fun AboutCard(
                         Text(stringResource(Res.string.about_ready_hint), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = actions.install, enabled = canInstallNow) { Text(stringResource(Res.string.about_update_now)) }
-                        TextButton(onClick = actions.openRelease) { Text(stringResource(Res.string.about_whats_new)) }
+                        Button(onClick = actions.install, enabled = canInstallNow, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_update_now)) }
+                        TextButton(onClick = actions.openRelease, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_whats_new)) }
                     }
                     if (!canInstallNow && !state.restartPending) {
                         Text(stringResource(Res.string.about_update_when_offline), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
@@ -153,7 +154,7 @@ fun AboutCard(
                 }
                 is UpdateState.InstallFailed -> Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(Res.string.about_install_failed), style = MaterialTheme.typography.bodyMedium, color = scheme.error)
-                    TextButton(onClick = actions.openRelease) { Text(stringResource(Res.string.about_download_yourself)) }
+                    TextButton(onClick = actions.openRelease, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_download_yourself)) }
                 }
                 is UpdateState.WaitingForOffline ->
                     Text(stringResource(Res.string.about_waiting_offline, state.version.toString()), style = MaterialTheme.typography.bodyMedium)
@@ -163,15 +164,15 @@ fun AboutCard(
                 Text(stringResource(Res.string.about_check_failed_note), style = MaterialTheme.typography.bodySmall, color = scheme.error)
             }
             if (state != UpdateState.Off) {
-                OutlinedButton(onClick = actions.check, enabled = state !is UpdateState.Checking) { Text(stringResource(Res.string.about_check)) }
+                OutlinedButton(onClick = actions.check, enabled = state !is UpdateState.Checking, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_check)) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s)) {
-                TextButton(onClick = actions.openLicence) { Text(stringResource(Res.string.about_licence)) }
+                TextButton(onClick = actions.openLicence, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_licence)) }
                 if (state != UpdateState.Off && state !is UpdateState.Ready) {
-                    TextButton(onClick = actions.openRunningRelease) { Text(stringResource(Res.string.about_whats_new)) }
+                    TextButton(onClick = actions.openRunningRelease, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_whats_new)) }
                 }
-                TextButton(onClick = actions.openNotice) { Text(stringResource(Res.string.about_credits)) }
-                if (hasWizard) TextButton(onClick = actions.openWizard) { Text(stringResource(Res.string.about_open_wizard)) }
+                TextButton(onClick = actions.openNotice, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_credits)) }
+                if (hasWizard) TextButton(onClick = actions.openWizard, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.about_open_wizard)) }
             }
         }
     }
