@@ -2,13 +2,13 @@ package nl.diments.requestify.ui.log
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -140,6 +140,9 @@ internal const val LOG_ROW_TAG = "log-row"
 /** The widest the Log grows on a wide window. */
 private val LogMaxWidth = 960.dp
 
+/** The column the rows' chips share: room for the widest common one ("Kanaalpunten", "SE €1.234,56"). */
+private val LogChipSlot = 104.dp
+
 /**
  * The Logboek: what went right or wrong, and why. Rows by day, newest first; filter chips and a search narrow them;
  * a row opens its details with everything that happened to it. A banner says when the Log cannot save.
@@ -256,8 +259,9 @@ private fun LogRowItem(row: LogRow, zone: ZoneId, shape: RoundedCornerShape, onC
             horizontalArrangement = Arrangement.spacedBy(Spacing.m),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(timeOf(row.atEpochMs, zone), style = typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.width(44.dp))
-            RowChip(row)
+            Text(timeOf(row.atEpochMs, zone), style = typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.widthIn(min = 44.dp))
+            // One column for the chips, so every title starts on the same line whatever the chip says.
+            Box(Modifier.widthIn(min = LogChipSlot), contentAlignment = Alignment.CenterStart) { RowChip(row) }
             Column(Modifier.weight(1f)) {
                 // A row without a second line (a gap, an outage) shows its problem in the title itself.
                 val titleColor = if (row.isProblem && row.kind != LogKind.Request) scheme.error else scheme.onSurface
@@ -460,7 +464,7 @@ private fun Details(row: LogRow, zone: ZoneId, onClose: () -> Unit) {
                 )
                 row.records.forEach { record ->
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.m)) {
-                        Text(timeOf(record.atEpochMs, zone), style = typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.width(44.dp))
+                        Text(timeOf(record.atEpochMs, zone), style = typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.widthIn(min = 44.dp))
                         Text(record.text(row, zone), style = typography.bodyMedium)
                     }
                 }

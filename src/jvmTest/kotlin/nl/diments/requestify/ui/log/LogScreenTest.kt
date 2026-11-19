@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import java.time.Instant
@@ -15,6 +16,7 @@ import java.util.Locale
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,5 +120,23 @@ class LogScreenTest {
         setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
 
         onNodeWithText("The Log can’t save right now: disk full").assertIsDisplayed()
+    }
+
+    @Test
+    fun titlesLineUpWhateverTheChipBeside() = runComposeUiTest {
+        val mixed = foldRows(
+            listOf(
+                LogRecord.RequestReceived("r1", at, RequestSource.CHAT, Requester("Jan"), "despacito"),
+                LogRecord.RequestStep("r1", at, LogStep.Resolved(track)),
+                LogRecord.RequestReceived("r2", at + 1_000, RequestSource.CHANNEL_POINTS, Requester("Piet"), "despacito"),
+                LogRecord.RequestStep("r2", at + 1_000, LogStep.Resolved(track)),
+                LogRecord.RequestReceived("r3", at + 2_000, RequestSource.STREAMELEMENTS, Requester("Kees"), "x", Payment.Money(123456, "EUR")),
+                LogRecord.RequestStep("r3", at + 2_000, LogStep.Resolved(track)),
+            ),
+        )
+        val vm = LogViewModel(MutableStateFlow(mixed), MutableStateFlow(null), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
+        val starts = listOf("Jan", "Piet", "Kees").map { onNodeWithText("$it · Mr. Brightside").getBoundsInRoot().left }
+        assertEquals(1, starts.distinct().size, "the titles start at $starts")
     }
 }

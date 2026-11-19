@@ -123,7 +123,8 @@ fun BlacklistScreen(vm: BlacklistViewModel) {
             ) { entry, shape ->
                 BlockedRow(
                     title = entry.track.name,
-                    subtitle = listOf(entry.track.artists.joinToString(", "), blockedBy(entry.by, entry.atEpochMs)).filter { it.isNotBlank() }.joinToString(" · "),
+                    detail = entry.track.artists.joinToString(", ").ifBlank { null },
+                    subtitle = blockedBy(entry.by, entry.atEpochMs),
                     removeLabel = entry.track.name,
                     shape = shape,
                     onRemove = { vm.onRemove(entry.track.id) },
@@ -374,6 +375,8 @@ private fun BlockedRow(
     shape: RoundedCornerShape,
     onRemove: () -> Unit,
     leading: @Composable () -> Unit,
+    /** Shown before [subtitle] (a song's artists); it ends in "…" when room is short, so who blocked it and when stay whole. */
+    detail: String? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -386,13 +389,16 @@ private fun BlockedRow(
             leading()
             Column(Modifier.weight(1f)) {
                 Text(title, style = typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    subtitle,
-                    style = typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // The subtitle is measured first (it has no weight), the detail gets what is left.
+                Row {
+                    val style = typography.bodyMedium
+                    val color = scheme.onSurfaceVariant
+                    if (detail != null) {
+                        Text(detail, Modifier.weight(1f, fill = false), style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(" · ", style = style, color = color, maxLines = 1)
+                    }
+                    Text(subtitle, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             val label = stringResource(Res.string.blacklist_unblock, removeLabel)
             IconButton(onClick = onRemove, shapes = IconButtonDefaults.shapes()) {

@@ -138,4 +138,19 @@ class BlacklistScreenTest {
         setContent { RequestifyTheme(BrandSeed, dark = true) { BlacklistScreen(vm) } }
         onNodeWithText("No blocked songs").assertIsDisplayed()
     }
+
+    @Test
+    fun whoBlockedASongAndWhenStayWholeBesideALongArtist() = runDesktopComposeUiTest(width = 576, height = 640) {
+        val parts = parts()
+        val artists = "Earth, Wind & Fire, The Emotions, Kool & The Gang, A Very Long Guest Artist Name"
+        parts.blacklist.addTrack(track("t1", "September", artists), by = "modjan", at = nov12)
+        val vm = viewModel(parts, twitch = true)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { BlacklistScreen(vm) } }
+
+        val who = onNodeWithText("blocked by @modjan · 12 Nov").fetchSemanticsNode()
+        val layout = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            .also { who.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(it) }.single()
+        assertEquals(false, layout.isLineEllipsized(0), "who and when end in …")
+        onNodeWithText(artists).assertExists() // the artists give way instead
+    }
 }
