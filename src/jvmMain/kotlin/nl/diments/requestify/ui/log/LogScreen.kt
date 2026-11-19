@@ -1,6 +1,5 @@
 package nl.diments.requestify.ui.log
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -260,8 +260,10 @@ private fun DayHeader(date: LocalDate, zone: ZoneId, modifier: Modifier = Modifi
 private fun LogRowItem(row: LogRow, zone: ZoneId, shape: RoundedCornerShape, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+    // The Surface takes the click, so hover and press stay inside the row's rounded shape.
     Surface(
-        modifier.fillMaxWidth().testTag(LOG_ROW_TAG).clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().testTag(LOG_ROW_TAG),
         shape = shape,
         color = scheme.surfaceContainerLow,
     ) {
@@ -453,6 +455,7 @@ private fun LogRecord.AppStopped.title(zone: ZoneId): String =
     stringResource(Res.string.log_app_stopped, timeOf(lastAliveEpochMs, zone)) +
         if (restarted) stringResource(Res.string.log_app_restarted) else ""
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun Details(row: LogRow, zone: ZoneId, onClose: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
@@ -481,7 +484,7 @@ private fun Details(row: LogRow, zone: ZoneId, onClose: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClose) { Text(stringResource(Res.string.log_details_close)) } },
+        confirmButton = { TextButton(onClick = onClose, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.log_details_close)) } },
     )
 }
 

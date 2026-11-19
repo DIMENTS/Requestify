@@ -445,8 +445,8 @@ private fun requesterRowHeight(): Dp {
 }
 
 /**
- * The wavy bar flattens while paused (and stays flat with animation effects off); between polls the position runs
- * on locally. With nothing playing the bar is empty and the times are placeholders, as in Spotify (an empty text
+ * The bar is a still wave while playing and flattens while paused (and stays flat with animation effects off);
+ * between polls the position runs on locally. With nothing playing the bar is empty and the times are placeholders, as in Spotify (an empty text
  * lays out a pixel shorter at some text sizes, which would move what is under it).
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -460,8 +460,10 @@ private fun Progress(nowPlaying: NowPlaying?, clock: () -> Long) {
         LinearWavyProgressIndicator(
             progress = { if (durationMs > 0) position.longValue.toFloat() / durationMs else 0f },
             modifier = Modifier.fillMaxWidth(),
-            // The wave runs while playing; with animation effects off it stays a flat, still bar.
+            // Playing shows as a wave, paused (and with animation effects off) as a flat bar. The wave stands still:
+            // on a second screen during a stream nothing should keep moving by itself; only the progress does.
             amplitude = { if (nowPlaying?.isPlaying == true && !reduced) WavyProgressIndicatorDefaults.indicatorAmplitude(it) else 0f },
+            waveSpeed = 0.dp,
         )
         val timeStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
         val timeColor = MaterialTheme.colorScheme.onSurfaceVariant

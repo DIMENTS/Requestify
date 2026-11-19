@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,6 +48,7 @@ fun releaseNotesText(markdown: String): String = markdown.trim().lines().filter 
 }
 
 /** On Home after an update, once: "Bijgewerkt naar X" with what is new, until the streamer closes it. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UpdatedCard(updated: JustUpdated, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
@@ -58,7 +61,7 @@ fun UpdatedCard(updated: JustUpdated, onDismiss: () -> Unit, modifier: Modifier 
                     Text(notes, style = MaterialTheme.typography.bodyMedium, maxLines = 8, overflow = TextOverflow.Ellipsis)
                 }
             }
-            IconButton(onClick = onDismiss) { Icon(AppIcons.Close, contentDescription = stringResource(Res.string.updated_close)) }
+            IconButton(onClick = onDismiss, shapes = IconButtonDefaults.shapes()) { Icon(AppIcons.Close, contentDescription = stringResource(Res.string.updated_close)) }
         }
     }
 }

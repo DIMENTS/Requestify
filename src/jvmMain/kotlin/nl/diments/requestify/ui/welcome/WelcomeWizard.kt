@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -314,6 +315,7 @@ private fun Centred(content: @Composable () -> Unit) {
     ) { content() }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun WelcomeCard(onBegin: () -> Unit, onSkip: () -> Unit) = Centred {
     Mark(done = false)
@@ -326,11 +328,12 @@ private fun WelcomeCard(onBegin: () -> Unit, onSkip: () -> Unit) = Centred {
         modifier = Modifier.widthIn(max = 460.dp),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s), verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = onBegin) { Text(stringResource(Res.string.wizard_lets_go)) }
-        TextButton(onClick = onSkip) { Text(stringResource(Res.string.wizard_skip)) }
+        Button(onClick = onBegin, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.wizard_lets_go)) }
+        TextButton(onClick = onSkip, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.wizard_skip)) }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PlatformCard(
     step: WizardStep,
@@ -365,9 +368,9 @@ private fun PlatformCard(
         Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.l, vertical = Spacing.s)) {
             // Connected (an Affiliate stays for the Channel Points reward): on to the next card. Else: later.
             if (connected) {
-                Button(onClick = onContinue) { Text(stringResource(Res.string.wizard_continue)) }
+                Button(onClick = onContinue, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.wizard_continue)) }
             } else {
-                TextButton(onClick = onLater) { Text(stringResource(Res.string.wizard_later)) }
+                TextButton(onClick = onLater, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.wizard_later)) }
             }
         }
     }
@@ -385,6 +388,7 @@ private fun Celebration(platform: WizardPlatform, account: String?, remaining: I
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun DoneCard(connected: Set<WizardPlatform>, accounts: Map<WizardPlatform, String?>, motion: Boolean, onOpen: () -> Unit) = Centred {
     Mark(done = true, pop = motion)
@@ -417,5 +421,5 @@ private fun DoneCard(connected: Set<WizardPlatform>, accounts: Map<WizardPlatfor
         textAlign = TextAlign.Center,
         modifier = Modifier.widthIn(max = 460.dp),
     )
-    Button(onClick = onOpen) { Text(stringResource(Res.string.wizard_open)) }
+    Button(onClick = onOpen, shapes = ButtonDefaults.shapes()) { Text(stringResource(Res.string.wizard_open)) }
 }

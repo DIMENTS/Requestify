@@ -71,4 +71,30 @@ class MotionTokensTest {
         }
         assertTrue(problems.isEmpty(), problems.joinToString("\n"))
     }
+
+    private val button = Regex("""\b((?:Filled|FilledTonal|Outlined|Elevated|Text)?Button|(?:Filled|FilledTonal|Outlined)?IconButton|ToggleButton)\(""")
+
+    /**
+     * Settings → About (`settings/AboutCard.kt`) belongs to the plan-7 work being merged; its buttons get their shapes
+     * once that is in.
+     */
+    private val buttonsLater = setOf("settings/AboutCard.kt")
+
+    /** Every button squeezes into its pressed shape (Material 3 Expressive), so they all answer a press alike. */
+    @Test
+    fun everyButtonMorphsWhenPressed() {
+        val problems = mutableListOf<String>()
+        ui.walk().filter { it.toString().endsWith(".kt") }.forEach { file ->
+            val name = file.relativeTo(ui).invariantSeparatorsPathString
+            if (name in buttonsLater) return@forEach
+            val source = file.readText().lines().filterNot { it.trimStart().startsWith("import ") || it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+                .joinToString("\n")
+            button.findAll(source).forEach { match ->
+                if (!argumentsAt(source, match.range.last).contains("shapes =")) {
+                    problems += "$name:${source.substring(0, match.range.first).count { it == '\n' } + 1} ${match.value} without shapes = …"
+                }
+            }
+        }
+        assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
 }
