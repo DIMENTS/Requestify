@@ -152,14 +152,15 @@ fun main(args: Array<String>) {
     applyAutostartAtStart(graph.settings, graph.autostart)
     val launcherExe = installation.launcherExe
     // A waiting update installs now, before anything connects, unless this start may be during a stream (or is a crash
-    // restart): the helper installs it once this process has ended, and starts Requestify again.
+    // restart): the helper installs it once this process has ended, and starts Requestify again. Twitch itself is
+    // asked last: the saved stream state is old when Requestify was closed as the stream started.
     if (launcherExe != null && installAtStart(
             afterCrash = mode == LaunchMode.AfterCrash,
             running = AppVersion.current(),
             pending = graph.updateStore.pending(),
             stream = streamAtStart(graph.gate, System.currentTimeMillis()),
             now = System.currentTimeMillis(),
-        )
+        ) && runBlocking { graph.mayInstallAtStartNow() }
     ) {
         graph.updates.prepareInstallAtStart()?.let { pending ->
             // When the helper cannot start, this version simply starts as usual.

@@ -101,6 +101,7 @@ import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.StreamWatcher
 import nl.diments.requestify.core.twitch.TwitchApi
+import nl.diments.requestify.core.twitch.TwitchResult
 import nl.diments.requestify.core.twitch.TwitchSession
 import nl.diments.requestify.core.twitch.auth.TWITCH_BOT_SCOPES
 import nl.diments.requestify.core.twitch.auth.TwitchAuth
@@ -659,6 +660,17 @@ class AppGraph(
             launch { withTimeoutOrNull(EXIT_PAUSE_TIMEOUT_MS) { logStore.stop() } }
             launch { flushAll(EXIT_PAUSE_TIMEOUT_MS) }
         }
+    }
+
+    /**
+     * Whether a waiting update may install at this start as far as Twitch is concerned: the saved stream state can be
+     * old (Requestify was closed when the stream started), so with a Twitch account Twitch is asked. Live, or no answer
+     * within [timeoutMs], means no: the update waits for "Nu bijwerken" or a later start. Without an account, yes.
+     */
+    suspend fun mayInstallAtStartNow(timeoutMs: Long = 5_000): Boolean {
+        if (settings.settings.value.twitch.account == null) return true
+        val status = withTimeoutOrNull(timeoutMs) { twitchApi.liveStatus() } as? TwitchResult.Ok ?: return false
+        return !status.value.live
     }
 
     /**

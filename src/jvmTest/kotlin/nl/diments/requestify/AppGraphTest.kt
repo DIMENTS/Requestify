@@ -267,6 +267,35 @@ class AppGraphTest {
         }
     }
 
+    /** Requestify was closed when the stream started: the saved stream state is old, Twitch knows better (focus 5). */
+    @Test
+    fun aStartDoesNotInstallWhileTwitchSaysLive() = runBlocking {
+        val services = Services()
+        val secrets = loggedInToBoth()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val graph = AppGraph(AppPaths(dir), secrets, services.engine, scope, services.connector)
+            services.streamLive = true
+            assertFalse(graph.mayInstallAtStartNow(), "live: the update waits")
+            services.streamLive = false
+            assertTrue(graph.mayInstallAtStartNow(), "offline: it may install")
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun aStartWithoutTwitchMayInstallAndTwitchWithoutAnAnswerWaits() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            assertTrue(AppGraph(AppPaths(dir), InMemorySecretStore(), unreachable(), scope).mayInstallAtStartNow(), "no Twitch account: no stream to protect")
+            val secrets = loggedInToBoth()
+            assertFalse(AppGraph(AppPaths(dir), secrets, unreachable(), scope).mayInstallAtStartNow(timeoutMs = 2_000), "no answer: better wait")
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
     @Test
     fun gracefulExitLeavesOtherRewardsAlone() = runBlocking {
         assertEquals(emptyList(), exitCalls(ChannelPointsSettings(enabled = true, rewardId = "rw-1", managed = false)), "not ours")
