@@ -44,6 +44,20 @@ class UpdateStoreTest {
     }
 
     @Test
+    fun anAttemptThatCannotBeSavedIsNoAttempt() {
+        val store = UpdateStore(dir)
+        store.savePending(pending)
+        val file = dir.resolve("pending.json").toFile()
+        file.setReadOnly() // like a full disk: the attempt cannot be written down
+        try {
+            assertNull(store.markAttempt(from = "0.2.0"), "no install without a counted attempt, or a failing install would loop at every start")
+            assertEquals(0, store.pending()?.attempts)
+        } finally {
+            file.setWritable(true)
+        }
+    }
+
+    @Test
     fun clearPendingDeletesTheMsi() {
         val store = UpdateStore(dir)
         store.savePending(pending)

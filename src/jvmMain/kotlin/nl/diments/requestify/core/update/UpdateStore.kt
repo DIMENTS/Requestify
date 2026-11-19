@@ -55,10 +55,14 @@ class UpdateStore(val dir: Path) {
 
     /**
      * Counts one more install attempt of the pending update, started by version [from], and returns it; null when
-     * nothing is pending.
+     * nothing is pending, and when the count could not be saved: an install whose attempt is not on disk would be
+     * tried again at every start, without end.
      */
-    fun markAttempt(from: String? = null): PendingUpdate? =
-        pending()?.let { it.copy(attempts = it.attempts + 1, from = from ?: it.from) }?.also(::savePending)
+    fun markAttempt(from: String? = null): PendingUpdate? {
+        val next = pending()?.let { it.copy(attempts = it.attempts + 1, from = from ?: it.from) } ?: return null
+        savePending(next)
+        return next.takeIf { pending() == it }
+    }
 
     fun lastExitCode(): Int? = try {
         if (Files.exists(exitCodeFile)) Files.readString(exitCodeFile).trim().toIntOrNull() else null
