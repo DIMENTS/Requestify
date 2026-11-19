@@ -79,9 +79,28 @@ class CrashGuard(
     var shuttingDown = false
         private set
 
-    /** Runs on Windows shutdown, logoff and every normal exit: an orderly end (unless a crash is being handled). */
+    /**
+     * Stops the app's work and hides it before the fatal message ([showFatal]) is shown, so nothing keeps running
+     * behind it. Set once the app exists; a failure here still shows the message.
+     */
+    @Volatile
+    var beforeFatal: () -> Unit = {}
+
+    /** Saves what is still pending (bounded) when the JVM ends: Windows may shut down right after a change. */
+    @Volatile
+    var flushOnShutdown: () -> Unit = {}
+
+    /**
+     * Runs on Windows shutdown, logoff and every normal exit: saves what is pending ([flushOnShutdown]), then an orderly
+     * end (unless a crash is being handled).
+     */
     val shutdownHook: Thread = Thread({
         shuttingDown = true
+        try {
+            flushOnShutdown()
+        } catch (_: Throwable) {
+            // the end stays orderly
+        }
         markOrderlyEnd()
     }, "requestify-orderly-end")
 
@@ -152,7 +171,16 @@ class CrashGuard(
                 ?: write(RunMarker(clock(), clock(), crashFile = file, runId = runId))
             val exe = installation.launcherExe
             val loop = mode == LaunchMode.AfterCrash && clock() - (synchronized(lock) { marker }?.startedAtEpochMs ?: 0) < restartWindowMs
-            if (exe != null && !loop) relaunch(listOf(exe.toString(), AFTER_CRASH_ARG)) else showFatal(fatalText())
+            if (exe != null && !loop) {
+                relaunch(listOf(exe.toString(), AFTER_CRASH_ARG))
+            } else {
+                try {
+                    beforeFatal()
+                } catch (_: Throwable) {
+                    // the message still shows
+                }
+                showFatal(fatalText())
+            }
         } catch (_: Throwable) {
             // nothing more can be done: end anyway
         } finally {

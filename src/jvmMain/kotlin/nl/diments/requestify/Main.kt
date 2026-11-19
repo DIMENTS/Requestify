@@ -24,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import nl.diments.requestify.core.secrets.DpapiSecretStore
 import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.storage.AppPaths
@@ -81,6 +82,12 @@ private const val TEST_CRASH_ENV = "REQUESTIFY_TEST_CRASH_AFTER_S"
 /** How often the running marker records that the app is still alive. */
 private const val ALIVE_EVERY_MS = 5 * 60_000L
 
+/** The most a fatal error waits for the app to stop before its message shows. */
+private const val FATAL_STOP_MS = 5_000L
+
+/** The most the shutdown hook waits for pending saves (Windows does not wait long). */
+private const val SHUTDOWN_FLUSH_MS = 2_000L
+
 fun main(args: Array<String>) {
     // The uninstaller's errand: nothing else of the app starts (no single instance, no crash guard, no window).
     if (UNINSTALL_CLEANUP_ARG in args) {
@@ -136,6 +143,8 @@ fun main(args: Array<String>) {
         includePrereleases = System.getenv(PRERELEASES_ENV) == "1",
         welcomeWizard = true,
     )
+    // Windows shutting down or signing out right after a change: the shutdown hook saves what is pending first.
+    crashGuard.flushOnShutdown = { runBlocking { withTimeoutOrNull(SHUTDOWN_FLUSH_MS) { graph.flushAll(SHUTDOWN_FLUSH_MS) } } }
     // The language is read once, before anything is composed; a change applies at the next start.
     localeFor(graph.settings.settings.value.language)?.let(Locale::setDefault)
     // A reinstall first gets back the entry its uninstall removed; then the streamer's choice applies as before.
@@ -191,6 +200,12 @@ fun main(args: Array<String>) {
         },
         onMessageClick = { shell.noticeClicked(lastNoticeTarget) },
     )
+    // A fatal error: everything stops and the window goes before the message shows (nothing runs on behind it).
+    crashGuard.beforeFatal = {
+        shell.hideNow()
+        runCatching { tray.remove() }
+        runBlocking { withTimeoutOrNull(FATAL_STOP_MS) { graph.stopGracefully() } }
+    }
     appScope.launch {
         combine(graph.problems, graph.saveHealth.problems) { problems, saves -> trayLook(problems, saves) }.collect(tray::show)
     }
@@ -243,10 +258,9 @@ fun main(args: Array<String>) {
             title = stringResource(Res.string.app_name),
             icon = windowIcon,
         ) {
-            SideEffect {
-                window.iconImages = AppIconImages.windowIcons()
-                shell.hideWindow = { window.isVisible = false }
-            }
+            // Once: the icons do not change while the window lives.
+            LaunchedEffect(Unit) { window.iconImages = AppIconImages.windowIcons() }
+            SideEffect { shell.hideWindow = { window.isVisible = false } }
             // Shown again (a second start, the tray, a notification): restored and brought to the front.
             LaunchedEffect(shell.raiseRequests) {
                 if (shell.raiseRequests > 0) {

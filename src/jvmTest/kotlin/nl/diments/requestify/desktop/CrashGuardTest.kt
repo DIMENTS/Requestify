@@ -228,4 +228,63 @@ class CrashGuardTest {
     fun theJvmIsNotShuttingDownWhileRunning() {
         assertFalse(jvmIsShuttingDown())
     }
+
+    @Test
+    fun theAppStopsBeforeTheFatalBox() {
+        val steps = CopyOnWriteArrayList<String>()
+        val guard = CrashGuard(
+            dir = dir,
+            clock = { now },
+            mode = LaunchMode.Normal,
+            installation = Installation(null), // no launcher: the message, not a restart
+            version = "0.3.0",
+            relaunch = { relaunched += it },
+            showFatal = { steps += "box" },
+            exit = { steps += "exit $it" },
+            fatalText = { "x" },
+            isShuttingDown = { false },
+        )
+        guard.beforeFatal = { steps += "stop" }
+        guard.onUncaught(IllegalStateException("boom"))
+        assertEquals(listOf("stop", "box", "exit 1"), steps)
+    }
+
+    @Test
+    fun aStopThatFailsStillShowsTheBox() {
+        val guard = guard(installation = Installation(null))
+        guard.beforeFatal = { throw IllegalStateException("stopping failed too") }
+        guard.onUncaught(IllegalStateException("boom"))
+        assertEquals(1, fatal.size)
+        assertEquals(listOf(1), exits)
+    }
+
+    @Test
+    fun aRestartDoesNotStopFirst() {
+        val guard = guard()
+        var stopped = false
+        guard.beforeFatal = { stopped = true }
+        guard.onUncaught(IllegalStateException("boom"))
+        assertEquals(1, relaunched.size)
+        assertFalse(stopped, "the new instance waits for the old lock anyway")
+    }
+
+    @Test
+    fun theShutdownHookSavesBeforeItEnds() {
+        val guard = guard()
+        guard.markRunning()
+        var markerWhileFlushing: Boolean? = null
+        guard.flushOnShutdown = { markerWhileFlushing = dir.resolve("running.json").exists() }
+        guard.shutdownHook.run()
+        assertEquals(true, markerWhileFlushing, "saved first, then the orderly end")
+        assertFalse(dir.resolve("running.json").exists())
+    }
+
+    @Test
+    fun aSaveThatFailsInTheHookStillEndsOrderly() {
+        val guard = guard()
+        guard.markRunning()
+        guard.flushOnShutdown = { throw IllegalStateException("disk gone") }
+        guard.shutdownHook.run()
+        assertFalse(dir.resolve("running.json").exists())
+    }
 }
