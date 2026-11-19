@@ -361,4 +361,17 @@ class UpdateServiceTest {
         assertIs<UpdateState.Ready>(service.state.value)
         assertNull(service.startFailure)
     }
+
+    @Test
+    fun aReadyUpdateStaysReadyWhileLive() = runTest {
+        store.savePending(pendingOf(release("0.2.1")))
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        val service = service()
+        assertIs<UpdateState.Ready>(service.state.value)
+        gate.value = gate.value.copy(live = true)
+        service.checkNow()
+        runCurrent()
+        assertIs<UpdateState.Ready>(service.state.value, "downloaded already: it waits for the install, not for a download")
+        assertEquals(0, downloads)
+    }
 }

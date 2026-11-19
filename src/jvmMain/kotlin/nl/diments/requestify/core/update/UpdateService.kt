@@ -226,7 +226,8 @@ class UpdateService(
         }
         // Never ~90 MB during a stream: it downloads once the stream is offline.
         if (gate.value.live) {
-            _state.value = UpdateState.WaitingForOffline(release.version)
+            // Downloaded already: it waits for its install, and stays ready (the next start or "Nu bijwerken").
+            _state.value = if (before is UpdateState.Ready && before.version == release.version) before else UpdateState.WaitingForOffline(release.version)
             return
         }
         // A download of this version failed less than a day ago (a bad checksum, say): not fetched again yet.
