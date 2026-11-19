@@ -1,0 +1,21 @@
+# The tests on every push to main and every pull request.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Test
+        shell: pwsh
+        run: .\gradlew.bat jvmTest
