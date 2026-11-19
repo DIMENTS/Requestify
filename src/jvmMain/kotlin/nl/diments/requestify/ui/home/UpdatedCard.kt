@@ -27,10 +27,17 @@ fun showUpdatedCard(justUpdated: JustUpdated?, lastShownVersion: String?): Boole
     justUpdated != null && justUpdated.to != lastShownVersion
 
 /**
- * A release's text (GitHub Markdown) as plain, readable text: heading marks and bold marks go, list items become
- * "• …", links keep their text. Anything else stays as written (an underscore in a name included).
+ * The release workflow's placeholder notes (`.github/workflows/release.yml` writes the same text): a release published
+ * without replacing them shows no notes rather than this line.
  */
-fun releaseNotesText(markdown: String): String = markdown.trim().lines().joinToString("\n") { line ->
+const val PLACEHOLDER_NOTES = "Schrijf hier wat er nieuw is. / Write what's new here."
+
+/**
+ * A release's text (GitHub Markdown) as plain, readable text: heading marks and bold marks go, list items become
+ * "• …", links keep their text, and the workflow's [PLACEHOLDER_NOTES] line goes. Anything else stays as written (an
+ * underscore in a name included).
+ */
+fun releaseNotesText(markdown: String): String = markdown.trim().lines().filter { it.trim() != PLACEHOLDER_NOTES }.joinToString("\n") { line ->
     var text = line.trimEnd()
     text = text.replace(Regex("""^\s{0,3}#{1,6}\s+"""), "")
     text = text.replace(Regex("""^(\s*)[-*+]\s+"""), "$1• ")

@@ -49,4 +49,10 @@ class UpdatedCardTest {
         assertEquals("Thanks lofi_lisa", releaseNotesText("Thanks lofi_lisa"), "a name with an underscore stays")
         assertEquals("", releaseNotesText("   "))
     }
+
+    @Test
+    fun thePlaceholderLineIsLeftOut() {
+        assertEquals("", releaseNotesText(PLACEHOLDER_NOTES), "a release whose notes were not written shows none")
+        assertEquals("Nieuw\n• Bot", releaseNotesText("## Nieuw\n$PLACEHOLDER_NOTES\n- Bot"))
+    }
 }

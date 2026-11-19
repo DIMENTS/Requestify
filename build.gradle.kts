@@ -23,13 +23,31 @@ val REQUESTIFY_VENDOR = "DIMENTS"
 val REQUESTIFY_UPGRADE_UUID = "5df66373-1641-4856-80f2-f089f5d7fc7c"
 
 /**
- * A local build's version, `0.0.<n>`: a new n every minute, so installing a fresh local build over an older one is an
- * upgrade and never Windows Installer's error 1638 (same version, other package). A value source, so the configuration
- * cache asks for it again on every build instead of keeping the first one.
+ * A local build's version, `0.0.<n>`: a new n every minute, and always above the last local installer built here
+ * ([Params.lastPackaged], written by the installer tasks), so installing a fresh local build over an older one is an
+ * upgrade and never Windows Installer's error 1638 (same version, other package), also for two builds in one minute.
+ * A value source, so the configuration cache asks for it again on every build instead of keeping the first one; it
+ * only reads, so a test run in the same minute keeps the cache.
  */
-abstract class LocalBuildVersion : ValueSource<String, ValueSourceParameters.None> {
-    override fun obtain(): String = "0.0.${(System.currentTimeMillis() / 60_000) % 65_535 + 1}"
+abstract class LocalBuildVersion : ValueSource<String, LocalBuildVersion.Params> {
+    interface Params : ValueSourceParameters {
+        val lastPackaged: RegularFileProperty
+    }
+
+    override fun obtain(): String {
+        val byMinute = ((System.currentTimeMillis() / 60_000) % 65_535 + 1).toInt()
+        val last = parameters.lastPackaged.get().asFile.takeIf { it.isFile }?.readText()?.trim()?.toIntOrNull() ?: 0
+        val n = when {
+            byMinute > last -> byMinute
+            last >= 65_535 -> 1
+            else -> last + 1
+        }
+        return "0.0.$n"
+    }
 }
+
+/** The BUILD number of the last local installer built here (outside git, survives `clean`). */
+val lastLocalInstaller: RegularFile = layout.projectDirectory.file(".gradle/requestify-last-local-build.txt")
 
 /**
  * The version to package: `-Prequestify.version=0.2.0` (the release workflow passes the tag's), else a local one.
@@ -40,7 +58,14 @@ val requestifyVersion: String = providers.gradleProperty("requestify.version").o
     if (parts == null || parts[0] > 255 || parts[1] > 255 || parts[2] > 65_535) {
         throw GradleException("requestify.version must be MAJOR.MINOR.BUILD (at most 255.255.65535), not \"$version\"")
     }
-} ?: providers.of(LocalBuildVersion::class) {}.get()
+} ?: providers.of(LocalBuildVersion::class) { parameters.lastPackaged.set(lastLocalInstaller) }.get()
+
+tasks.register("printRequestifyVersion") {
+    group = "help"
+    description = "Prints the version the installers would get now."
+    val version = requestifyVersion
+    doLast { println(version) }
+}
 
 kotlin {
     jvmToolchain { jetBrainsRuntime() }
@@ -157,6 +182,10 @@ fun registerInstallerTask(taskName: String, type: String) = tasks.register<Exec>
     // jpackage finds WiX on the PATH; Compose unpacks it into build/wix311.
     environment("PATH", wix.get().asFile.absolutePath + File.pathSeparator + providers.environmentVariable("PATH").get())
     doFirst { out.get().asFile.deleteRecursively() }
+    // A local build remembers its number: the next one, even within the same minute, goes above it.
+    val version = requestifyVersion
+    val remember = lastLocalInstaller.asFile
+    doLast { if (version.startsWith("0.0.")) remember.apply { parentFile.mkdirs() }.writeText(version.removePrefix("0.0.")) }
 }
 
 registerInstallerTask("packageRequestifyMsi", "msi")
