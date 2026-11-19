@@ -90,6 +90,9 @@ import nl.diments.requestify.resources.log_step_handed_over
 import nl.diments.requestify.resources.log_step_ignored
 import nl.diments.requestify.resources.log_step_received_given_at
 import nl.diments.requestify.resources.log_conn_ended_with_app
+import nl.diments.requestify.resources.log_conn_messages_dropped
+import nl.diments.requestify.resources.log_service_twitch_bot
+import nl.diments.requestify.resources.log_service_twitch_chat
 import nl.diments.requestify.resources.log_conn_source_changed
 import nl.diments.requestify.resources.log_step_ignored_failed
 import nl.diments.requestify.resources.log_step_ignored_moderation
@@ -310,7 +313,7 @@ private fun LogRow.title(zone: ZoneId): String = when (kind) {
         } else if (last.state == LogConnectionState.Restored) {
             stringResource(Res.string.log_conn_restored_after, shortDuration(last.atEpochMs - changes.first().atEpochMs))
         } else {
-            last.state.text()
+            last.state.text(last.detail)
         }
     }
     LogKind.Stream -> (records.first() as LogRecord.StreamChanged).change.text(this)
@@ -359,8 +362,11 @@ private fun LogStep.text(): String = when (this) {
     is LogStep.Resolved -> stringResource(Res.string.log_step_track, track.name)
 }
 
+/** [detail]: why messages were held back, for [LogConnectionState.MessagesDropped]. */
 @Composable
-private fun LogConnectionState.text(): String = stringResource(
+private fun LogConnectionState.text(detail: String? = null): String = if (this == LogConnectionState.MessagesDropped) {
+    stringResource(Res.string.log_conn_messages_dropped, detail.orEmpty())
+} else stringResource(
     when (this) {
         LogConnectionState.Lost -> Res.string.log_conn_lost
         LogConnectionState.Restored -> Res.string.log_conn_restored
@@ -369,6 +375,7 @@ private fun LogConnectionState.text(): String = stringResource(
         LogConnectionState.KeyExpiring -> Res.string.log_conn_key_expiring
         LogConnectionState.SourceChanged -> Res.string.log_conn_source_changed
         LogConnectionState.EndedWithApp -> Res.string.log_conn_ended_with_app
+        LogConnectionState.MessagesDropped -> Res.string.log_conn_messages_dropped
     },
 )
 
@@ -404,6 +411,8 @@ private fun LogService.label(): String = when (this) {
     LogService.StreamElements -> "StreamElements"
     LogService.Log -> stringResource(Res.string.log_service_log)
     LogService.Files -> stringResource(Res.string.log_service_files)
+    LogService.TwitchBot -> stringResource(Res.string.log_service_twitch_bot)
+    LogService.TwitchChat -> stringResource(Res.string.log_service_twitch_chat)
 }
 
 /** One record of a row's timeline, as text. */
@@ -413,7 +422,7 @@ private fun LogRecord.text(row: LogRow, zone: ZoneId): String = when (this) {
         ?.let { stringResource(Res.string.log_step_received_given_at, timeOf(it, zone)) }
         ?: stringResource(Res.string.log_step_received)
     is LogRecord.RequestStep -> step.text()
-    is LogRecord.ConnectionChanged -> state.text()
+    is LogRecord.ConnectionChanged -> state.text(detail)
     is LogRecord.StreamChanged -> change.text(row)
     is LogRecord.GapNoticed -> text(zone)
     is LogRecord.AppStopped -> crashLine ?: stringResource(Res.string.log_app_no_crash)

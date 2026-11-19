@@ -46,4 +46,6 @@ data class TwitchSettings(
     val channelPoints: ChannelPointsSettings = ChannelPointsSettings(),
     val bitsEnabled: Boolean = true,
     val bitsMinimum: Int = 100,
+    /** The optional bot account that sends the chat replies (plan 6); its login is in the secret store. */
+    val bot: TwitchAccount? = null,
 )

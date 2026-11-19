@@ -396,4 +396,70 @@ class SavedFormatCompatTest {
             assertEquals(reason, AppJson.instance.decodeFromString(RejectReason.serializer(), json))
         }
     }
+
+    /** The bot account (plan 6) is kept in settings.json under this name, as an account like the streamer's. */
+    @Test
+    fun aTwitchBotIsSavedAsAnAccount() {
+        val bot = nl.diments.requestify.core.settings.TwitchAccount("7", "mybot", "MyBot")
+        val json = AppJson.instance.encodeToString(
+            nl.diments.requestify.core.settings.TwitchSettings.serializer(),
+            nl.diments.requestify.core.settings.TwitchSettings(bot = bot),
+        )
+        assertTrue(""""bot":{"userId":"7","login":"mybot","displayName":"MyBot","broadcasterType":""}""" in json, json)
+        assertEquals(
+            bot,
+            AppJson.instance.decodeFromString(
+                nl.diments.requestify.core.settings.TwitchSettings.serializer(),
+                """{"bot":{"userId":"7","login":"mybot","displayName":"MyBot"}}""",
+            ).bot,
+        )
+        assertEquals(null, AppJson.instance.decodeFromString(Settings.serializer(), "{}").twitch.bot, "old settings read")
+    }
+
+    /** A settings file a newer version wrote (fields this one does not know) reads, and nothing is moved aside. */
+    @Test
+    fun aSettingsFileFromANewerVersionIsRead() {
+        val file = dir.resolve("settings.json")
+        file.writeText("""{"twitch":{"bot":null,"someFutureField":1},"anotherFutureField":"x"}""")
+        val loaded = SettingsStore(JsonFileStore(file, Settings.serializer()) { Settings() }, inCallerSaveContext()).settings.value
+        assertEquals(Settings(), loaded)
+        assertNothingMovedAside()
+    }
+
+    /** The Log's names of plan 6: the bot, the streamer's own sending, and messages Twitch held back. */
+    @Test
+    fun newLogNamesArePinned() {
+        val lines = mapOf(
+            LogRecord.ConnectionChanged("c", 1, LogService.TwitchBot, LogConnectionState.MessagesDropped, "Slow mode") to
+                """{"type":"connection","rowId":"c","atEpochMs":1,"service":"twitch_bot","state":"messages_dropped","detail":"Slow mode"}""",
+            LogRecord.ConnectionChanged("d", 2, LogService.TwitchChat, LogConnectionState.Restored) to
+                """{"type":"connection","rowId":"d","atEpochMs":2,"service":"twitch_chat","state":"restored","detail":null}""",
+        )
+        for ((record, json) in lines) {
+            assertEquals(json, AppJson.instance.encodeToString(LogRecord.serializer(), record))
+            assertEquals(record, AppJson.instance.decodeFromString(LogRecord.serializer(), json))
+        }
+    }
+
+    /** The update rows of the Log (F-13): their fields, not only their type names. */
+    @Test
+    fun appUpdatedAndUpdateFailedArePinned() {
+        val updated = """{"type":"app_updated","rowId":"u","atEpochMs":1,"from":"0.2.0","to":"0.3.0"}"""
+        assertEquals(LogRecord.AppUpdated("u", 1, from = "0.2.0", to = "0.3.0"), AppJson.instance.decodeFromString(LogRecord.serializer(), updated))
+        val failed = """{"type":"update_failed","rowId":"f","atEpochMs":2,"version":"0.3.0","exitCode":1603,"reason":"checksum mismatch"}"""
+        assertEquals(
+            LogRecord.UpdateFailed("f", 2, version = "0.3.0", exitCode = 1603, reason = "checksum mismatch"),
+            AppJson.instance.decodeFromString(LogRecord.serializer(), failed),
+        )
+        assertEquals(failed, AppJson.instance.encodeToString(LogRecord.serializer(), LogRecord.UpdateFailed("f", 2, "0.3.0", 1603, "checksum mismatch")))
+    }
+
+    /** The pending update with the version it updates from (F-13), as the next start reads it. */
+    @Test
+    fun aPendingUpdateIsPinned() {
+        val pending = """{"version":"0.3.0","msiFile":"Requestify-0.3.0.msi","sha256":"ab","notes":"n","pageUrl":"u","attempts":1,"from":"0.2.0"}"""
+        val expected = nl.diments.requestify.core.update.PendingUpdate("0.3.0", "Requestify-0.3.0.msi", "ab", "n", "u", attempts = 1, from = "0.2.0")
+        assertEquals(expected, AppJson.instance.decodeFromString(nl.diments.requestify.core.update.PendingUpdate.serializer(), pending))
+        assertEquals(pending, AppJson.instance.encodeToString(nl.diments.requestify.core.update.PendingUpdate.serializer(), expected))
+    }
 }

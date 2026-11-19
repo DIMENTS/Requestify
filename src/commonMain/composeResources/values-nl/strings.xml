@@ -399,6 +399,7 @@
     <string name="log_step_received_given_at">Ontvangen (gedoneerd om %1$s)</string>
     <string name="log_conn_source_changed">Donatiebron gewijzigd</string>
     <string name="log_conn_ended_with_app">Afgesloten met Requestify</string>
+    <string name="log_conn_messages_dropped">Berichten tegengehouden: %1$s</string>
     <string name="log_step_rejected">Geweigerd: %1$s</string>
     <string name="log_step_pending">Wacht op Spotify</string>
     <string name="log_step_ignored">Genegeerd: geen Spotify-link</string>
@@ -421,6 +422,8 @@
     <string name="log_conn_key_expiring">Sleutel verloopt binnenkort</string>
     <string name="log_service_log">Logboek</string>
     <string name="log_service_files">Bestanden</string>
+    <string name="log_service_twitch_bot">Twitch-bot</string>
+    <string name="log_service_twitch_chat">Twitch-chat</string>
     <string name="log_app_stopped">Requestify is onverwacht gestopt (laatst actief %1$s)</string>
     <string name="log_app_restarted"> · herstart</string>
     <string name="log_app_no_crash">Er is geen fout vastgelegd: het werd van buitenaf beëindigd (Taakbeheer, of de stroom viel weg).</string>

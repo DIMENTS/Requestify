@@ -30,7 +30,7 @@ import nl.diments.requestify.core.twitch.points.OutboxResult
 import nl.diments.requestify.core.update.UpdateEvent
 
 /** A connection as the Log sees it; a change from one to another may be news. */
-enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged }
+enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged, MessagesDropped }
 
 /** Everything the Log listens to. None of these replays: the Logbook subscribes before anything can happen. */
 data class LogInputs(
@@ -255,6 +255,7 @@ class Logbook(
             ConnectionSnapshot.Down -> LogConnectionState.Lost
             ConnectionSnapshot.LoginExpired -> LogConnectionState.LoginExpired
             ConnectionSnapshot.KeyRefused -> LogConnectionState.KeyRefused
+            ConnectionSnapshot.MessagesDropped -> LogConnectionState.MessagesDropped
             else -> LogConnectionState.KeyExpiring
         }
         val row = open ?: "conn:${service.name}:$now".also { openOutage[service] = it }

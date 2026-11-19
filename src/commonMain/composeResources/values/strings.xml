@@ -399,6 +399,7 @@
     <string name="log_step_received_given_at">Received (given at %1$s)</string>
     <string name="log_conn_source_changed">Donation source changed</string>
     <string name="log_conn_ended_with_app">Ended when Requestify closed</string>
+    <string name="log_conn_messages_dropped">Messages held back: %1$s</string>
     <string name="log_step_rejected">Rejected: %1$s</string>
     <string name="log_step_pending">Waiting for Spotify</string>
     <string name="log_step_ignored">Ignored: no Spotify link</string>
@@ -421,6 +422,8 @@
     <string name="log_conn_key_expiring">Key expires soon</string>
     <string name="log_service_log">Log</string>
     <string name="log_service_files">Files</string>
+    <string name="log_service_twitch_bot">Twitch bot</string>
+    <string name="log_service_twitch_chat">Twitch chat</string>
     <string name="log_app_stopped">Requestify stopped unexpectedly (last active %1$s)</string>
     <string name="log_app_restarted"> · restarted</string>
     <string name="log_app_no_crash">No error was recorded: it was ended from outside (Task Manager, or the power went off).</string>

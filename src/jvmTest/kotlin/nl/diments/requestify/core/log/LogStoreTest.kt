@@ -125,6 +125,20 @@ class LogStoreTest {
         assertEquals(listOf(record(1), record(2)), store().readAll())
     }
 
+    /** A newer version's line (a service this one does not know): left out, the rest read, nothing moved aside. */
+    @Test
+    fun aLineWithANameThisVersionDoesNotKnowIsSkipped() = runTest {
+        dir.createDirectories()
+        val known = LogRecord.ConnectionChanged("conn:Twitch:1", noon, LogService.Twitch, LogConnectionState.Lost)
+        val line = AppJson.instance.encodeToString(LogRecord.serializer(), known)
+        val newer = line.replace("\"twitch\"", "\"some_future_service\"")
+        assertTrue(newer != line)
+        dayFile(today).writeText("$line\n$newer\n")
+
+        assertEquals(listOf<LogRecord>(known), store().readAll())
+        assertTrue(dayFile(today).exists())
+    }
+
     @Test
     fun aFailedWriteIsRetriedAndReported() = runTest {
         breakWrites()

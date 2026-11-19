@@ -152,6 +152,15 @@ enum class LogService {
 
     /** Requestify's own files (one could not be saved). */
     @SerialName("files") Files,
+
+    /** The optional bot account that sends the chat replies: its login and the messages Twitch held back. */
+    @SerialName("twitch_bot") TwitchBot,
+
+    /**
+     * The streamer's own chat replies that Twitch held back; apart from [Twitch] (the connection), so a sent message
+     * never closes a connection outage.
+     */
+    @SerialName("twitch_chat") TwitchChat,
 }
 
 @Serializable
@@ -166,6 +175,9 @@ enum class LogConnectionState {
     @SerialName("source_changed") SourceChanged,
 
     /** Still open when Requestify last closed: over with that run (the next one does not "restore" it). */
+    /** Twitch did not send a chat message ([LogRecord.ConnectionChanged.detail] says why); open until one is sent. */
+    @SerialName("messages_dropped") MessagesDropped,
+
     @SerialName("ended_with_app") EndedWithApp;
 
     /** Whether this ends an outage row. */
