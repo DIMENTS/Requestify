@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import nl.diments.requestify.core.stream.GateStatus
+import nl.diments.requestify.core.stream.StreamState
 
 class UpdatePolicyTest {
     private val running = AppVersion(0, 2, 0)
@@ -37,15 +38,24 @@ class UpdatePolicyTest {
 
     @Test
     fun anUnreadableStreamFileDoesNotInstall() {
-        assertEquals(StreamAtStart.Unreadable, streamAtStart(unreadable = true, lastSeenLiveMs = null))
+        assertEquals(StreamAtStart.Unreadable, streamAtStart(state = null, now = now))
         assertFalse(installs(stream = StreamAtStart.Unreadable), "unknown whether live: lean towards not installing")
     }
 
     @Test
     fun aMissingStreamFileDoesNotBlock() {
-        assertEquals(StreamAtStart.NeverSeenLive, streamAtStart(unreadable = false, lastSeenLiveMs = null))
-        assertEquals(StreamAtStart.LastSeenLive(5), streamAtStart(unreadable = false, lastSeenLiveMs = 5))
-        assertTrue(installs(stream = streamAtStart(unreadable = false, lastSeenLiveMs = null)), "a streamer without Twitch is updated too")
+        // A missing stream.json reads as the defaults.
+        assertEquals(StreamAtStart.NeverSeenLive, streamAtStart(StreamState(), now))
+        assertTrue(installs(stream = streamAtStart(StreamState(), now)), "a streamer without Twitch is updated too")
+    }
+
+    @Test
+    fun theLastLiveMomentComesFromTheStreamFile() {
+        assertEquals(StreamAtStart.LastSeenLive(5), streamAtStart(StreamState(live = true, lastSeenLiveMs = 5), now))
+        assertEquals(StreamAtStart.LastSeenLive(now), streamAtStart(StreamState(live = true), now), "live, but when unknown: as good as now")
+        // The stream dropped: its grace runs from when it went offline, and requests may come back any moment.
+        assertEquals(StreamAtStart.LastSeenLive(now - 60_000), streamAtStart(StreamState(live = false, offlineSinceMs = now - 60_000), now))
+        assertFalse(installs(stream = streamAtStart(StreamState(offlineSinceMs = now - 60_000), now)), "restarting things a minute after a drop")
     }
 
     @Test

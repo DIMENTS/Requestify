@@ -129,6 +129,9 @@ class RequestsGate(
     /** stream.json could not be read at start (a missing one reads fine): the updater then assumes a stream. */
     val loadedUnreadable: Boolean = loaded == null
 
+    /** stream.json as read at start (null: unreadable), for the updater's "is a stream running?" at start. */
+    val loadedState: StreamState? = loaded
+
     /** [state] holds a stream event the file does not have yet. */
     private var unsaved = false
 

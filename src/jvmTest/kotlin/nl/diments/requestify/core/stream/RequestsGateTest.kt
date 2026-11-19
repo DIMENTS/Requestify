@@ -676,6 +676,20 @@ class RequestsGateTest {
     }
 
     @Test
+    fun aDropInTheGraceStillHoldsBackAnUpdateAtStart() = runTest {
+        val first = gate()
+        first.onLive(true)
+        wait(5 * minute)
+        first.onLive(false) // the stream dropped: the grace runs
+        wait(minute)
+        first.stop() // the streamer restarts Requestify
+        runCurrent()
+        val stream = nl.diments.requestify.core.update.streamAtStart(gate(), now = testScheduler.currentTime)
+        val at = (stream as? nl.diments.requestify.core.update.StreamAtStart.LastSeenLive)?.atMs
+        assertTrue(at != null && at in (4 * minute)..(6 * minute), "the drop is a live moment for the updater: $stream")
+    }
+
+    @Test
     fun theUpdaterLearnsWhetherTheFileWasReadable() = runTest {
         assertEquals(false, gate().loadedUnreadable, "a missing file is no problem: no stream seen yet")
         dir.resolve("stream.json").toFile().mkdirs() // reading it fails

@@ -143,7 +143,7 @@ fun main(args: Array<String>) {
             afterCrash = mode == LaunchMode.AfterCrash,
             running = AppVersion.current(),
             pending = graph.updateStore.pending(),
-            stream = streamAtStart(graph.gate),
+            stream = streamAtStart(graph.gate, System.currentTimeMillis()),
             now = System.currentTimeMillis(),
         )
     ) {

@@ -2,6 +2,7 @@ package nl.diments.requestify.core.update
 
 import nl.diments.requestify.core.stream.GateStatus
 import nl.diments.requestify.core.stream.RequestsGate
+import nl.diments.requestify.core.stream.StreamState
 
 /** What `stream.json` said about the stream when Requestify started, before anything connected. */
 sealed interface StreamAtStart {
@@ -15,13 +16,18 @@ sealed interface StreamAtStart {
     data class LastSeenLive(val atMs: Long) : StreamAtStart
 }
 
-fun streamAtStart(unreadable: Boolean, lastSeenLiveMs: Long?): StreamAtStart = when {
-    unreadable -> StreamAtStart.Unreadable
-    lastSeenLiveMs != null -> StreamAtStart.LastSeenLive(lastSeenLiveMs)
+/**
+ * What [state] (stream.json as read at start; null: unreadable) says about a stream: live, with when it was last seen
+ * live (unknown: [now]), or dropped and in its grace since `offlineSinceMs` (it may come back any moment).
+ */
+fun streamAtStart(state: StreamState?, now: Long): StreamAtStart = when {
+    state == null -> StreamAtStart.Unreadable
+    state.live -> StreamAtStart.LastSeenLive(state.lastSeenLiveMs ?: now)
+    state.offlineSinceMs != null -> StreamAtStart.LastSeenLive(state.offlineSinceMs)
     else -> StreamAtStart.NeverSeenLive
 }
 
-fun streamAtStart(gate: RequestsGate): StreamAtStart = streamAtStart(gate.loadedUnreadable, gate.loadedLastSeenLiveMs)
+fun streamAtStart(gate: RequestsGate, now: Long): StreamAtStart = streamAtStart(gate.loadedState, now)
 
 /**
  * Whether a start installs the waiting update ([pending]) before anything connects. Never in a build that does not
