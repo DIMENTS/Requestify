@@ -155,4 +155,11 @@ class ConnectionChipTest {
         assertEquals("DonoLink key expires in 1 day", text(now + day + 3_600_000))
         assertEquals("DonoLink key expires within 24 hours", text(now + 2 * 3_600_000))
     }
+
+    @Test
+    fun nothingConnectedIsNeutral() = runComposeUiTest {
+        setContent { RequestifyTheme(BrandSeed, dark = true) { ConnectionChip(emptyList(), nothingConnected = true, onClick = {}) } }
+        onNodeWithText("Nothing connected yet").assertIsDisplayed()
+        onNodeWithText("All connected").assertDoesNotExist()
+    }
 }

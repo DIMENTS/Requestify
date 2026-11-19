@@ -52,6 +52,8 @@ fun TitleBar(
     onHitTest: ((client: Boolean) -> Unit)? = null,
     onConnectionsClick: () -> Unit = {},
     requestsSwitch: @Composable () -> Unit = {},
+    /** Neither Spotify nor Twitch is set up: the chip says so instead of "All connected". */
+    nothingConnected: Boolean = false,
 ) {
     val clientAreas = remember { TitleBarClientAreas() }
     Row(
@@ -71,7 +73,7 @@ fun TitleBar(
             maxLines = 1,
         )
         Spacer(Modifier.width(16.dp))
-        ConnectionChip(problems, onConnectionsClick, Modifier.titleBarClientArea(clientAreas))
+        ConnectionChip(problems, onConnectionsClick, Modifier.titleBarClientArea(clientAreas), nothingConnected)
         Spacer(Modifier.weight(1f))
         Box(Modifier.titleBarClientArea(clientAreas)) { requestsSwitch() }
     }

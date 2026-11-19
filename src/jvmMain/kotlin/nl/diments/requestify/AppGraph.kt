@@ -468,6 +468,11 @@ class AppGraph(
         WelcomeWizardViewModel(settings, spotifyConnected, twitchConnected, donationsConnected, scope, enabled = welcomeWizard)
     }
 
+    /** Neither Spotify nor Twitch is set up yet: the chip and the tray say "Nog niets gekoppeld", not "Alles verbonden". */
+    val nothingConnected: StateFlow<Boolean> = combine(auth.status, settings.settings) { spotify, s ->
+        spotify != SpotifyAuthStatus.LoggedIn && s.twitch.account == null
+    }.stateIn(scope, SharingStarted.Eagerly, auth.status.value != SpotifyAuthStatus.LoggedIn && settings.settings.value.twitch.account == null)
+
     /**
      * Everything that needs the streamer's attention right now, most important first: the title-bar chip, the tray
      * and the notifier. Looked at again as time passes (a DonoLink key counts down to its expiry by itself).

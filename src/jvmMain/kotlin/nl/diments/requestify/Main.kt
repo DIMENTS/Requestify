@@ -209,10 +209,11 @@ fun main(args: Array<String>) {
         runBlocking { withTimeoutOrNull(FATAL_STOP_MS) { graph.stopGracefully() } }
     }
     appScope.launch {
-        combine(graph.problems, graph.saveHealth.problems) { problems, saves -> trayLook(problems, saves) }.collect(tray::show)
+        combine(graph.problems, graph.saveHealth.problems, graph.nothingConnected) { problems, saves, nothing -> trayLook(problems, saves, nothing) }
+            .collect(tray::show)
     }
     // The icon is there before anything is notified (a notice at start would otherwise find no icon to show it on).
-    tray.show(runBlocking { trayLook(graph.problems.value, graph.saveHealth.problems.value) })
+    tray.show(runBlocking { trayLook(graph.problems.value, graph.saveHealth.problems.value, graph.nothingConnected.value) })
     Notifier(graph.problems, graph.saveHealth.problems, graph.settings, appScope, System::currentTimeMillis, notify).start()
     if (mode == LaunchMode.AfterCrash) notify(Notice.RestartedAfterCrash)
     // "Nu bijwerken" (only allowed offline with requests closed): hand the MSI to the helper (it waits for this process

@@ -188,7 +188,7 @@ class AppScaffoldTest {
         onNode(hasText("Settings") and hasClickAction()).performClick()
         waitForIdle()
         onNodeWithText("Requestify").assertIsDisplayed()
-        onNodeWithText("All connected").assertIsDisplayed()
+        onNodeWithText("Nothing connected yet").assertIsDisplayed() // this app has nothing set up (F-31)
         onNode(hasText("Requests ", substring = true) and hasClickAction()).assertIsDisplayed()
     }
 

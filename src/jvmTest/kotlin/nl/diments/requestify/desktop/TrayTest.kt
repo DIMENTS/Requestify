@@ -124,4 +124,11 @@ class TrayTest {
         assertEquals(listOf<Notice>(Notice.CloseHint), sent, "the hint only the first time ever")
         assertTrue(settings.settings.value.closeHintShown)
     }
+
+    @Test
+    fun nothingConnectedIsNoWarning() = runBlocking {
+        val look = trayLook(emptyList(), emptyList(), nothingConnected = true)
+        assertFalse(look.warning)
+        assertEquals("Nothing connected yet", look.statusLine)
+    }
 }

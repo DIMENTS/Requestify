@@ -144,6 +144,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
     val track by remember(graph) { graph.home.state.map { it.nowPlaying?.track }.distinctUntilChanged() }
         .collectAsState(graph.home.state.value.nowPlaying?.track)
     val problems by graph.problems.collectAsState()
+    val nothingConnected by graph.nothingConnected.collectAsState()
     val gate by graph.gate.status.collectAsState()
     val updateState by graph.updates.state.collectAsState()
     val justUpdated by graph.updates.justUpdated.collectAsState()
@@ -170,6 +171,7 @@ fun AppScaffold(graph: AppGraph, window: Frame? = null, openOn: Destination? = n
             Column {
                 TitleBar(
                     problems = problems,
+                    nothingConnected = nothingConnected,
                     captionInset = caption?.buttonsInset ?: 0.dp,
                     onHitTest = caption?.hitTest,
                     onConnectionsClick = { destination = Destination.Connections },

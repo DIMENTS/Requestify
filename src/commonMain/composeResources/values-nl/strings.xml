@@ -140,6 +140,7 @@
 
     <!-- Title bar -->
     <string name="connection_all_connected">Alles verbonden</string>
+    <string name="connection_nothing_connected">Nog niets gekoppeld</string>
     <string name="connection_twitch_login_needed">Twitch: log opnieuw in</string>
     <string name="connection_twitch_disconnected">Twitch verbroken, opnieuw proberen</string>
     <string name="connection_twitch_bot_login_needed">Twitch-bot: log opnieuw in</string>

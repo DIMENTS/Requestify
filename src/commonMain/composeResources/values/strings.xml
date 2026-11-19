@@ -140,6 +140,7 @@
 
     <!-- Title bar -->
     <string name="connection_all_connected">All connected</string>
+    <string name="connection_nothing_connected">Nothing connected yet</string>
     <string name="connection_twitch_login_needed">Twitch: log in again</string>
     <string name="connection_twitch_disconnected">Twitch disconnected, retrying</string>
     <string name="connection_twitch_bot_login_needed">Twitch bot: log in again</string>

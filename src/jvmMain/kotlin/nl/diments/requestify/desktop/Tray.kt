@@ -13,6 +13,7 @@ import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.storage.SaveProblem
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.connection_all_connected
+import nl.diments.requestify.resources.connection_nothing_connected
 import nl.diments.requestify.resources.tray_cannot_save
 import nl.diments.requestify.resources.tray_tooltip
 import nl.diments.requestify.ui.common.statusLook
@@ -23,13 +24,14 @@ data class TrayLook(val warning: Boolean, val tooltip: String, val statusLine: S
 
 /**
  * The tray's look for [problems] (the chip's list) and [saveProblems]: "All connected" without a mark while nothing is
- * wrong; otherwise the mark and the top problem as the chip says it (a file that cannot be saved when nothing else is
- * wrong).
+ * wrong ("Nothing connected yet" while nothing is set up, [nothingConnected]); otherwise the mark and the top problem
+ * as the chip says it (a file that cannot be saved when nothing else is wrong).
  */
-suspend fun trayLook(problems: List<ConnectionProblem>, saveProblems: List<SaveProblem>): TrayLook {
+suspend fun trayLook(problems: List<ConnectionProblem>, saveProblems: List<SaveProblem>, nothingConnected: Boolean = false): TrayLook {
     val status = when {
         problems.isNotEmpty() -> problems.first().statusLook().let { getString(it.text, *it.args.toTypedArray()) }
         saveProblems.isNotEmpty() -> getString(Res.string.tray_cannot_save, saveProblems.joinToString { it.file })
+        nothingConnected -> getString(Res.string.connection_nothing_connected)
         else -> getString(Res.string.connection_all_connected)
     }
     return TrayLook(

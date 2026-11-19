@@ -8,6 +8,7 @@ import nl.diments.requestify.core.playback.SpotifyHealth
 import nl.diments.requestify.core.settings.DonationSourceKind
 import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.connection_all_connected
+import nl.diments.requestify.resources.connection_nothing_connected
 import nl.diments.requestify.resources.connection_donolink_disconnected
 import nl.diments.requestify.resources.connection_donolink_key_expiring
 import nl.diments.requestify.resources.connection_donolink_key_expiring_days
@@ -67,12 +68,16 @@ private fun ConnectionProblem.look(nowMs: Long = System.currentTimeMillis()): St
 }
 
 /**
- * The one connection status in the title bar: "All connected" while nothing is wrong, otherwise the most
- * important problem. A click goes to Connections ([onClick]).
+ * The one connection status in the title bar: the most important problem; while nothing is wrong "All connected", or
+ * "Nothing connected yet" (neutral) while neither Spotify nor Twitch is set up ([nothingConnected]). A click goes to
+ * Connections ([onClick]).
  */
 @Composable
-fun ConnectionChip(problems: List<ConnectionProblem>, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val look = problems.firstOrNull()?.look() ?: StatusLook(Res.string.connection_all_connected, AppIcons.CheckCircle, Tone.Good)
+fun ConnectionChip(problems: List<ConnectionProblem>, onClick: () -> Unit, modifier: Modifier = Modifier, nothingConnected: Boolean = false) {
+    val look = problems.firstOrNull()?.look() ?: when {
+        nothingConnected -> StatusLook(Res.string.connection_nothing_connected, AppIcons.Link, Tone.Neutral)
+        else -> StatusLook(Res.string.connection_all_connected, AppIcons.CheckCircle, Tone.Good)
+    }
     StatusChip(look, modifier, onClick)
 }
 
