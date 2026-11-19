@@ -1,5 +1,6 @@
 package nl.diments.requestify.core.update
 
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -139,8 +140,22 @@ class UpdateService(
         scope.launch { check(manual = true) }
     }
 
+    /**
+     * One check. Nothing escapes it: an error here would reach the app's crash guard and restart Requestify, maybe
+     * during a stream; it counts as a failed check instead.
+     */
     private suspend fun check(manual: Boolean) = checking.withLock {
         val before = _state.value
+        try {
+            checkOnce(manual, before)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            _state.value = if (manual) UpdateState.CheckFailed(manual = true) else settled(before) ?: UpdateState.CheckFailed(manual = false)
+        }
+    }
+
+    private suspend fun checkOnce(manual: Boolean, before: UpdateState) {
         if (manual) _state.value = UpdateState.Checking(manual = true)
         when (val answer = latestRelease()) {
             is ReleaseCheck.Failed -> _state.value = when {

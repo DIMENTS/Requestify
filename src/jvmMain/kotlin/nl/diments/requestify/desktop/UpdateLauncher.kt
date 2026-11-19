@@ -45,13 +45,15 @@ private fun installingMarker(store: UpdateStore): Path = store.dir.resolve("inst
 
 /**
  * Hands a pending update to the install helper, detached, and notes the helper's process id ([updateInProgress]);
- * Requestify then ends and the helper does the rest.
+ * Requestify then ends and the helper does the rest. [launch] is false when the helper could not be started; it never
+ * throws (an error here must not reach the crash guard).
  */
 class UpdateLauncher(private val start: (List<String>) -> Long? = { detachedProcess(it).start().pid() }) {
-    fun launch(pending: PendingUpdate, store: UpdateStore, launcher: Path, hidden: Boolean) {
+    fun launch(pending: PendingUpdate, store: UpdateStore, launcher: Path, hidden: Boolean): Boolean {
         store.clearExitCode()
         val marker = installingMarker(store)
-        val helper = start(
+        val helper = try {
+            start(
             updateHelperCommand(
                 msi = store.dir.resolve(pending.msiFile),
                 msiLog = store.dir.resolve("install.log"),
@@ -61,7 +63,10 @@ class UpdateLauncher(private val start: (List<String>) -> Long? = { detachedProc
                 launcher = launcher,
                 hidden = hidden,
             ),
-        )
+            )
+        } catch (_: Exception) {
+            return false // the helper could not start: Requestify simply keeps running this version
+        }
         if (helper != null) {
             try {
                 Files.createDirectories(store.dir)
@@ -70,6 +75,7 @@ class UpdateLauncher(private val start: (List<String>) -> Long? = { detachedProc
                 // without the marker a second start is merely not held back
             }
         }
+        return true
     }
 }
 

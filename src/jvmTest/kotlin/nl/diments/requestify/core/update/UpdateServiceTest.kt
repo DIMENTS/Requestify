@@ -187,6 +187,26 @@ class UpdateServiceTest {
     }
 
     @Test
+    fun anUnexpectedErrorNeverReachesTheApp() = runTest {
+        // An error escaping the updater would reach the crash guard: a restart, maybe mid-stream.
+        val service = UpdateService(
+            running = AppVersion(0, 2, 0),
+            latestRelease = { throw IllegalStateException("something odd") },
+            download = { error("not reached") },
+            store = store,
+            gate = gate,
+            scope = backgroundScope,
+            clock = { testScheduler.currentTime },
+        )
+        service.start()
+        advanceTimeBy(120_001)
+        assertEquals(UpdateState.CheckFailed(manual = false), service.state.value)
+        service.checkNow()
+        runCurrent()
+        assertEquals(UpdateState.CheckFailed(manual = true), service.state.value)
+    }
+
+    @Test
     fun aPulledReleaseIsNotInstalled() = runTest {
         store.savePending(pendingOf(release("0.2.1"))) // downloaded before the maker pulled it (or made it a pre-release)
         val service = service()

@@ -85,6 +85,15 @@ class UpdateLauncherTest {
     }
 
     @Test
+    fun aHelperThatCannotStartIsReportedNotThrown() {
+        val store = UpdateStore(dir)
+        val pending = PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "", "")
+        val started = UpdateLauncher(start = { throw java.io.IOException("powershell.exe not found") }).launch(pending, store, launcher, hidden = false)
+        assertFalse(started, "Requestify then simply keeps running")
+        assertFalse(updateInProgress(store, isAlive = { true }), "and no start is held back")
+    }
+
+    @Test
     fun theHelperRelaunchesWhateverIsInstalled() {
         val s = script()
         assertFalse("if (" in s || "if(" in s, "after a failed install the old version is back, and it starts too\n$s")

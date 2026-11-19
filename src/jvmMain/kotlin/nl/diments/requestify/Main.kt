@@ -153,10 +153,12 @@ fun main(args: Array<String>) {
         )
     ) {
         graph.updates.prepareInstallAtStart()?.let { pending ->
-            UpdateLauncher().launch(pending, graph.updateStore, launcherExe, hidden = !initiallyVisible(mode))
-            crashGuard.markOrderlyEnd()
-            instance.close()
-            exitProcess(0)
+            // When the helper cannot start, this version simply starts as usual.
+            if (UpdateLauncher().launch(pending, graph.updateStore, launcherExe, hidden = !initiallyVisible(mode))) {
+                crashGuard.markOrderlyEnd()
+                instance.close()
+                exitProcess(0)
+            }
         }
     }
     graph.start()
@@ -194,18 +196,19 @@ fun main(args: Array<String>) {
     tray.show(runBlocking { trayLook(graph.problems.value, graph.saveHealth.problems.value) })
     Notifier(graph.problems, graph.saveHealth.problems, graph.settings, appScope, System::currentTimeMillis, notify).start()
     if (mode == LaunchMode.AfterCrash) notify(Notice.RestartedAfterCrash)
-    // "Nu bijwerken" (only allowed offline with requests closed): stop like Quit, hand the MSI to the helper, end.
+    // "Nu bijwerken" (only allowed offline with requests closed): hand the MSI to the helper (it waits for this process
+    // to end), then stop like Quit and end. When the helper cannot start, Requestify simply keeps running.
     appScope.launch {
         graph.updates.installRequests.collect { pending ->
             val exe = launcherExe ?: return@collect
             val hidden = !shell.visible
+            if (!UpdateLauncher().launch(pending, graph.updateStore, exe, hidden)) return@collect
             tray.remove()
             shell.hideNow()
             try {
                 graph.stopGracefully()
             } catch (_: Throwable) {
             }
-            UpdateLauncher().launch(pending, graph.updateStore, exe, hidden)
             crashGuard.markOrderlyEnd()
             instance.close()
             exitProcess(0)
