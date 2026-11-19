@@ -55,13 +55,14 @@ class TwitchSetupViewModelTest {
     private fun TestScope.parts(
         loggedIn: Boolean = false,
         account: TwitchAccount? = null,
+        botAccount: TwitchAccount? = null,
         configure: FakeTwitch.() -> Unit = {},
     ): TwitchSetupParts {
         val twitch = FakeTwitch(
             now = { currentTime },
             dispatcher = coroutineContext[ContinuationInterceptor] as CoroutineDispatcher,
         ).apply(configure)
-        return TwitchSetupParts(dir, backgroundScope, twitch, loggedIn, account, clock = { currentTime })
+        return TwitchSetupParts(dir, backgroundScope, twitch, loggedIn, account, clock = { currentTime }, botAccount = botAccount)
     }
 
     @Test
@@ -274,5 +275,19 @@ class TwitchSetupViewModelTest {
         } finally {
             scope.cancel()
         }
+    }
+
+    /** The reverse mistake: the browser is still logged in as the bot, and the streamer's own login is approved there. */
+    @Test
+    fun theStreamersLoginRefusesTheBotAccount() = runTest {
+        val p = parts(botAccount = TwitchAccount("42", "diments", "DIMENTS")) // Twitch answers with user 42: the bot
+        p.vm.onLogin()
+        runCurrent()
+        advanceTimeBy(10.seconds)
+        runCurrent()
+        assertEquals(TwitchLoginState.BotAccount, p.vm.login.value)
+        assertNull(p.settings.settings.value.twitch.account, "the bot is not saved as the streamer")
+        assertNull(p.secrets.get(nl.diments.requestify.core.secrets.SecretKeys.TWITCH_REFRESH_TOKEN))
+        assertEquals("b0", p.secrets.get(nl.diments.requestify.core.secrets.SecretKeys.TWITCH_BOT_REFRESH_TOKEN), "the bot's own login stays")
     }
 }

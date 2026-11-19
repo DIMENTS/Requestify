@@ -97,6 +97,7 @@ import nl.diments.requestify.resources.twitch_login
 import nl.diments.requestify.resources.twitch_login_again_as
 import nl.diments.requestify.resources.twitch_login_expired
 import nl.diments.requestify.resources.twitch_login_failed
+import nl.diments.requestify.resources.twitch_login_is_bot
 import nl.diments.requestify.resources.twitch_open_browser
 import nl.diments.requestify.resources.twitch_permission_everyone
 import nl.diments.requestify.resources.twitch_permission_followers
@@ -275,6 +276,7 @@ internal fun LoginErrorText(login: TwitchLoginState) {
         TwitchLoginState.Expired -> ErrorText(stringResource(Res.string.twitch_code_expired))
         TwitchLoginState.Failed -> ErrorText(stringResource(Res.string.twitch_login_failed))
         TwitchLoginState.Unreachable -> ErrorText(stringResource(Res.string.twitch_unreachable))
+        TwitchLoginState.BotAccount -> ErrorText(stringResource(Res.string.twitch_login_is_bot))
         else -> Unit
     }
 }

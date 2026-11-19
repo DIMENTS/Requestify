@@ -48,6 +48,9 @@ sealed interface TwitchLoginState {
 
     /** The bot's code was approved by the streamer's own account (the bot section only); nothing was saved. */
     data object OwnAccount : TwitchLoginState
+
+    /** The streamer's code was approved by the connected bot account (the browser was still logged in as the bot). */
+    data object BotAccount : TwitchLoginState
 }
 
 /** The seven chat commands, in the order the card shows them. */
@@ -185,13 +188,15 @@ class TwitchSetupViewModel(
                     return@launch
                 }
                 _login.value = TwitchLoginState.ShowingCode(code)
-                _login.value = when (val result = auth.awaitDeviceLogin(code)) {
+                // The connected bot is never the streamer's own login (a browser still logged in as the bot).
+                val bot = store.settings.value.twitch.bot?.userId
+                _login.value = when (val result = auth.awaitDeviceLogin(code, accept = { it != bot })) {
                     // Past this point the user has confirmed: the account step is not cut short by a cancel.
                     is DeviceLoginResult.Success ->
                         if (withContext(NonCancellable) { saveAccount(result) }) TwitchLoginState.Idle else TwitchLoginState.Failed
                     DeviceLoginResult.Expired -> TwitchLoginState.Expired
-                    // The streamer's own login accepts any account: a refusal cannot happen here.
-                    is DeviceLoginResult.Failed, is DeviceLoginResult.WrongAccount -> TwitchLoginState.Failed
+                    is DeviceLoginResult.WrongAccount -> TwitchLoginState.BotAccount
+                    is DeviceLoginResult.Failed -> TwitchLoginState.Failed
                 }
             } catch (e: CancellationException) {
                 // Cancelled while the login was being completed inside TwitchAuth: it may be logged in already,

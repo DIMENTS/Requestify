@@ -230,6 +230,7 @@
     <string name="twitch_waiting">Waiting until you confirm…</string>
     <string name="twitch_code_expired">The code ran out. Try again.</string>
     <string name="twitch_login_failed">Logging in didn’t work. Try again.</string>
+    <string name="twitch_login_is_bot">That is your bot account. Log in with your own account (log the bot out in that browser first).</string>
     <string name="twitch_unreachable">Couldn’t reach Twitch. Check your connection and try again.</string>
     <string name="twitch_tag_affiliate">Affiliate</string>
     <string name="twitch_tag_partner">Partner</string>

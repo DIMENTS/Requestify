@@ -230,6 +230,7 @@
     <string name="twitch_waiting">Wachten tot je bevestigt…</string>
     <string name="twitch_code_expired">De code is verlopen. Probeer het opnieuw.</string>
     <string name="twitch_login_failed">Inloggen is niet gelukt. Probeer het opnieuw.</string>
+    <string name="twitch_login_is_bot">Dat is je bot-account. Log in met je eigen account (log de bot in die browser eerst uit).</string>
     <string name="twitch_unreachable">Twitch is niet bereikbaar. Controleer je verbinding en probeer het opnieuw.</string>
     <string name="twitch_tag_affiliate">Affiliate</string>
     <string name="twitch_tag_partner">Partner</string>
