@@ -29,9 +29,11 @@ import nl.diments.requestify.core.settings.AppLanguage
 import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.core.update.AppVersion
+import nl.diments.requestify.core.update.UpdateStore
 import nl.diments.requestify.core.update.installAtStart
 import nl.diments.requestify.core.update.streamAtStart
 import nl.diments.requestify.desktop.UpdateLauncher
+import nl.diments.requestify.desktop.updateInProgress
 import nl.diments.requestify.desktop.windowsAnimationsOff
 import nl.diments.requestify.ui.theme.LocalReducedMotion
 import nl.diments.requestify.desktop.AppIconImages
@@ -88,6 +90,9 @@ fun main(args: Array<String>) {
     val mode = launchMode(args)
     val installation = Installation.current()
     val paths = AppPaths.default()
+    // An update is being installed: the helper starts Requestify again when it is done. Starting now would lock the
+    // files it replaces (or install a second time).
+    if (updateInProgress(UpdateStore(paths.updatesDir))) exitProcess(0)
     val shell = ShellState(visible = initiallyVisible(mode))
 
     // One Requestify per data folder: a second start shows the first one's window and leaves, touching nothing else.

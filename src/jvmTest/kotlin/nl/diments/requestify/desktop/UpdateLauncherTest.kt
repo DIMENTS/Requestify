@@ -30,7 +30,9 @@ class UpdateLauncherTest {
         return String(Base64.getDecoder().decode(command.last()), Charsets.UTF_16LE)
     }
 
-    private fun script(hidden: Boolean = false) = script(updateHelperCommand(msi, log, exitCode, 4242, launcher, hidden))
+    private val marker = Path.of("$home\\Requestify-updates\\installing.txt")
+
+    private fun script(hidden: Boolean = false) = script(updateHelperCommand(msi, log, exitCode, marker, 4242, launcher, hidden))
 
     @Test
     fun theCommandWaitsInstallsRecordsAndRelaunches() {
@@ -38,7 +40,7 @@ class UpdateLauncherTest {
         val steps = listOf("Wait-Process -Id 4242", "Start-Process -FilePath 'msiexec.exe'", "Set-Content -LiteralPath", "Start-Process -FilePath 'C:")
         val at = steps.map { step -> s.indexOf(step).also { assertTrue(it >= 0, "missing: $step\n$s") } }
         assertEquals(at.sorted(), at, "wait for the app to end, install, note the result, start Requestify\n$s")
-        for (part in listOf("/i ", "/qn", "/norestart", "REQUESTIFY_UPDATER=1", "/l*v", "-Wait", "-PassThru", "\$p.ExitCode")) {
+        for (part in listOf("/i ", "/norestart", "REQUESTIFY_UPDATER=1", "/l*v", "-Wait", "-PassThru", "\$p.ExitCode")) {
             assertTrue(part in s, "missing: $part\n$s")
         }
     }
@@ -59,6 +61,30 @@ class UpdateLauncherTest {
     }
 
     @Test
+    fun aVisibleAppShowsTheInstallProgress() {
+        assertTrue("/passive" in script(hidden = false) && "/qn" !in script(hidden = false), "opened by the streamer: a progress bar, no questions")
+        assertTrue("/qn" in script(hidden = true) && "/passive" !in script(hidden = true), "in the tray: nothing on screen")
+    }
+
+    @Test
+    fun theMarkerGoesJustBeforeTheRelaunch() {
+        val s = script()
+        val removed = s.indexOf("Remove-Item -LiteralPath 'C:\\Users\\O''Neil Smith\\AppData\\Local\\Requestify-updates\\installing.txt'")
+        assertTrue(removed > s.indexOf("Set-Content"), "after the install\n$s")
+        assertTrue(removed < s.indexOf("Start-Process -FilePath 'C:"), "before Requestify starts again, or it would step aside\n$s")
+    }
+
+    @Test
+    fun aStartDuringTheInstallStepsAside() {
+        val store = UpdateStore(dir)
+        val pending = PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "", "")
+        UpdateLauncher(start = { 4242L }).launch(pending, store, launcher, hidden = false)
+        assertTrue(updateInProgress(store, isAlive = { it == 4242L }), "the helper is still installing: a new start leaves it alone")
+        assertFalse(updateInProgress(store, isAlive = { false }), "a helper that is gone left an old marker")
+        assertFalse(updateInProgress(store, isAlive = { true }), "and that old marker was cleared")
+    }
+
+    @Test
     fun theHelperRelaunchesWhateverIsInstalled() {
         val s = script()
         assertFalse("if (" in s || "if(" in s, "after a failed install the old version is back, and it starts too\n$s")
@@ -69,7 +95,7 @@ class UpdateLauncherTest {
         val store = UpdateStore(dir)
         val pending = PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "", "")
         val started = mutableListOf<List<String>>()
-        UpdateLauncher(start = { started += it }).launch(pending, store, launcher, hidden = false)
+        UpdateLauncher(start = { started += it; 1L }).launch(pending, store, launcher, hidden = false)
         val s = script(started.single())
         assertTrue("Wait-Process -Id ${ProcessHandle.current().pid()} " in s, "it waits for this process to end")
         assertTrue(store.dir.resolve("Requestify-0.2.1.msi").toString().replace("'", "''") in s)
