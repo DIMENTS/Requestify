@@ -124,4 +124,18 @@ class SingleInstanceTest {
         val second = SingleInstance(dir).start(onShowRequested = {}, quitWaitMs = 500)
         assertEquals(InstanceStart.AlreadyRunning, second)
     }
+
+    @Test
+    fun aStartThatWaitedStepsAsideWhenTheCheckSaysSo() {
+        val first = assertIs<InstanceStart.First>(start()).instance
+        first.markQuitting()
+        Thread {
+            Thread.sleep(300)
+            first.close()
+        }.start()
+        // An update started installing while this start waited: it must not run the old version.
+        val second = SingleInstance(dir).start(onShowRequested = {}, mayRunAfterWaiting = { false })
+        assertEquals(InstanceStart.AlreadyRunning, second)
+        assertIs<InstanceStart.First>(start(), "the lock was let go again")
+    }
 }

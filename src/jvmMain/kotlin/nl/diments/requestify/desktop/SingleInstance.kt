@@ -39,13 +39,15 @@ class SingleInstance(private val dir: Path) {
      * Becomes the one instance, or finds the running one. [askToShow] (false for Windows' autostart) asks the running
      * one to show its window; [onShowRequested] is what this one does when a later start asks. [waitForLockMs] (the
      * crash restart) waits for an old process to let go of the lock instead of asking it anything. A running one that
-     * is quitting gets up to [quitWaitMs] to end.
+     * is quitting gets up to [quitWaitMs] to end; after such a wait [mayRunAfterWaiting] decides once more (an update may
+     * have started installing meanwhile: then this start steps aside after all).
      */
     fun start(
         onShowRequested: () -> Unit,
         askToShow: Boolean = true,
         waitForLockMs: Long = 0,
         quitWaitMs: Long = QUIT_WAIT_MS,
+        mayRunAfterWaiting: () -> Boolean = { true },
     ): InstanceStart {
         Files.createDirectories(dir)
         waitForLock(waitForLockMs, onShowRequested)?.let { return it }
@@ -53,7 +55,10 @@ class SingleInstance(private val dir: Path) {
         return when (askRunningToShow()) {
             ShowAnswer.Shown -> InstanceStart.AlreadyRunning
             // It is quitting: wait for it to end, then run.
-            ShowAnswer.Quitting -> waitForLock(quitWaitMs, onShowRequested) ?: InstanceStart.AlreadyRunning
+            ShowAnswer.Quitting -> when (val first = waitForLock(quitWaitMs, onShowRequested)) {
+                null -> InstanceStart.AlreadyRunning
+                else -> if (mayRunAfterWaiting()) first else InstanceStart.AlreadyRunning.also { first.instance.close() }
+            }
             // No answer: it may just have ended.
             ShowAnswer.NoAnswer -> waitForLock(0, onShowRequested) ?: InstanceStart.AlreadyRunning
         }

@@ -269,13 +269,13 @@ class CrashGuardTest {
     }
 
     @Test
-    fun theShutdownHookSavesBeforeItEnds() {
+    fun theShutdownHookEndsInOrderBeforeItSaves() {
         val guard = guard()
         guard.markRunning()
         var markerWhileFlushing: Boolean? = null
         guard.flushOnShutdown = { markerWhileFlushing = dir.resolve("running.json").exists() }
         guard.shutdownHook.run()
-        assertEquals(true, markerWhileFlushing, "saved first, then the orderly end")
+        assertEquals(false, markerWhileFlushing, "an orderly end first: a slow save that Windows cuts off is no crash")
         assertFalse(dir.resolve("running.json").exists())
     }
 

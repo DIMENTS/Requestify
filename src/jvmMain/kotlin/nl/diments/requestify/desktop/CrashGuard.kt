@@ -91,17 +91,17 @@ class CrashGuard(
     var flushOnShutdown: () -> Unit = {}
 
     /**
-     * Runs on Windows shutdown, logoff and every normal exit: saves what is pending ([flushOnShutdown]), then an orderly
-     * end (unless a crash is being handled).
+     * Runs on Windows shutdown, logoff and every normal exit: an orderly end first (unless a crash is being handled; a
+     * slow save that Windows cuts off is no crash), then it saves what is pending ([flushOnShutdown]).
      */
     val shutdownHook: Thread = Thread({
         shuttingDown = true
+        markOrderlyEnd()
         try {
             flushOnShutdown()
         } catch (_: Throwable) {
-            // the end stays orderly
+            // nothing more to do: the process ends anyway
         }
-        markOrderlyEnd()
     }, "requestify-orderly-end")
 
     /** The run before this one, when it did not end properly. Read before [markRunning]. */

@@ -108,6 +108,8 @@ fun main(args: Array<String>) {
             onShowRequested = { EventQueue.invokeLater { shell.showRequested() } },
             askToShow = mode == LaunchMode.Normal,
             waitForLockMs = if (mode == LaunchMode.AfterCrash) 10_000 else 0,
+            // A start that waited for a quitting Requestify steps aside after all when an update began installing.
+            mayRunAfterWaiting = { !updateInProgress(UpdateStore(paths.updatesDir)) },
         )
     ) {
         is InstanceStart.First -> start.instance
@@ -165,11 +167,11 @@ fun main(args: Array<String>) {
         graph.updates.prepareInstallAtStart()?.let { pending ->
             // When the helper cannot start, this version simply starts as usual.
             if (UpdateLauncher().launch(pending, graph.updateStore, launcherExe, hidden = !initiallyVisible(mode))) {
-                instance.markQuitting()
                 // This run's Log never starts: the failed install that led to this retry is written to it directly.
                 graph.updates.startFailure?.let { failure -> runBlocking { graph.logNow(failure) } }
                 crashGuard.markOrderlyEnd()
-                instance.close()
+                // Not marked as quitting and not closed: a start now is told "shown" and steps aside (the helper starts
+                // Requestify again after the install), and the OS lets go of the lock when this process has ended.
                 exitProcess(0)
             }
         }
@@ -195,10 +197,9 @@ fun main(args: Array<String>) {
                 hideWindow = shell::hideNow,
                 stopGracefully = graph::stopGracefully,
                 markOrderlyEnd = crashGuard::markOrderlyEnd,
-                exit = {
-                    instance.close()
-                    exitProcess(0)
-                },
+                // The OS lets go of the instance lock when this process has ended (after the shutdown hook's save): a
+                // start meanwhile is told "quitting" and waits for that.
+                exit = { exitProcess(0) },
             )
         },
         onMessageClick = { shell.noticeClicked(lastNoticeTarget) },
@@ -227,7 +228,7 @@ fun main(args: Array<String>) {
                 graph.updates.installRequestFailed() // "Nu bijwerken" may be asked again
                 return@collect
             }
-            instance.markQuitting()
+            // Not marked as quitting: a start during this update's shutdown steps aside; the helper starts Requestify again.
             tray.remove()
             shell.hideNow()
             try {
@@ -235,8 +236,7 @@ fun main(args: Array<String>) {
             } catch (_: Throwable) {
             }
             crashGuard.markOrderlyEnd()
-            instance.close()
-            exitProcess(0)
+            exitProcess(0) // the OS lets go of the instance lock once this process has ended
         }
     }
     graph.updates.start()
