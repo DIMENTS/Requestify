@@ -41,6 +41,7 @@ import nl.diments.requestify.resources.about_update_now
 import nl.diments.requestify.resources.about_update_when_offline
 import nl.diments.requestify.resources.about_version
 import nl.diments.requestify.resources.about_check_failed_note
+import nl.diments.requestify.resources.about_waiting_offline
 import nl.diments.requestify.resources.about_whats_new
 import nl.diments.requestify.ui.theme.Spacing
 import org.jetbrains.compose.resources.stringResource
@@ -148,6 +149,8 @@ fun AboutCard(
                     Text(stringResource(Res.string.about_install_failed), style = MaterialTheme.typography.bodyMedium, color = scheme.error)
                     TextButton(onClick = actions.openRelease) { Text(stringResource(Res.string.about_download_yourself)) }
                 }
+                is UpdateState.WaitingForOffline ->
+                    Text(stringResource(Res.string.about_waiting_offline, state.version.toString()), style = MaterialTheme.typography.bodyMedium)
             }
             // A check by hand that failed while an update is ready (or failed): the update stays, with this line.
             if (checkFailedNote && (state is UpdateState.Ready || state is UpdateState.InstallFailed)) {

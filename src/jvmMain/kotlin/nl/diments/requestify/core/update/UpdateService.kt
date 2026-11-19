@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -36,6 +38,9 @@ sealed interface UpdateState {
 
     /** Installing [version] failed twice: only a download by hand from [pageUrl] now. */
     data class InstallFailed(val version: AppVersion, val pageUrl: String) : UpdateState
+
+    /** [version] was found while live: it downloads once the stream is offline (never ~90 MB during a stream). */
+    data class WaitingForOffline(val version: AppVersion) : UpdateState
 }
 
 /** For the Log: what happened to an update. Never a notification. */
@@ -100,9 +105,6 @@ class UpdateService(
 
     private val checking = Mutex()
 
-    /** Versions whose failed download was reported in this run: one Log row each. */
-    private val reportedDownloadFailures = HashSet<AppVersion>()
-
     init {
         if (on) reconcile(running!!)
     }
@@ -148,6 +150,12 @@ class UpdateService(
             while (true) {
                 check(manual = false)
                 delay(everyMs)
+            }
+        }
+        // A release found while live downloads as soon as the stream is offline.
+        scope.launch {
+            gate.map { it.live }.distinctUntilChanged().collect { live ->
+                if (!live && _state.value is UpdateState.WaitingForOffline) check(manual = false)
             }
         }
     }
@@ -208,10 +216,26 @@ class UpdateService(
             _state.value = before // two attempts failed: by hand only
             return
         }
+        // Never ~90 MB during a stream: it downloads once the stream is offline.
+        if (gate.value.live) {
+            _state.value = UpdateState.WaitingForOffline(release.version)
+            return
+        }
+        // A download of this version failed less than a day ago (a bad checksum, say): not fetched again yet.
+        val failure = store.failedDownload()?.takeIf { it.version == release.version.toString() }
+        if (failure != null && clock() - failure.atEpochMs < DOWNLOAD_RETRY_MS) {
+            _state.value = settled(before) ?: UpdateState.CheckFailed(manual)
+            return
+        }
         when (val result = download(release)) {
-            is DownloadResult.Ready -> _state.value = UpdateState.Ready(release.version, release.notes, release.pageUrl)
+            is DownloadResult.Ready -> {
+                store.clearFailedDownload()
+                _state.value = UpdateState.Ready(release.version, release.notes, release.pageUrl)
+            }
             is DownloadResult.Failed -> {
-                if (reportedDownloadFailures.add(release.version)) _events.tryEmit(UpdateEvent.DownloadFailed(release.version, result.reason))
+                // One Log row per version, also across runs: a retry of the same version that fails again is quiet.
+                if (failure == null) _events.tryEmit(UpdateEvent.DownloadFailed(release.version, result.reason))
+                store.saveFailedDownload(FailedDownload(release.version.toString(), clock()))
                 _state.value = settled(before) ?: UpdateState.CheckFailed(manual)
             }
         }
@@ -240,3 +264,6 @@ class UpdateService(
         _justUpdated.value = null
     }
 }
+
+/** A version whose download failed is fetched again after this long (F-5), unless a newer release appears. */
+private const val DOWNLOAD_RETRY_MS = 86_400_000L

@@ -121,8 +121,8 @@ class UpdateServiceTest {
         val service = service()
         val events = events(service)
         service.start()
-        advanceTimeBy(120_001 + sixHours)
-        assertEquals(2, downloads, "tried again at the next check")
+        advanceTimeBy(120_001 + 4 * sixHours)
+        assertEquals(2, downloads, "tried again a day later, not every 6 hours")
         assertEquals(listOf<UpdateEvent>(UpdateEvent.DownloadFailed(AppVersion(0, 2, 1), "checksum mismatch")), events)
     }
 
@@ -290,5 +290,65 @@ class UpdateServiceTest {
         dir.resolve("install-exit-code.txt").writeText("1603")
         val service = service()
         assertEquals(UpdateEvent.InstallFailed(AppVersion(0, 2, 1), 1603), service.startFailure)
+    }
+
+    @Test
+    fun aFailedDownloadIsRetriedOnceADay() = runTest {
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        downloadFails = "checksum mismatch"
+        service().start()
+        advanceTimeBy(120_001)
+        assertEquals(1, downloads)
+        advanceTimeBy(3 * sixHours)
+        assertEquals(1, downloads, "~90 MB is not fetched again every 6 hours")
+        advanceTimeBy(sixHours)
+        assertEquals(2, downloads, "a day later it is tried again")
+    }
+
+    @Test
+    fun aNewerReleaseIsDownloadedAtOnce() = runTest {
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        downloadFails = "checksum mismatch"
+        service().start()
+        advanceTimeBy(120_001)
+        answer = ReleaseCheck.Found(release("0.2.2"))
+        downloadFails = null
+        advanceTimeBy(sixHours)
+        assertEquals(2, downloads)
+        assertNull(store.failedDownload(), "a download that worked forgets the failure")
+    }
+
+    @Test
+    fun aFailedDownloadIsLoggedOncePerVersionAcrossRuns() = runTest {
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        downloadFails = "checksum mismatch"
+        val first = service()
+        val firstEvents = events(first)
+        first.checkNow()
+        runCurrent()
+        assertEquals(1, firstEvents.size)
+
+        val second = service() // the next start, the same day
+        val secondEvents = events(second)
+        second.checkNow()
+        runCurrent()
+        assertEquals(emptyList(), secondEvents, "one Log row for this version, also across runs")
+        assertEquals(1, downloads, "and no new download yet")
+    }
+
+    @Test
+    fun downloadWaitsUntilTheStreamIsOffline() = runTest {
+        answer = ReleaseCheck.Found(release("0.2.1"))
+        gate.value = gate.value.copy(live = true)
+        val service = service()
+        service.start()
+        advanceTimeBy(120_001)
+        assertEquals(UpdateState.WaitingForOffline(AppVersion(0, 2, 1)), service.state.value)
+        assertEquals(0, downloads, "no ~90 MB download during a stream")
+
+        gate.value = gate.value.copy(live = false)
+        runCurrent()
+        assertEquals(1, downloads)
+        assertIs<UpdateState.Ready>(service.state.value)
     }
 }

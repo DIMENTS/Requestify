@@ -467,4 +467,13 @@ class SavedFormatCompatTest {
         assertEquals(expected, AppJson.instance.decodeFromString(nl.diments.requestify.core.update.PendingUpdate.serializer(), pending))
         assertEquals(pending, AppJson.instance.encodeToString(nl.diments.requestify.core.update.PendingUpdate.serializer(), expected))
     }
+
+    /** A download that failed is remembered in failed-download.json (F-5): retried a day later, logged once. */
+    @Test
+    fun failedDownloadIsPinned() {
+        val json = """{"version":"0.2.1","atEpochMs":5}"""
+        val expected = nl.diments.requestify.core.update.FailedDownload("0.2.1", 5)
+        assertEquals(expected, AppJson.instance.decodeFromString(nl.diments.requestify.core.update.FailedDownload.serializer(), json))
+        assertEquals(json, AppJson.instance.encodeToString(nl.diments.requestify.core.update.FailedDownload.serializer(), expected))
+    }
 }

@@ -532,6 +532,7 @@
     <string name="about_up_to_date">Je hebt de nieuwste versie</string>
     <string name="about_check_failed">Kon niet zoeken naar updates</string>
     <string name="about_check_failed_note">Zoeken naar updates lukte nu niet.</string>
+    <string name="about_waiting_offline">Versie %1$s gevonden; hij wordt gedownload zodra je offline bent.</string>
     <string name="about_ready">Versie %1$s staat klaar</string>
     <string name="about_ready_hint">Hij wordt geïnstalleerd bij de volgende start, of nu meteen. Spotify speelt intussen gewoon door.</string>
     <string name="about_update_now">Nu bijwerken</string>

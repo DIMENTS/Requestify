@@ -8,10 +8,12 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import nl.diments.requestify.core.storage.deleteTestDir
 import nl.diments.requestify.core.update.PendingUpdate
 import nl.diments.requestify.core.update.UpdateStore
+import nl.diments.requestify.core.update.sha256Of
 
 class UpdateLauncherTest {
     private lateinit var dir: Path
@@ -31,6 +33,13 @@ class UpdateLauncherTest {
     }
 
     private val marker = Path.of("$home\\Requestify-updates\\installing.txt")
+
+    /** A downloaded installer in [store] and its pending note, with the right checksum. */
+    private fun downloaded(store: UpdateStore): PendingUpdate {
+        val file = store.dir.resolve("Requestify-0.2.1.msi")
+        java.nio.file.Files.write(file, byteArrayOf(1, 2, 3))
+        return PendingUpdate("0.2.1", "Requestify-0.2.1.msi", checkNotNull(sha256Of(file)), "", "").also(store::savePending)
+    }
 
     private fun script(hidden: Boolean = false) = script(updateHelperCommand(msi, log, exitCode, marker, 4242, launcher, hidden))
 
@@ -77,7 +86,7 @@ class UpdateLauncherTest {
     @Test
     fun aStartDuringTheInstallStepsAside() {
         val store = UpdateStore(dir)
-        val pending = PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "", "")
+        val pending = downloaded(store)
         UpdateLauncher(start = { 4242L }).launch(pending, store, launcher, hidden = false)
         assertTrue(updateInProgress(store, isAlive = { it == 4242L }), "the helper is still installing: a new start leaves it alone")
         assertFalse(updateInProgress(store, isAlive = { false }), "a helper that is gone left an old marker")
@@ -87,7 +96,7 @@ class UpdateLauncherTest {
     @Test
     fun aHelperThatCannotStartIsReportedNotThrown() {
         val store = UpdateStore(dir)
-        val pending = PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "", "")
+        val pending = downloaded(store)
         val started = UpdateLauncher(start = { throw java.io.IOException("powershell.exe not found") }).launch(pending, store, launcher, hidden = false)
         assertFalse(started, "Requestify then simply keeps running")
         assertFalse(updateInProgress(store, isAlive = { true }), "and no start is held back")
@@ -102,12 +111,23 @@ class UpdateLauncherTest {
     @Test
     fun itStartsDetached() {
         val store = UpdateStore(dir)
-        val pending = PendingUpdate("0.2.1", "Requestify-0.2.1.msi", "ab", "", "")
+        val pending = downloaded(store)
         val started = mutableListOf<List<String>>()
         UpdateLauncher(start = { started += it; 1L }).launch(pending, store, launcher, hidden = false)
         val s = script(started.single())
         assertTrue("Wait-Process -Id ${ProcessHandle.current().pid()} " in s, "it waits for this process to end")
         assertTrue(store.dir.resolve("Requestify-0.2.1.msi").toString().replace("'", "''") in s)
         assertTrue(store.exitCodeFile.toString().replace("'", "''") in s)
+    }
+
+    @Test
+    fun aChangedMsiIsNotInstalled() {
+        val store = UpdateStore(dir)
+        val pending = downloaded(store)
+        java.nio.file.Files.write(store.dir.resolve(pending.msiFile), byteArrayOf(9, 9, 9)) // changed since it was checked
+        val started = mutableListOf<List<String>>()
+        assertFalse(UpdateLauncher(start = { started += it; 1L }).launch(pending, store, launcher, hidden = false))
+        assertEquals(emptyList(), started, "nothing is installed")
+        assertNull(store.pending(), "it is downloaded again later")
     }
 }

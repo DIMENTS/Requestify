@@ -96,23 +96,6 @@ class UpdateDownloader(private val http: HttpClient, private val store: UpdateSt
             digest.digest().toHex()
         }
 
-    private fun sha256Of(file: Path): String? = try {
-        if (!Files.exists(file)) null
-        else MessageDigest.getInstance("SHA-256").let { digest ->
-            Files.newInputStream(file).use { input ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read == -1) break
-                    digest.update(buffer, 0, read)
-                }
-            }
-            digest.digest().toHex()
-        }
-    } catch (_: Exception) {
-        null
-    }
-
     private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
 
     private companion object {

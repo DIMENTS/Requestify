@@ -5,6 +5,7 @@ import java.nio.file.Path
 import java.util.Base64
 import nl.diments.requestify.core.update.PendingUpdate
 import nl.diments.requestify.core.update.UpdateStore
+import nl.diments.requestify.core.update.sha256Of
 
 /**
  * The command for the install helper: a hidden PowerShell that waits for Requestify ([waitForPid]) to end, installs
@@ -50,6 +51,11 @@ private fun installingMarker(store: UpdateStore): Path = store.dir.resolve("inst
  */
 class UpdateLauncher(private val start: (List<String>) -> Long? = { detachedProcess(it).start().pid() }) {
     fun launch(pending: PendingUpdate, store: UpdateStore, launcher: Path, hidden: Boolean): Boolean {
+        // Checked once more right before installing: a file that changed since it was verified is fetched again later.
+        if (sha256Of(store.dir.resolve(pending.msiFile)) != pending.sha256) {
+            store.clearPending()
+            return false
+        }
         store.clearExitCode()
         val marker = installingMarker(store)
         val helper = try {

@@ -22,6 +22,13 @@ data class PendingUpdate(
     val from: String? = null,
 )
 
+/**
+ * A download of [version] that failed at [atEpochMs] (F-5): it is tried again a day later, or at once for a newer
+ * release, and logged once per version, also across runs. Names are stable.
+ */
+@Serializable
+data class FailedDownload(val version: String, val atEpochMs: Long)
+
 /** Requestify was just updated: the "Bijgewerkt" card shows this until the streamer closes it. Names are stable. */
 @Serializable
 data class JustUpdated(val from: String, val to: String, val notes: String)
@@ -34,6 +41,7 @@ data class JustUpdated(val from: String, val to: String, val notes: String)
 class UpdateStore(val dir: Path) {
     private val pendingFile get() = dir.resolve("pending.json")
     private val justUpdatedFile get() = dir.resolve("just-updated.json")
+    private val failedDownloadFile get() = dir.resolve("failed-download.json")
 
     /** Written by the install helper (`desktop/UpdateLauncher`) once `msiexec` ends. */
     val exitCodeFile: Path get() = dir.resolve("install-exit-code.txt")
@@ -71,6 +79,12 @@ class UpdateStore(val dir: Path) {
     }
 
     fun clearExitCode() = delete(exitCodeFile)
+
+    fun failedDownload(): FailedDownload? = read(failedDownloadFile, FailedDownload.serializer())
+
+    fun saveFailedDownload(f: FailedDownload) = write(failedDownloadFile, FailedDownload.serializer(), f)
+
+    fun clearFailedDownload() = delete(failedDownloadFile)
 
     fun justUpdated(): JustUpdated? = read(justUpdatedFile, JustUpdated.serializer())
 
