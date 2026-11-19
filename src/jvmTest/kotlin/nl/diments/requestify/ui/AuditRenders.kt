@@ -99,7 +99,7 @@ class AuditRenders {
                             graph.start()
                             var open by mutableStateOf<Destination?>(Destination.Home)
                             setContent { AppScaffold(graph, openOn = open) }
-                            waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.track != null }
+                            waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.isPlaying == true }
                             Thread.sleep(2_000)
                             waitForIdle()
                             val suffix = "${tag.substringBefore('-')}-${if (dark) "dark" else "light"}-${size.name}"

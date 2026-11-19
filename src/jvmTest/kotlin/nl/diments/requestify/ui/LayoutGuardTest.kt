@@ -191,7 +191,8 @@ class LayoutGuardTest {
                             graph.start()
                             var open by mutableStateOf<Destination?>(Destination.Home)
                             setContent { AppScaffold(graph, openOn = open) }
-                            waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.track != null }
+                            // Spotify's current song, not the last played one Now Playing shows (paused) until the first poll is in.
+                            waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.isPlaying == true }
                             waitForIdle()
                             for (destination in Destination.entries) {
                                 open = destination

@@ -16,9 +16,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.dp
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respondError
+import io.ktor.http.HttpStatusCode
 import java.awt.Color
 import java.awt.Font
 import java.awt.RenderingHints
@@ -129,7 +133,7 @@ class MotionStrips {
                         graph.start()
                         var open by mutableStateOf<Destination?>(Destination.Home)
                         setContent { CompositionLocalProvider(LocalReducedMotion provides reduced) { AppScaffold(graph, openOn = open) } }
-                        waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.track != null }
+                        waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.isPlaying == true }
                         Thread.sleep(2_000)
                         waitForIdle()
                         mainClock.autoAdvance = false
@@ -207,7 +211,7 @@ class MotionStrips {
                 setContent {
                     CompositionLocalProvider(LocalReducedMotion provides reduced) {
                         RequestifyTheme(BrandSeed, dark = true) {
-                            Surface(color = MaterialTheme.colorScheme.surface) { TitleBar(problems) }
+                            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) { TitleBar(problems) }
                         }
                     }
                 }
@@ -235,7 +239,7 @@ class MotionStrips {
                     setContent {
                         CompositionLocalProvider(LocalReducedMotion provides reduced) {
                             RequestifyTheme(BrandSeed, dark = true) {
-                                Surface(color = MaterialTheme.colorScheme.surface) { nl.diments.requestify.ui.setup.TwitchCard(p.vm, p.botVm) }
+                                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) { nl.diments.requestify.ui.setup.TwitchCard(p.vm, p.botVm) }
                             }
                         }
                     }
@@ -253,6 +257,74 @@ class MotionStrips {
         }
     }
 
+    /** The polished controls: choosing a donation platform, a stepper, the progress bar while a song plays. */
+    @Test
+    fun controls() {
+        if (out == null) return
+        dutch {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val dir = createTempDirectory("requestify-motion")
+            try {
+                runDesktopComposeUiTest(width = 760, height = 900) {
+                    val graph = AppGraph(
+                        AppPaths(dir, updatesDir = dir.resolve("updates")), InMemorySecretStore(),
+                        MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }, scope,
+                    )
+                    var screen by mutableStateOf("donations")
+                    setContent {
+                        CompositionLocalProvider(LocalReducedMotion provides reduced) {
+                            RequestifyTheme(BrandSeed, dark = true) {
+                                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                                    when (screen) {
+                                        "donations" -> nl.diments.requestify.ui.setup.DonationsCard(graph.donationsSetup)
+                                        else -> nl.diments.requestify.ui.rules.RulesScreen(graph.settings)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    waitForIdle()
+                    mainClock.autoAdvance = false
+                    strip("19-donations-choose-donolink", Crop(0, 0, 760, 700)) {
+                        graph.donationsSetup.choose(nl.diments.requestify.core.settings.DonationSourceKind.DonoLink)
+                    }
+                    mainClock.advanceTimeBy(1_000)
+                    strip("20-donations-back-to-none", Crop(0, 0, 760, 700)) {
+                        graph.donationsSetup.choose(nl.diments.requestify.core.settings.DonationSourceKind.None)
+                    }
+                    screen = "rules"
+                    mainClock.advanceTimeBy(1_000)
+                    strip("21-rules-stepper-up", Crop(400, 140, 360, 220), scale = 1.0) {
+                        onAllNodes(androidx.compose.ui.test.hasContentDescription("verhogen", substring = true) and hasClickAction())[0].performClick()
+                    }
+                }
+            } finally {
+                scope.cancel()
+                dir.deleteTestDir()
+            }
+        }
+        dutch {
+            runDesktopComposeUiTest(width = 400, height = 720) {
+                val a = Track("t1", "spotify:track:t1", "Midnight City", listOf("M83"), 243_000, false, null)
+                mainClock.autoAdvance = false
+                setContent {
+                    CompositionLocalProvider(LocalReducedMotion provides reduced) {
+                        RequestifyTheme(BrandSeed, dark = true) {
+                            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                                nl.diments.requestify.ui.home.NowPlayingPane(
+                                    NowPlaying(a, 60_000, isPlaying = true, request = null, sampledAtEpochMs = 0),
+                                    {}, {}, {}, {}, Modifier.width(400.dp).height(720.dp), clock = { mainClock.currentTime },
+                                )
+                            }
+                        }
+                    }
+                }
+                mainClock.advanceTimeBy(1_000)
+                strip("22-progress-bar-while-playing", Crop(20, 560, 360, 60), scale = 1.0) { }
+            }
+        }
+    }
+
     /** Now Playing on its own: a new song while paused clocks step, the play/pause icon. */
     @Test
     fun nowPlayingPane() {
@@ -266,7 +338,7 @@ class MotionStrips {
                 setContent {
                     CompositionLocalProvider(LocalReducedMotion provides reduced) {
                         RequestifyTheme(BrandSeed, dark = true) {
-                            Surface(color = MaterialTheme.colorScheme.surface) {
+                            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
                                 nl.diments.requestify.ui.home.NowPlayingPane(np, {}, {}, {}, {}, Modifier.width(400.dp).height(720.dp), clock = { mainClock.currentTime })
                             }
                         }
