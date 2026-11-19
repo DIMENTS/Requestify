@@ -7,8 +7,7 @@ import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
@@ -65,7 +64,8 @@ class AuditRenders {
 
     private fun ComposeUiTest.capture(name: String) {
         val dir = out ?: return
-        ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", dir.resolve("$name.png").toFile())
+        // The window itself, also while a menu or a dialog is open as a second root.
+        ImageIO.write(onAllNodes(isRoot())[0].captureToImage().toAwtImage(), "png", dir.resolve("$name.png").toFile())
     }
 
     private fun inLanguage(tag: String, block: () -> Unit) {
@@ -121,7 +121,7 @@ class AuditRenders {
     }
 
     /**
-     * The Twitch card connected (an affiliate, Kanaalpunten on, the bot a moderator) at the page width of the smallest
+     * The Twitch card connected (an affiliate, the bot a moderator) at the page width of the smallest
      * window (576 dp) and of the default one (760 dp), in both languages.
      */
     @Test
@@ -147,10 +147,6 @@ class AuditRenders {
                                 }
                             }
                         }
-                        Thread.sleep(300)
-                        waitForIdle()
-                        val points = onAllNodes(androidx.compose.ui.test.hasContentDescription("Kanaalpunten-beloning") or androidx.compose.ui.test.hasContentDescription("Channel Points reward"))
-                        if (points.fetchSemanticsNodes().isNotEmpty()) points[0].performClick()
                         Thread.sleep(500)
                         waitForIdle()
                         capture("twitch-connected-${tag.substringBefore('-')}-$width")
