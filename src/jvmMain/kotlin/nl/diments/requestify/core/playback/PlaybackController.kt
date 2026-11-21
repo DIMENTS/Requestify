@@ -91,6 +91,7 @@ sealed interface SpotifyHealth {
  * before it (its Web API takes a moment to catch up). [upcomingRefreshMs]: how often Spotify's queue is read again
  * when nothing else asked for it, and how often the saved position of the song playing is brought up to date.
  * [recentlyPlayedRefreshMs]: how often Spotify's recently played song is asked for while nothing is active.
+ * [deviceCheckMs]: how often Spotify's devices are read again while nothing is active, to make one active.
  */
 data class PlaybackConfig(
     val handoverLeadMs: Long = 15_000,
@@ -100,6 +101,7 @@ data class PlaybackConfig(
     val playIntentSettleMs: Long = 4_000,
     val upcomingRefreshMs: Long = 30_000,
     val recentlyPlayedRefreshMs: Long = 60_000,
+    val deviceCheckMs: Long = 6_000,
 )
 
 /**
@@ -120,6 +122,11 @@ data class PlaybackConfig(
  * Besides the polls, Spotify's queue ([upcoming]) and its recently played songs are read only when something
  * changed or a while has passed, never on every poll. None of these reads ever changes [health], but when Spotify
  * asks to wait after one, the next poll waits as it does after any other call.
+ *
+ * Spotify's Web API only reaches its active device, and Spotify lets a device go when it has not played for a
+ * while (or was just opened). So while nothing is active, the first device Spotify lists is made active, without
+ * playing: at once, also at startup, and again every [PlaybackConfig.deviceCheckMs] until one is. Only when no
+ * device takes commands does [health] say so ([SpotifyHealth.NoActiveDevice]).
  */
 class PlaybackController(
     private val player: SpotifyPlayer,
@@ -145,6 +152,9 @@ class PlaybackController(
 
     /** When Spotify's queue is read, and what of it is shown. Guarded by [spotifyMutex]. */
     private val upcomingBook = UpcomingBook(config, clock)
+
+    /** When Spotify's devices are read while nothing is active, and which is made active. Guarded by [spotifyMutex]. */
+    private val deviceBook = DeviceBook(config, clock)
 
     val queue: StateFlow<RequestQueue> = _queue.asStateFlow()
 
@@ -501,12 +511,16 @@ class PlaybackController(
     /**
      * Spotify answered a play, pause, skip or previous command; a refusal shows in [health]. With nothing active a
      * poll cannot tell that a device is missing, so after a refusal for that reason [health] keeps saying so until
-     * something plays or a command is taken. Caller holds [stateMutex].
+     * something plays, a command is taken or a device is made active, which the next tick tries at once. Caller holds
+     * [spotifyMutex] and [stateMutex].
      */
     private fun commandAnswered(result: SpotifyResult<Unit>) {
         when (result) {
             is SpotifyResult.Ok -> commandFoundNoDevice = false
-            SpotifyResult.NoActiveDevice -> commandFoundNoDevice = true
+            SpotifyResult.NoActiveDevice -> {
+                commandFoundNoDevice = true
+                deviceBook.markStale()
+            }
             else -> Unit
         }
         if (result !is SpotifyResult.Ok) _health.value = healthOf(result)
@@ -610,6 +624,8 @@ class PlaybackController(
             ?.let { since -> player.recentlyPlayedSince(since) }
         val recentAskedUnder = if (cp == null) withState { lastPlayedBook.recentlyPlayedDue() } else null
         val recent = recentAskedUnder?.let { player.recentlyPlayed() }
+        if (cp != null) deviceBook.reset() // look again as soon as nothing is active
+        val connect = if (cp == null && deviceBook.due()) connectDevice() else null
         val remainingMs = if (cp != null && track != null) track.durationMs - cp.progressMs else null
         val head = withState {
             wake.tryReceive()
@@ -638,22 +654,38 @@ class PlaybackController(
                 commandFoundNoDevice = false
                 if (upcoming is SpotifyResult.Ok) _upcoming.value = upcomingBook.from(upcoming.value, _handedOver.value)
             }
+            if (connect?.madeActive == true) commandFoundNoDevice = false
             _health.value = when {
                 handOverResult != null && handOverResult !is SpotifyResult.Ok -> healthOf(handOverResult)
-                cp == null && commandFoundNoDevice -> SpotifyHealth.NoActiveDevice
+                cp == null && (commandFoundNoDevice || deviceBook.noDevice) -> SpotifyHealth.NoActiveDevice
                 cp == null -> SpotifyHealth.NothingPlaying
                 else -> SpotifyHealth.Ok
             }
             val pollMs = when {
                 playIntent != null -> config.nearEndPollMs // soon picks up Spotify's confirmation
                 nearEnd -> config.nearEndPollMs
+                connect?.madeActive == true -> config.nearEndPollMs // soon shows what the device has
                 else -> config.idlePollMs
             }
             // Spotify asked to wait, also when only an extra read was refused: no sooner than it said, nor than usual.
-            val limited = listOf(handOverResult, upcoming, recent, playedSince)
+            val limited = listOf(handOverResult, upcoming, recent, playedSince, connect?.result)
                 .firstNotNullOfOrNull { it as? SpotifyResult.RateLimited }
             if (limited != null) NextTick(maxOf(retryAfterMs(limited), pollMs), wakeable = false) else NextTick(pollMs)
         }
+    }
+
+    /**
+     * Spotify has nothing active, so it would refuse every request and command: reads its devices and, unless one is
+     * active already, makes the first that takes commands active, wherever Spotify runs on it. Nothing starts
+     * playing there. A refusal changes nothing and is tried again at the next read. Caller holds [spotifyMutex].
+     */
+    private suspend fun connectDevice(): DeviceConnect {
+        deviceBook.markRead()
+        val devices = player.devices()
+        val id = (devices as? SpotifyResult.Ok)?.value?.let(deviceBook::pick)
+            ?: return DeviceConnect(devices, madeActive = false)
+        val transferred = player.transferPlayback(id)
+        return DeviceConnect(transferred, madeActive = transferred is SpotifyResult.Ok)
     }
 
     /**
@@ -887,6 +919,9 @@ class PlaybackController(
 
     /** When the loop polls again; a rate-limit wait is not cut short by wake-ups. */
     private class NextTick(val afterMs: Long, val wakeable: Boolean = true)
+
+    /** How [connectDevice] went: Spotify's last answer, and whether a device is active now. */
+    private class DeviceConnect(val result: SpotifyResult<*>, val madeActive: Boolean)
 
     /** A pause or resume Spotify has not confirmed yet: [shown] is what it showed, until [untilEpochMs]. */
     private class PlayIntent(val shown: NowPlaying, val untilEpochMs: Long)

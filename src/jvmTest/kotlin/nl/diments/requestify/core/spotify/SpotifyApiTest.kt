@@ -6,9 +6,11 @@ import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import java.io.IOException
 import kotlin.test.Test
@@ -19,6 +21,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import nl.diments.requestify.core.auth.TokenResult
 import nl.diments.requestify.core.model.Track
 
@@ -315,6 +318,34 @@ class SpotifyApiTest {
         assertEquals(HttpMethod.Post, seen!!.method)
         assertEquals("/v1/me/player/queue", seen.url.encodedPath)
         assertTrue(seen.url.encodedQuery.contains("uri=spotify%3Atrack%3A1B75hgRqe7A4fwee3g3Wmu"))
+    }
+
+    @Test
+    fun devicesKeepSpotifysOrderAndTellWhichTakeCommands() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val result = api { req -> seen = req; fixtureOk("devices.json") }.devices()
+        assertEquals(
+            listOf(
+                SpotifyDevice("tv-1", isActive = false, isRestricted = true),
+                SpotifyDevice("pc-1", isActive = true, isRestricted = false),
+                SpotifyDevice(null, isActive = false, isRestricted = false),
+            ),
+            result.ok(),
+        )
+        assertEquals(HttpMethod.Get, seen!!.method)
+        assertEquals("/v1/me/player/devices", seen.url.encodedPath)
+    }
+
+    @Test
+    fun transferPlaybackMakesTheDeviceActiveWithoutPlaying() = runBlocking<Unit> {
+        var seen: HttpRequestData? = null
+        val result = api { req -> seen = req; respond("", HttpStatusCode.NoContent) }.transferPlayback("pc-1")
+        assertEquals(Unit, result.ok())
+        assertEquals(HttpMethod.Put, seen!!.method)
+        assertEquals("/v1/me/player", seen.url.encodedPath)
+        val body = assertIs<TextContent>(seen.body)
+        assertEquals(ContentType.Application.Json, body.contentType.withoutParameters())
+        assertEquals(Json.parseToJsonElement("""{"device_ids":["pc-1"],"play":false}"""), Json.parseToJsonElement(body.text))
     }
 
     @Test

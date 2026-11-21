@@ -3,12 +3,15 @@ package nl.diments.requestify.core.spotify
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.request
+import io.ktor.client.request.setBody
 import io.ktor.client.request.url
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.URLBuilder
 import io.ktor.http.appendPathSegments
+import io.ktor.http.content.TextContent
 import java.time.Instant
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
@@ -50,6 +53,12 @@ data class CurrentlyPlaying(val track: Track?, val progressMs: Long, val isPlayi
 /** The last track that played and when Spotify logged it, which is when its play ended, in epoch milliseconds. */
 data class RecentTrack(val track: Track, val playedAtEpochMs: Long)
 
+/**
+ * A device Spotify lists for the account: one where Spotify is open and logged in, on any network. Spotify gives
+ * some devices no [id], and a [isRestricted] one takes no Web API commands.
+ */
+data class SpotifyDevice(val id: String?, val isActive: Boolean, val isRestricted: Boolean)
+
 /** The port the playback controller uses. */
 interface SpotifyPlayer {
     /** `Ok(null)` when nothing is playing (HTTP 204). */
@@ -72,6 +81,15 @@ interface SpotifyPlayer {
     suspend fun skipPrevious(): SpotifyResult<Unit>
     suspend fun pause(): SpotifyResult<Unit>
     suspend fun resume(): SpotifyResult<Unit>
+
+    /** The devices Spotify lists for the account, in Spotify's order. */
+    suspend fun devices(): SpotifyResult<List<SpotifyDevice>>
+
+    /**
+     * Makes [deviceId] the active device, the one every other command reaches, without starting playback there: it
+     * keeps the paused state.
+     */
+    suspend fun transferPlayback(deviceId: String): SpotifyResult<Unit>
 }
 
 /** An artist as search and lookup answer it. */
@@ -154,6 +172,16 @@ class SpotifyApi(
     override suspend fun resume(): SpotifyResult<Unit> =
         execute(HttpMethod.Put, "me", "player", "play") { }
 
+    override suspend fun devices(): SpotifyResult<List<SpotifyDevice>> =
+        execute(HttpMethod.Get, "me", "player", "devices") { body ->
+            json.decodeFromString<DevicesDto>(body).devices.map {
+                SpotifyDevice(it.id?.takeIf(String::isNotBlank), it.isActive, it.isRestricted)
+            }
+        }
+
+    override suspend fun transferPlayback(deviceId: String): SpotifyResult<Unit> =
+        execute(HttpMethod.Put, "me", "player", body = json.encodeToString(TransferDto(listOf(deviceId), play = false))) { }
+
     override suspend fun searchTracks(query: String, limit: Int): SpotifyResult<List<Track>> =
         execute(
             HttpMethod.Get,
@@ -196,6 +224,7 @@ class SpotifyApi(
         method: HttpMethod,
         segments: List<String>,
         params: List<Pair<String, String>>,
+        body: String?,
         bearer: String,
     ): Raw = withTimeout(requestTimeoutMs) {
         val response = http.request {
@@ -207,25 +236,30 @@ class SpotifyApi(
                 }.build(),
             )
             header(HttpHeaders.Authorization, "Bearer $bearer")
+            if (body != null) setBody(TextContent(body, ContentType.Application.Json))
         }
         Raw(response.status.value, response.headers[HttpHeaders.RetryAfter], response.bodyAsText())
     }
 
-    /** The shared request helper: auth + one forced-refresh retry, error mapping, lenient success parsing. */
+    /**
+     * The shared request helper: auth + one forced-refresh retry, error mapping, lenient success parsing. [body] is
+     * sent as JSON.
+     */
     private suspend fun <T> execute(
         method: HttpMethod,
         vararg segments: String,
         params: List<Pair<String, String>> = emptyList(),
+        body: String? = null,
         onSuccess: (body: String) -> T,
     ): SpotifyResult<T> = try {
         val path = segments.toList()
         withToken(token(false)) { bearer ->
-            val raw = send(method, path, params, bearer)
+            val raw = send(method, path, params, body, bearer)
             if (raw.status != 401) {
                 map(raw, onSuccess)
             } else {
                 withToken(token(true)) { refreshed ->
-                    val retried = send(method, path, params, refreshed)
+                    val retried = send(method, path, params, body, refreshed)
                     if (retried.status == 401) SpotifyResult.LoginNeeded else map(retried, onSuccess)
                 }
             }
@@ -288,6 +322,19 @@ class SpotifyApi(
         @SerialName("is_playing") val isPlaying: Boolean = false,
         val item: TrackDto? = null,
     )
+
+    @Serializable
+    private class DevicesDto(val devices: List<DeviceDto> = emptyList())
+
+    @Serializable
+    private class DeviceDto(
+        val id: String? = null,
+        @SerialName("is_active") val isActive: Boolean = false,
+        @SerialName("is_restricted") val isRestricted: Boolean = false,
+    )
+
+    @Serializable
+    private class TransferDto(@SerialName("device_ids") val deviceIds: List<String>, val play: Boolean)
 
     @Serializable
     private class QueueDto(val queue: List<QueueItemDto> = emptyList())

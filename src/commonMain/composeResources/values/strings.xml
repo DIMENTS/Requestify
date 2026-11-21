@@ -111,7 +111,7 @@
     <string name="setup_premium_missing">Requestify needs Spotify Premium</string>
     <string name="setup_premium_unknown">Premium is checked when the first track plays</string>
     <string name="setup_device_ok">Requests are added to the device Spotify is playing on.</string>
-    <string name="setup_device_hint">Start music in Spotify, on this PC or another device. Requests are added to that device.</string>
+    <string name="setup_device_hint">Open Spotify on this PC or another device. Requestify connects to it by itself and adds requests to that device.</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Appearance</string>

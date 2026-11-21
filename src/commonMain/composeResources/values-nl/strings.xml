@@ -111,7 +111,7 @@
     <string name="setup_premium_missing">Requestify heeft Spotify Premium nodig</string>
     <string name="setup_premium_unknown">Premium wordt gecontroleerd zodra het eerste nummer speelt</string>
     <string name="setup_device_ok">Verzoeken komen op het apparaat waarop Spotify speelt.</string>
-    <string name="setup_device_hint">Start muziek in Spotify, op deze pc of een ander apparaat. Verzoeken komen op dat apparaat.</string>
+    <string name="setup_device_hint">Open Spotify op deze pc of een ander apparaat. Requestify maakt er zelf verbinding mee en zet verzoeken op dat apparaat.</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Weergave</string>

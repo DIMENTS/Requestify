@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.spotify.CurrentlyPlaying
 import nl.diments.requestify.core.spotify.RecentTrack
+import nl.diments.requestify.core.spotify.SpotifyDevice
 import nl.diments.requestify.core.spotify.SpotifyPlayer
 import nl.diments.requestify.core.spotify.SpotifyResult
 
@@ -49,6 +50,16 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
 
     /** When set, [pause] and [resume] wait for it before answering, like a slow Spotify. */
     var playCommandGate: CompletableDeferred<Unit>? = null
+
+    /** What [devices] answers; by default one device that is active already, so nothing is transferred. */
+    var devicesResult: SpotifyResult<List<SpotifyDevice>> =
+        SpotifyResult.Ok(listOf(SpotifyDevice("pc", isActive = true, isRestricted = false)))
+
+    /**
+     * Answers for the next [transferPlayback] calls, in order; `Ok` once used up. One that works makes that device
+     * the active one in [devicesResult], as Spotify does.
+     */
+    val transferResults = ArrayDeque<SpotifyResult<Unit>>()
 
     /**
      * After a [pause] or [resume] that worked, this many polls still report the play state from before it, like
@@ -114,6 +125,22 @@ class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     override suspend fun skipPrevious(): SpotifyResult<Unit> {
         record("skipPrevious")
         return previousResult
+    }
+
+    override suspend fun devices(): SpotifyResult<List<SpotifyDevice>> {
+        record("devices")
+        return devicesResult
+    }
+
+    /** Recorded with [deviceId] as its argument. */
+    override suspend fun transferPlayback(deviceId: String): SpotifyResult<Unit> {
+        record("transferPlayback", deviceId)
+        val result = transferResults.removeFirstOrNull() ?: SpotifyResult.Ok(Unit)
+        val listed = (devicesResult as? SpotifyResult.Ok)?.value
+        if (result is SpotifyResult.Ok && listed != null) {
+            devicesResult = SpotifyResult.Ok(listed.map { it.copy(isActive = it.id == deviceId) })
+        }
+        return result
     }
 
     override suspend fun pause(): SpotifyResult<Unit> = playCommand("pause", isPlaying = false)
