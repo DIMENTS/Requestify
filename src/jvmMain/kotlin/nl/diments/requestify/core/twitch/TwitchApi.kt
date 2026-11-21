@@ -376,7 +376,7 @@ class TwitchApi(
             is TokenResult.Ok -> call(result.token)
             TokenResult.LoggedOut -> TwitchResult.LoggedOut
             TokenResult.LoginNeeded -> TwitchResult.LoginNeeded
-            TokenResult.Unavailable -> TwitchResult.Failed(TOKEN_UNAVAILABLE)
+            is TokenResult.Unavailable -> TwitchResult.Failed(TOKEN_UNAVAILABLE)
         }
 
     private fun <T> map(raw: Raw, conflictIsOk: Boolean, onSuccess: (String) -> T): TwitchResult<T> = when (raw.status) {

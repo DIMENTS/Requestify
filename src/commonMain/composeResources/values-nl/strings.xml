@@ -435,6 +435,7 @@
     <string name="log_step_refund_gave_up">Terugbetaling mislukt</string>
     <string name="log_step_fulfilled">Inwisseling afgerond</string>
     <string name="log_conn_lost">Verbinding verbroken</string>
+    <string name="log_conn_lost_because">Verbinding verbroken: %1$s</string>
     <string name="log_conn_restored">Hersteld</string>
     <string name="log_conn_restored_after">Verbinding verbroken · na %1$s hersteld</string>
     <string name="log_conn_login_expired">Login verlopen</string>

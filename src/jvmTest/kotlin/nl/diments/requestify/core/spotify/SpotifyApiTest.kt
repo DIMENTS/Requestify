@@ -140,9 +140,15 @@ class SpotifyApiTest {
     @Test
     fun unavailableTokenIsAFailureNotALogin() = runBlocking<Unit> {
         var calls = 0
-        val result = api(token = { TokenResult.Unavailable }) { calls++; respond("", HttpStatusCode.OK) }.pause()
+        val result = api(token = { TokenResult.Unavailable() }) { calls++; respond("", HttpStatusCode.OK) }.pause()
         assertEquals(SpotifyResult.Failed("token unavailable"), result)
         assertEquals(0, calls)
+    }
+
+    @Test
+    fun anUnavailableTokenSaysWhy() = runBlocking<Unit> {
+        val result = api(token = { TokenResult.Unavailable("HTTP 429") }) { error("no call") }.currentlyPlaying()
+        assertEquals(SpotifyResult.Failed("token unavailable: HTTP 429"), result)
     }
 
     @Test
@@ -155,7 +161,7 @@ class SpotifyApiTest {
 
     @Test
     fun unavailableTokenAfterRefreshIsAFailure() = runBlocking<Unit> {
-        val result = api(token = { force -> if (force) TokenResult.Unavailable else TokenResult.Ok("old") }) {
+        val result = api(token = { force -> if (force) TokenResult.Unavailable() else TokenResult.Ok("old") }) {
             respond("", HttpStatusCode.Unauthorized)
         }.pause()
         assertEquals(SpotifyResult.Failed("token unavailable"), result)

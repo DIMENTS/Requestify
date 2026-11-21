@@ -229,11 +229,12 @@ class SpotifyAuth(
                 r.status to r.bodyAsText()
             }
         } catch (_: TimeoutCancellationException) {
-            return Obtained.Missing(TokenResult.Unavailable) // hung connection: transient, keep the login
+            return Obtained.Missing(TokenResult.Unavailable("timeout")) // hung connection: transient, keep the login
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            return Obtained.Missing(TokenResult.Unavailable) // network blip: keep the login
+        } catch (e: Exception) {
+            // Network blip: keep the login.
+            return Obtained.Missing(TokenResult.Unavailable(e.message ?: e::class.simpleName))
         }
         val (code, body) = response
         // Apply the result only if no logout()/login() happened while the request was in flight.
@@ -242,7 +243,7 @@ class SpotifyAuth(
                 val token = try {
                     json.decodeFromString<TokenResponse>(body)
                 } catch (_: Exception) {
-                    return Obtained.Missing(TokenResult.Unavailable)
+                    return Obtained.Missing(TokenResult.Unavailable("unreadable token"))
                 }
                 synchronized(stateLock) {
                     if (generation != startGeneration) return@synchronized superseded()
@@ -266,7 +267,8 @@ class SpotifyAuth(
                 _status.value = SpotifyAuthStatus.LoginNeeded("Spotify refused the saved login (HTTP ${code.value})")
                 Obtained.Missing(TokenResult.LoginNeeded)
             }
-            else -> Obtained.Missing(TokenResult.Unavailable) // rate limit or Spotify trouble: keep the login
+            // Rate limit or Spotify trouble: keep the login.
+            else -> Obtained.Missing(TokenResult.Unavailable("HTTP ${code.value}"))
         }
     }
 
@@ -279,7 +281,7 @@ class SpotifyAuth(
         when (_status.value) {
             SpotifyAuthStatus.LoggedOut -> TokenResult.LoggedOut
             is SpotifyAuthStatus.LoginNeeded -> TokenResult.LoginNeeded
-            SpotifyAuthStatus.LoggedIn -> TokenResult.Unavailable // a new login: the next call uses its token
+            SpotifyAuthStatus.LoggedIn -> TokenResult.Unavailable() // a new login: the next call uses its token
         },
     )
 

@@ -243,7 +243,7 @@ class TwitchAuth(
         }
         when (whoAmI(first.value)) {
             is Identity.Known -> return TokenResult.Ok(first.value)
-            Identity.Unavailable -> return TokenResult.Unavailable
+            Identity.Unavailable -> return TokenResult.Unavailable()
             Identity.Refused -> Unit
         }
         val second = when (val got = obtain(forceRefresh = true)) {
@@ -252,7 +252,7 @@ class TwitchAuth(
         }
         return when (whoAmI(second.value)) {
             is Identity.Known -> TokenResult.Ok(second.value)
-            Identity.Unavailable -> TokenResult.Unavailable
+            Identity.Unavailable -> TokenResult.Unavailable()
             Identity.Refused -> {
                 markLoginNeeded("Twitch refused the token after a refresh")
                 TokenResult.LoginNeeded
@@ -326,7 +326,7 @@ class TwitchAuth(
             // roll-back of a login change it. The next call reads it again.
             return Obtained.Missing(
                 synchronized(stateLock) {
-                    if (_status.value == TwitchAuthStatus.LoggedIn) TokenResult.Unavailable else TokenResult.LoggedOut
+                    if (_status.value == TwitchAuthStatus.LoggedIn) TokenResult.Unavailable() else TokenResult.LoggedOut
                 },
             )
         }
@@ -334,14 +334,14 @@ class TwitchAuth(
             append("client_id", TWITCH_CLIENT_ID)
             append("grant_type", "refresh_token")
             append("refresh_token", refreshToken) // submitForm URL-encodes it; Twitch needs that
-        } ?: return Obtained.Missing(TokenResult.Unavailable) // network blip or hung connection: keep the login
+        } ?: return Obtained.Missing(TokenResult.Unavailable()) // network blip or hung connection: keep the login
         // Apply the result only if no logout()/login happened while the request was in flight.
         return when {
             code == HttpStatusCode.OK -> {
                 val token = try {
                     json.decodeFromString<TokenResponse>(body)
                 } catch (_: Exception) {
-                    return Obtained.Missing(TokenResult.Unavailable)
+                    return Obtained.Missing(TokenResult.Unavailable())
                 }
                 synchronized(stateLock) {
                     if (generation != startGeneration) return@synchronized superseded()
@@ -360,7 +360,7 @@ class TwitchAuth(
                 forget("Twitch refused the saved login (HTTP ${code.value})")
                 Obtained.Missing(TokenResult.LoginNeeded)
             }
-            else -> Obtained.Missing(TokenResult.Unavailable) // rate limit or Twitch trouble: keep the login
+            else -> Obtained.Missing(TokenResult.Unavailable()) // rate limit or Twitch trouble: keep the login
         }
     }
 
@@ -380,7 +380,7 @@ class TwitchAuth(
         when (_status.value) {
             TwitchAuthStatus.LoggedOut -> TokenResult.LoggedOut
             is TwitchAuthStatus.LoginNeeded -> TokenResult.LoginNeeded
-            TwitchAuthStatus.LoggedIn -> TokenResult.Unavailable // a new login: the next call uses its token
+            TwitchAuthStatus.LoggedIn -> TokenResult.Unavailable() // a new login: the next call uses its token
         },
     )
 

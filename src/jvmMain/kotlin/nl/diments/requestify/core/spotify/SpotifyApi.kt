@@ -278,7 +278,8 @@ class SpotifyApi(
             is TokenResult.Ok -> call(result.token)
             TokenResult.LoggedOut -> SpotifyResult.LoggedOut
             TokenResult.LoginNeeded -> SpotifyResult.LoginNeeded
-            TokenResult.Unavailable -> SpotifyResult.Failed(TOKEN_UNAVAILABLE)
+            is TokenResult.Unavailable ->
+                SpotifyResult.Failed(result.reason?.let { "$TOKEN_UNAVAILABLE: $it" } ?: TOKEN_UNAVAILABLE)
         }
 
     private fun <T> map(raw: Raw, onSuccess: (String) -> T): SpotifyResult<T> = when (raw.status) {

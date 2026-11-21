@@ -116,6 +116,33 @@ class LogScreenTest {
     }
 
     @Test
+    fun anOutageSaysWhyItStarted() = runComposeUiTest {
+        val outage = foldRows(
+            listOf(
+                LogRecord.ConnectionChanged("c1", at, LogService.Spotify, LogConnectionState.Lost, detail = "HTTP 503"),
+                LogRecord.ConnectionChanged("c1", at + 60_000, LogService.Spotify, LogConnectionState.Restored),
+            ),
+        )
+        val vm = LogViewModel(MutableStateFlow(outage), MutableStateFlow(null), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
+
+        onAllNodesWithTag(LOG_ROW_TAG).onFirst().performClick()
+        waitForIdle()
+        onNodeWithText("Connection lost: HTTP 503").assertIsDisplayed()
+    }
+
+    @Test
+    fun anOpenOutageSaysWhyInItsTitle() = runComposeUiTest {
+        val outage = foldRows(
+            listOf(LogRecord.ConnectionChanged("c1", at, LogService.Spotify, LogConnectionState.Lost, detail = "timeout")),
+        )
+        val vm = LogViewModel(MutableStateFlow(outage), MutableStateFlow(null), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
+
+        onNodeWithText("Connection lost: timeout").assertIsDisplayed()
+    }
+
+    @Test
     fun aWriteErrorShowsTheBanner() = runComposeUiTest {
         val vm = vm(error = "disk full")
         setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }

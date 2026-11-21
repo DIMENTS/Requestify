@@ -366,7 +366,7 @@ class TwitchApiTest {
     fun tokenAnswersMapToResults() = runBlocking<Unit> {
         assertEquals(TwitchResult.LoggedOut, api(token = { TokenResult.LoggedOut }) { error("no call") }.isLive())
         assertEquals(TwitchResult.LoginNeeded, api(token = { TokenResult.LoginNeeded }) { error("no call") }.isLive())
-        assertIs<TwitchResult.Failed>(api(token = { TokenResult.Unavailable }) { error("no call") }.isLive())
+        assertIs<TwitchResult.Failed>(api(token = { TokenResult.Unavailable() }) { error("no call") }.isLive())
     }
 
     @Test

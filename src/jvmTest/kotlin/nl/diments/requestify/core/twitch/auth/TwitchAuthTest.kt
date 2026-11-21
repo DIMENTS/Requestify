@@ -237,7 +237,7 @@ class TwitchAuthTest {
     fun networkErrorDuringRefreshKeepsLogin() = runBlocking {
         val secrets = secretsWith()
         val a = auth(secrets) { throw IOException("offline") }
-        assertEquals(TokenResult.Unavailable, a.token())
+        assertEquals(TokenResult.Unavailable(), a.token())
         assertEquals("r1", secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
         assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
     }
@@ -247,7 +247,7 @@ class TwitchAuthTest {
         for (code in listOf(408, 429, 500, 503)) {
             val secrets = secretsWith()
             val a = auth(secrets) { respond("", HttpStatusCode.fromValue(code)) }
-            assertEquals(TokenResult.Unavailable, a.token(), "HTTP $code")
+            assertEquals(TokenResult.Unavailable(), a.token(), "HTTP $code")
             assertEquals("r1", secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN), "HTTP $code")
             assertEquals(TwitchAuthStatus.LoggedIn, a.status.value, "HTTP $code")
         }
@@ -313,7 +313,7 @@ class TwitchAuthTest {
         val a = auth(secrets) { req ->
             if (req.url.encodedPath == "/oauth2/token") tokens("a1", "r2") else throw IOException("offline")
         }
-        assertEquals(TokenResult.Unavailable, a.validate())
+        assertEquals(TokenResult.Unavailable(), a.validate())
         assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
         assertEquals("r2", secrets.get(SecretKeys.TWITCH_REFRESH_TOKEN))
     }
@@ -341,7 +341,7 @@ class TwitchAuthTest {
         assertEquals(TwitchAuthStatus.LoggedIn, a.status.value)
 
         unreadable = true
-        assertEquals(TokenResult.Unavailable, a.token(), "a read failure: try again later")
+        assertEquals(TokenResult.Unavailable(), a.token(), "a read failure: try again later")
         assertEquals(TwitchAuthStatus.LoggedIn, a.status.value, "the login stays")
 
         unreadable = false
@@ -428,7 +428,7 @@ class TwitchAuthTest {
         val a = auth(secrets) { if (n++ == 0) tokens("a1", "r2") else respond("", HttpStatusCode.ServiceUnavailable) }
         assertEquals(TokenResult.Ok("a1"), a.token())
         secrets.failPut = false
-        assertEquals(TokenResult.Unavailable, a.token(forceRefresh = true))
+        assertEquals(TokenResult.Unavailable(), a.token(forceRefresh = true))
         assertEquals("r2", stored.get(SecretKeys.TWITCH_REFRESH_TOKEN))
     }
 

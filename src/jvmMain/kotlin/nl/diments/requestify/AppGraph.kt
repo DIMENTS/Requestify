@@ -62,6 +62,7 @@ import nl.diments.requestify.core.log.LogInputs
 import nl.diments.requestify.core.log.LogService
 import nl.diments.requestify.core.log.LogStore
 import nl.diments.requestify.core.log.PreviousRun
+import nl.diments.requestify.core.log.spotifyConnection
 import nl.diments.requestify.core.log.updateRecord
 import nl.diments.requestify.core.update.UpdateEvent
 import nl.diments.requestify.desktop.Autostart
@@ -533,7 +534,6 @@ class AppGraph(
             refunds = redemptionOutbox.results,
             gate = gate.events,
             connections = merge(
-                controller.health.map { LogService.Spotify to it.toSnapshot() },
                 twitchSession.health.map { LogService.Twitch to it.toSnapshot() },
                 donationConnections(donationSources.health, System::currentTimeMillis),
             ),
@@ -542,6 +542,7 @@ class AppGraph(
             previousRun = previousRun,
             updates = updates.events,
             reports = merge(
+                controller.health.map(::spotifyConnection),
                 combine(twitchBot.health, twitchBot.drops.dropping) { health, dropping -> botReport(health, dropping) },
                 chatSender.streamerDrops.dropping.map { dropping ->
                     ConnectionReport(LogService.TwitchChat, if (dropping == null) ConnectionSnapshot.Up else ConnectionSnapshot.MessagesDropped, dropping)
@@ -721,13 +722,6 @@ class AppGraph(
         } catch (_: Exception) {
         }
     }
-}
-
-/** Spotify as the Log sees it: a playback state (nothing playing, no device, not set up) is no connection news. */
-private fun SpotifyHealth.toSnapshot(): ConnectionSnapshot = when (this) {
-    SpotifyHealth.LoginNeeded -> ConnectionSnapshot.LoginExpired
-    is SpotifyHealth.Unreachable -> ConnectionSnapshot.Down
-    else -> ConnectionSnapshot.Up
 }
 
 /** The streamer's Twitch health with the bot's problems added, for the chip, the tray and the notifier. */

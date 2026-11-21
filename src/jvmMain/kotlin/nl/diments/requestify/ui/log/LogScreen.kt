@@ -59,6 +59,7 @@ import nl.diments.requestify.resources.log_conn_login_expired
 import nl.diments.requestify.resources.log_conn_lost
 import nl.diments.requestify.resources.log_conn_restored
 import nl.diments.requestify.resources.log_conn_restored_after
+import nl.diments.requestify.resources.log_conn_lost_because
 import nl.diments.requestify.resources.log_details_close
 import nl.diments.requestify.resources.log_details_message
 import nl.diments.requestify.resources.log_details_source
@@ -379,10 +380,15 @@ private fun LogStep.text(): String = when (this) {
     is LogStep.Resolved -> stringResource(Res.string.log_step_track, track.name)
 }
 
-/** [detail]: why messages were held back, for [LogConnectionState.MessagesDropped]. */
+/**
+ * [detail]: why messages were held back, for [LogConnectionState.MessagesDropped], or why a connection was lost, for
+ * [LogConnectionState.Lost] (when known).
+ */
 @Composable
 private fun LogConnectionState.text(detail: String? = null): String = if (this == LogConnectionState.MessagesDropped) {
     stringResource(Res.string.log_conn_messages_dropped, detail.orEmpty())
+} else if (this == LogConnectionState.Lost && detail != null) {
+    stringResource(Res.string.log_conn_lost_because, detail)
 } else stringResource(
     when (this) {
         LogConnectionState.Lost -> Res.string.log_conn_lost

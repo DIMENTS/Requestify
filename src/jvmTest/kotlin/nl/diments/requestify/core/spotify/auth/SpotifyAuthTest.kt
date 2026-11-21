@@ -229,7 +229,7 @@ class SpotifyAuthTest {
     fun networkErrorIsUnavailableNotLoginNeeded() = runBlocking {
         val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
         val a = auth(secrets) { throw IOException("offline") }
-        assertEquals(TokenResult.Unavailable, a.token())
+        assertEquals(TokenResult.Unavailable("offline"), a.token(), "says why")
         assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN))
         assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
     }
@@ -238,7 +238,7 @@ class SpotifyAuthTest {
     fun hungRefreshIsUnavailable() = runBlocking {
         val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
         val a = auth(secrets, requestTimeoutMs = 50) { awaitCancellation() }
-        assertEquals(TokenResult.Unavailable, a.token())
+        assertEquals(TokenResult.Unavailable("timeout"), a.token())
         assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value)
     }
 
@@ -247,7 +247,7 @@ class SpotifyAuthTest {
         for (code in listOf(408, 429, 500, 502, 503)) {
             val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
             val a = auth(secrets) { respond("{\"error\":\"server_error\"}", HttpStatusCode.fromValue(code), json) }
-            assertEquals(TokenResult.Unavailable, a.token(), "HTTP $code")
+            assertEquals(TokenResult.Unavailable("HTTP $code"), a.token(), "HTTP $code")
             assertEquals("r1", secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN), "HTTP $code")
             assertEquals(SpotifyAuthStatus.LoggedIn, a.status.value, "HTTP $code")
         }

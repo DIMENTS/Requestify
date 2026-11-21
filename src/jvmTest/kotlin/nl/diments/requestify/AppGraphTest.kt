@@ -166,7 +166,7 @@ class AppGraphTest {
     @Test
     fun offlineTokenRefreshIsUnreachableNotLoginNeeded() = runBlocking {
         val health = firstHealth(loggedIn()) { throw IOException("offline") }
-        assertEquals(SpotifyHealth.Unreachable("token unavailable"), health)
+        assertEquals(SpotifyHealth.Unreachable("token unavailable: offline"), health, "and says why")
     }
 
     @Test

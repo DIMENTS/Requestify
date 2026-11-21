@@ -435,6 +435,7 @@
     <string name="log_step_refund_gave_up">Refund failed</string>
     <string name="log_step_fulfilled">Redemption completed</string>
     <string name="log_conn_lost">Connection lost</string>
+    <string name="log_conn_lost_because">Connection lost: %1$s</string>
     <string name="log_conn_restored">Restored</string>
     <string name="log_conn_restored_after">Connection lost · restored after %1$s</string>
     <string name="log_conn_login_expired">Login expired</string>
