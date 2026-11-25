@@ -192,7 +192,9 @@ class LayoutGuardTest {
                             var open by mutableStateOf<Destination?>(Destination.Home)
                             setContent { AppScaffold(graph, openOn = open) }
                             // Spotify's current song, not the last played one Now Playing shows (paused) until the first poll is in.
-                            waitUntil(timeoutMillis = 15_000) { graph.home.state.value.nowPlaying?.isPlaying == true }
+                            // On screen: the screen follows the state a moment later.
+                            val pause = icon(Res.string.now_playing_pause).second
+                            waitUntil(timeoutMillis = 15_000) { onAllNodes(pause).fetchSemanticsNodes().isNotEmpty() }
                             waitForIdle()
                             for (destination in Destination.entries) {
                                 open = destination
@@ -259,6 +261,7 @@ class LayoutGuardTest {
         val statuses: List<ConnectionProblem?> = listOf(
             null,
             ConnectionProblem.Spotify(SpotifyHealth.RateLimited(0)),
+            ConnectionProblem.Spotify(SpotifyHealth.RateLimited(System.currentTimeMillis() + 60_000_000, quota = true)),
             ConnectionProblem.Spotify(SpotifyHealth.NoActiveDevice),
             ConnectionProblem.Spotify(SpotifyHealth.Unreachable("down")),
             ConnectionProblem.Spotify(SpotifyHealth.PremiumRequired),
