@@ -93,6 +93,7 @@ class PlaybackControllerSubmitTest {
         paidPriority = { true },
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
+        config = STEADY_POLLS,
         ioDispatcher = StandardTestDispatcher(testScheduler),
     )
 
@@ -232,7 +233,7 @@ class PlaybackControllerSubmitTest {
         assertFalse(outcome.isCompleted, "it waits for the saved state")
         lock.close()
 
-        advance(PlaybackConfig().idlePollMs)
+        advance(PlaybackConfig().retryMs)
         assertEquals(SubmitOutcome.Accepted(position = 1, waitMs = 200_000), outcome.getCompleted()) // after R1
         val saved = store().load()
         assertEquals(r1, saved.handedOver)

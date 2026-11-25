@@ -143,6 +143,19 @@ class LogScreenTest {
     }
 
     @Test
+    fun aLimitSpotifyHoldsSaysWhichAndHowLong() = runComposeUiTest {
+        val limited = LogRecord.ConnectionChanged("c1", at, LogService.Spotify, LogConnectionState.LimitReached, detail = "QUOTA_EXCEEDED")
+        val rows = MutableStateFlow(foldRows(listOf(limited)))
+        val vm = LogViewModel(rows, MutableStateFlow(null), scope, ZoneOffset.UTC, Dispatchers.Unconfined)
+        setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }
+        onNodeWithText("Spotify limit reached: QUOTA_EXCEEDED").assertIsDisplayed()
+
+        rows.value = foldRows(listOf(limited, LogRecord.ConnectionChanged("c1", at + 40_000, LogService.Spotify, LogConnectionState.Restored)))
+        waitForIdle()
+        onNodeWithText("Spotify limit reached · over after 40 s").assertIsDisplayed()
+    }
+
+    @Test
     fun aWriteErrorShowsTheBanner() = runComposeUiTest {
         val vm = vm(error = "disk full")
         setContent { RequestifyTheme(BrandSeed, dark = true) { LogScreen(vm) } }

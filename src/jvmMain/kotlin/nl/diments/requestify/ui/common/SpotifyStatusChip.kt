@@ -20,8 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import nl.diments.requestify.core.playback.SpotifyHealth
 import nl.diments.requestify.resources.Res
+import nl.diments.requestify.resources.spotify_status_limit_reached
 import nl.diments.requestify.resources.spotify_status_login_needed
 import nl.diments.requestify.resources.spotify_status_no_device
 import nl.diments.requestify.resources.spotify_status_not_connected
@@ -40,15 +45,27 @@ internal enum class Tone { Good, Neutral, Problem }
 /** [args] fill [text]'s placeholders (a DonoLink key's days left). */
 internal class StatusLook(val text: StringResource, val icon: ImageVector, val tone: Tone, val args: List<Any> = emptyList())
 
-internal fun SpotifyHealth.look(): StatusLook = when (this) {
+/** How the chip shows Spotify at [nowMs]: a wait of a minute or more says when it is over. */
+internal fun SpotifyHealth.look(nowMs: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): StatusLook = when (this) {
     SpotifyHealth.Ok -> StatusLook(Res.string.spotify_status_ok, AppIcons.CheckCircle, Tone.Good)
     SpotifyHealth.NothingPlaying -> StatusLook(Res.string.spotify_status_nothing_playing, AppIcons.MusicNote, Tone.Neutral)
     SpotifyHealth.NoActiveDevice -> StatusLook(Res.string.spotify_status_no_device, AppIcons.Warning, Tone.Problem)
     SpotifyHealth.LoginNeeded -> StatusLook(Res.string.spotify_status_login_needed, AppIcons.Warning, Tone.Problem)
     SpotifyHealth.LoggedOut -> StatusLook(Res.string.spotify_status_not_connected, AppIcons.Link, Tone.Neutral)
     SpotifyHealth.PremiumRequired -> StatusLook(Res.string.spotify_status_premium_required, AppIcons.Warning, Tone.Problem)
-    is SpotifyHealth.RateLimited -> StatusLook(Res.string.spotify_status_rate_limited, AppIcons.Sync, Tone.Neutral)
+    is SpotifyHealth.RateLimited -> if (quota || untilEpochMs - nowMs >= 60_000) {
+        StatusLook(Res.string.spotify_status_limit_reached, AppIcons.Sync, Tone.Neutral, listOf(clockTime(untilEpochMs, nowMs, zone)))
+    } else {
+        StatusLook(Res.string.spotify_status_rate_limited, AppIcons.Sync, Tone.Neutral)
+    }
     is SpotifyHealth.Unreachable -> StatusLook(Res.string.spotify_status_unreachable, AppIcons.CloudOff, Tone.Problem)
+}
+
+/** [atMs] to the minute, rounded up so it is never too early; with the weekday when that is another day than [nowMs]. */
+internal fun clockTime(atMs: Long, nowMs: Long, zone: ZoneId): String {
+    val at = Instant.ofEpochMilli(atMs + 59_999).atZone(zone)
+    val sameDay = at.toLocalDate() == Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+    return at.format(DateTimeFormatter.ofPattern(if (sameDay) "HH:mm" else "EEE HH:mm", Locale.getDefault()))
 }
 
 /** Spotify's state at a glance; problems get the error container so they stand out. Changes cross-fade. */

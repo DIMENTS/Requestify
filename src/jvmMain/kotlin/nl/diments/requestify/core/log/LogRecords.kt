@@ -177,6 +177,9 @@ enum class LogConnectionState {
     /** Twitch did not send a chat message ([LogRecord.ConnectionChanged.detail] says why); open until one is sent. */
     @SerialName("messages_dropped") MessagesDropped,
 
+    /** Spotify asked to wait ([LogRecord.ConnectionChanged.detail] says why); open until it takes calls again. */
+    @SerialName("limit_reached") LimitReached,
+
     /** Still open when Requestify last closed: over with that run (the next one does not "restore" it). */
     @SerialName("ended_with_app") EndedWithApp;
 

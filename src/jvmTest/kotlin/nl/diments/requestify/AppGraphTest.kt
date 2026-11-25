@@ -80,11 +80,13 @@ import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.RedemptionStatus
+import nl.diments.requestify.core.twitch.chat.awaitUntil
 import nl.diments.requestify.core.twitch.eventsub.EventSubConnector
 import nl.diments.requestify.core.twitch.eventsub.EventSubSocket
 import nl.diments.requestify.core.twitch.eventsub.EventSubState
 import nl.diments.requestify.core.twitch.points.OutboxEntry
 import nl.diments.requestify.ui.Destination
+import nl.diments.requestify.core.health.ConnectionProblem
 import nl.diments.requestify.core.health.TwitchHealth
 import nl.diments.requestify.ui.startDestination
 
@@ -812,5 +814,45 @@ class AppGraphTest {
                 """"chatter_user_id":"7","chatter_user_login":"viewer_one","chatter_user_name":"Viewer_One",""" +
                 """"message_id":"$messageId","message":{"text":"$text","fragments":[]},"badges":[],""" +
                 """"source_broadcaster_user_id":null}}}"""
+    }
+
+    @Test
+    fun aLogoutShowsAtOnceAlsoWhileSpotifyAskedToWait() = runTest {
+        JsonFileStore(AppPaths(dir).settingsFile, Settings.serializer()) { Settings() }.write(Settings(spotifyClientId = "0123456789abcdef0123456789abcdef"))
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        var polls = 0
+        val engine = MockEngine { request ->
+            when {
+                request.url.encodedPath == "/api/token" -> respond(
+                    """{"access_token":"a","token_type":"Bearer","expires_in":3600}""",
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+                request.url.encodedPath.endsWith("/currently-playing") -> {
+                    polls++
+                    respond(
+                        """{"error":{"status":429,"message":"Too many requests","reason":"QUOTA_EXCEEDED"}}""",
+                        HttpStatusCode.TooManyRequests,
+                        headersOf(HttpHeaders.RetryAfter, "61887"),
+                    )
+                }
+                else -> respondError(HttpStatusCode.ServiceUnavailable)
+            }
+        }
+        val graph = AppGraph(AppPaths(dir), secrets, engine, backgroundScope)
+        graph.start()
+        fun spotify() = graph.problems.value.filterIsInstance<ConnectionProblem.Spotify>().firstOrNull()?.health
+        awaitUntil("limit shown") { (spotify() as? SpotifyHealth.RateLimited)?.quota == true }
+        awaitUntil("limit in the Log") {
+            graph.logbook.rows.value.any { row ->
+                row.records.any { it is LogRecord.ConnectionChanged && it.detail?.startsWith("QUOTA_EXCEEDED, GET me/player/currently-playing") == true }
+            }
+        }
+        assertEquals(1, polls)
+
+        graph.auth.logout()
+        awaitUntil("logout shown") { spotify() == SpotifyHealth.LoggedOut }
+        assertEquals(1, polls, "nothing was sent for it")
+        graph.stop()
     }
 }

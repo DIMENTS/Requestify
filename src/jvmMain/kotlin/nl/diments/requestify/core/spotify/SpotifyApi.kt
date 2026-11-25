@@ -28,7 +28,13 @@ sealed interface SpotifyResult<out T> {
     data class Ok<T>(val value: T) : SpotifyResult<T>
     data object NoActiveDevice : SpotifyResult<Nothing>
     data object PremiumRequired : SpotifyResult<Nothing>
-    data class RateLimited(val retryAfterMs: Long) : SpotifyResult<Nothing>
+
+    /**
+     * Spotify asked to wait. [quota]: the developer account's quota for this endpoint is used up, so other endpoints
+     * may still work; otherwise the whole app waits. [detail] says which call, why and after how many calls, for the Log.
+     */
+    data class RateLimited(val retryAfterMs: Long, val quota: Boolean = false, val detail: String? = null) :
+        SpotifyResult<Nothing>
 
     /** The saved login stopped working (expired, revoked, or the Spotify app is gone): log in again. */
     data object LoginNeeded : SpotifyResult<Nothing>
@@ -112,13 +118,14 @@ interface SpotifyCatalog {
  * Spotify Web API client. [token] returns the bearer token or why there is none; it is called with
  * `forceRefresh = true` once after a 401. A token that is only unavailable for now is a [SpotifyResult.Failed]
  * (a network problem), never a login problem. Every failure is returned as a [SpotifyResult], never thrown
- * (except coroutine cancellation).
+ * (except coroutine cancellation). While Spotify asked to wait ([gate]) a call is not sent: it answers the rest of the wait.
  */
 class SpotifyApi(
     private val http: HttpClient,
     private val token: suspend (forceRefresh: Boolean) -> TokenResult,
     private val baseUrl: String = "https://api.spotify.com/v1",
     private val requestTimeoutMs: Long = 15_000,
+    private val gate: SpotifyCallGate = SpotifyCallGate(),
 ) : SpotifyPlayer, SpotifyCatalog {
 
     private val json: Json = AppJson.instance
@@ -227,6 +234,7 @@ class SpotifyApi(
         body: String?,
         bearer: String,
     ): Raw = withTimeout(requestTimeoutMs) {
+        gate.sent()
         val response = http.request {
             this.method = method
             url(
@@ -253,14 +261,18 @@ class SpotifyApi(
         onSuccess: (body: String) -> T,
     ): SpotifyResult<T> = try {
         val path = segments.toList()
-        withToken(token(false)) { bearer ->
+        val endpoint = endpointOf(method, path)
+        gate.heldFor(endpoint) ?: withToken(token(false)) { bearer ->
+            // Asked again: getting a token can take a while, and another call may have been refused meanwhile.
+            gate.heldFor(endpoint)?.let { return it }
             val raw = send(method, path, params, body, bearer)
             if (raw.status != 401) {
-                map(raw, onSuccess)
+                map(endpoint, raw, onSuccess)
             } else {
                 withToken(token(true)) { refreshed ->
+                    gate.heldFor(endpoint)?.let { return it }
                     val retried = send(method, path, params, body, refreshed)
-                    if (retried.status == 401) SpotifyResult.LoginNeeded else map(retried, onSuccess)
+                    if (retried.status == 401) SpotifyResult.LoginNeeded else map(endpoint, retried, onSuccess)
                 }
             }
         }
@@ -282,16 +294,24 @@ class SpotifyApi(
                 SpotifyResult.Failed(result.reason?.let { "$TOKEN_UNAVAILABLE: $it" } ?: TOKEN_UNAVAILABLE)
         }
 
-    private fun <T> map(raw: Raw, onSuccess: (String) -> T): SpotifyResult<T> = when (raw.status) {
-        200, 201, 202, 204 -> SpotifyResult.Ok(onSuccess(raw.body))
-        403 -> forbidden(raw.body)
-        400 -> SpotifyResult.NotFound
-        404 -> if (errorReason(raw.body) == "NO_ACTIVE_DEVICE") SpotifyResult.NoActiveDevice else SpotifyResult.NotFound
-        429 -> SpotifyResult.RateLimited(
-            raw.retryAfter?.trim()?.toLongOrNull()?.takeIf { it >= 0 }?.let { it * 1000 } ?: DEFAULT_RETRY_AFTER_MS,
-        )
-        else -> SpotifyResult.Failed("HTTP ${raw.status}")
+    private fun <T> map(endpoint: String, raw: Raw, onSuccess: (String) -> T): SpotifyResult<T> {
+        if (raw.status == 429) {
+            val retryAfterMs = raw.retryAfter?.trim()?.toLongOrNull()?.takeIf { it in 0..MAX_RETRY_AFTER_S }?.let { it * 1000 }
+            return gate.refused(endpoint, retryAfterMs, quota = raw.body.contains("QUOTA_EXCEEDED"))
+        }
+        gate.taken(endpoint)
+        return when (raw.status) {
+            200, 201, 202, 204 -> SpotifyResult.Ok(onSuccess(raw.body))
+            403 -> forbidden(raw.body)
+            400 -> SpotifyResult.NotFound
+            404 -> if (errorReason(raw.body) == "NO_ACTIVE_DEVICE") SpotifyResult.NoActiveDevice else SpotifyResult.NotFound
+            else -> SpotifyResult.Failed("HTTP ${raw.status}")
+        }
     }
+
+    /** The method and the path without ids: one endpoint, as Spotify counts them. */
+    private fun endpointOf(method: HttpMethod, path: List<String>): String =
+        "${method.value} ${if (path.first() in setOf("tracks", "artists")) path.first() else path.joinToString("/")}"
 
     private fun forbidden(body: String): SpotifyResult<Nothing> {
         val error = runCatching { json.decodeFromString<ErrorEnvelope>(body).error }.getOrNull()
@@ -306,7 +326,8 @@ class SpotifyApi(
         runCatching { json.decodeFromString<ErrorEnvelope>(body).error?.reason }.getOrNull()
 
     private companion object {
-        const val DEFAULT_RETRY_AFTER_MS = 5_000L
+        /** A longer `Retry-After` is no number to go by. */
+        const val MAX_RETRY_AFTER_S = 7 * 24 * 3_600L
         const val ART_TARGET_WIDTH = 300
         const val ARTIST_IMAGE_TARGET_WIDTH = 160
     }

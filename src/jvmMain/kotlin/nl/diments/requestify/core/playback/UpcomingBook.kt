@@ -15,13 +15,14 @@ internal class UpcomingBook(private val config: PlaybackConfig, private val cloc
 
     /**
      * Whether Spotify's queue is read on this tick: after a hand-over, [markStale], on another track, or when
-     * [PlaybackConfig.upcomingRefreshMs] has passed. Never while nothing is [active] or Spotify asked to wait.
+     * [PlaybackConfig.upcomingRefreshMs] has passed and Spotify plays. Never while nothing is [active] (or nobody needs
+     * to know) or Spotify asked to wait.
      */
-    fun due(active: Boolean, trackId: String?, handOverResult: SpotifyResult<Unit>?): Boolean {
+    fun due(active: Boolean, trackId: String?, handOverResult: SpotifyResult<Unit>?, isPlaying: Boolean = true): Boolean {
         if (!active || handOverResult is SpotifyResult.RateLimited) return false
         val readAt = readAtMs ?: return true
         return handOverResult is SpotifyResult.Ok || stale || trackId != readForTrackId ||
-            clock() - readAt >= config.upcomingRefreshMs
+            (isPlaying && clock() - readAt !in 0 until config.upcomingRefreshMs)
     }
 
     /** The queue is being read now, while [trackId] plays. */

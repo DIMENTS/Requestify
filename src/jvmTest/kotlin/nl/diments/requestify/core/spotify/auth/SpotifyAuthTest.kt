@@ -58,6 +58,7 @@ class SpotifyAuthTest {
         openBrowser: (String) -> Unit = {},
         receiverFactory: () -> LoopbackReceiver = { LoopbackReceiver(0) },
         requestTimeoutMs: Long = 15_000,
+        onLogin: () -> Unit = {},
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) = SpotifyAuth(
         http = HttpClient(MockEngine(handler)),
@@ -67,6 +68,7 @@ class SpotifyAuthTest {
         openBrowser = openBrowser,
         receiverFactory = receiverFactory,
         requestTimeoutMs = requestTimeoutMs,
+        onLogin = onLogin,
     )
 
     @Test
@@ -254,6 +256,37 @@ class SpotifyAuthTest {
     }
 
     @Test
+    fun aRateLimitedRefreshIsNotSentAgainBeforeSpotifysWaitIsOver() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        var now = 1_000L
+        var calls = 0
+        val a = auth(secrets, clock = { now }) {
+            if (++calls == 1) respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "120")) else ok("a1")
+        }
+        assertEquals(TokenResult.Unavailable("HTTP 429"), a.token())
+        now += 119_999
+        assertEquals(TokenResult.Unavailable("HTTP 429"), a.token())
+        assertEquals(1, calls)
+        now += 1
+        assertEquals(TokenResult.Ok("a1"), a.token())
+    }
+
+    @Test
+    fun aRateLimitedRefreshThatNamesNoWaitWaitsHalfAMinute() = runBlocking {
+        val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
+        var now = 1_000L
+        var calls = 0
+        val a = auth(secrets, clock = { now }) {
+            if (++calls == 1) respond("", HttpStatusCode.TooManyRequests) else ok("a1")
+        }
+        a.token()
+        now += 29_999
+        assertEquals(TokenResult.Unavailable("HTTP 429"), a.token())
+        now += 1
+        assertEquals(TokenResult.Ok("a1"), a.token())
+    }
+
+    @Test
     fun invalidClientNeedsLoginAndIsNotRetried() = runBlocking {
         val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "r1") }
         var calls = 0
@@ -299,6 +332,7 @@ class SpotifyAuthTest {
     fun aNewLoginAfterADeadOneWorksAgain() = runBlocking {
         val secrets = InMemorySecretStore().apply { put(SecretKeys.SPOTIFY_REFRESH_TOKEN, "old") }
         var receiver: LoopbackReceiver? = null
+        var logins = 0
         val a = auth(
             secrets,
             openBrowser = { url ->
@@ -312,6 +346,7 @@ class SpotifyAuthTest {
                 }.start()
             },
             receiverFactory = { LoopbackReceiver(0).also { receiver = it } },
+            onLogin = { logins++ },
         ) { req ->
             if (form(req)["grant_type"] == "refresh_token" && form(req)["refresh_token"] == "old") {
                 respond("{\"error\":\"invalid_grant\"}", HttpStatusCode.BadRequest, json)
@@ -320,7 +355,9 @@ class SpotifyAuthTest {
             }
         }
         assertEquals(TokenResult.LoginNeeded, a.token())
+        assertEquals(0, logins, "a refresh is no login")
         assertEquals(LoginResult.Success, withContext(Dispatchers.Default) { a.login() })
+        assertEquals(1, logins)
         assertEquals(TokenResult.Ok("a2"), a.token())
     }
 

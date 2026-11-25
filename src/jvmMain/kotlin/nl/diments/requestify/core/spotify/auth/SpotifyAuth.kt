@@ -3,6 +3,7 @@ package nl.diments.requestify.core.spotify.auth
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
 import java.io.IOException
@@ -50,6 +51,12 @@ private data class TokenResponse(
 
 private const val REFRESH_MARGIN_MS = 60_000L
 
+/** How long no refresh is sent after a 429 that names no wait. */
+private const val REFRESH_WAIT_MS = 30_000L
+
+/** A longer `Retry-After` is no number to go by. */
+private const val MAX_RETRY_AFTER_S = 7 * 24 * 3_600L
+
 /** The [LoginResult.Failed.reason] when another app holds the redirect port. */
 const val LOGIN_FAILED_PORT_IN_USE = "port $SPOTIFY_REDIRECT_PORT in use"
 
@@ -64,6 +71,8 @@ class SpotifyAuth(
     private val requestTimeoutMs: Long = 15_000,
     /** How long a login waits for the browser to come back before it is [LoginResult.TimedOut]. */
     private val loginTimeout: Duration = 5.minutes,
+    /** A login succeeded, before its [LoginResult.Success] is answered. */
+    private val onLogin: () -> Unit = {},
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
@@ -74,6 +83,12 @@ class SpotifyAuth(
 
     @Volatile
     private var cached: AccessToken? = null
+
+    /**
+     * Spotify refused a refresh with a 429: none is sent in this stretch of wall time (a clock set back ends it), unless
+     * a login comes between. Guarded by [stateLock].
+     */
+    private var refreshHeld: LongRange = LongRange.EMPTY
 
     private val _status = MutableStateFlow<SpotifyAuthStatus>(
         if (secrets.get(SecretKeys.SPOTIFY_REFRESH_TOKEN) != null) SpotifyAuthStatus.LoggedIn else SpotifyAuthStatus.LoggedOut,
@@ -158,7 +173,9 @@ class SpotifyAuth(
             secrets.put(SecretKeys.SPOTIFY_REFRESH_TOKEN, refresh)
             cached = AccessToken(outcome.accessToken, clock() + outcome.expiresIn * 1000)
             _status.value = SpotifyAuthStatus.LoggedIn
+            refreshHeld = LongRange.EMPTY
         }
+        onLogin()
         return LoginResult.Success
     }
 
@@ -216,6 +233,7 @@ class SpotifyAuth(
         // Without a Client ID (the settings were lost) nothing can refresh: Spotify must be set up again.
         val id = clientId()
         if (id.isNullOrBlank()) return Obtained.Missing(TokenResult.LoggedOut)
+        if (synchronized(stateLock) { clock() in refreshHeld }) return Obtained.Missing(TokenResult.Unavailable("HTTP 429"))
         val response = try {
             withTimeout(requestTimeoutMs) {
                 val r = http.submitForm(
@@ -226,7 +244,7 @@ class SpotifyAuth(
                         append("client_id", id)
                     },
                 )
-                r.status to r.bodyAsText()
+                Triple(r.status, r.bodyAsText(), r.headers[HttpHeaders.RetryAfter])
             }
         } catch (_: TimeoutCancellationException) {
             return Obtained.Missing(TokenResult.Unavailable("timeout")) // hung connection: transient, keep the login
@@ -236,7 +254,7 @@ class SpotifyAuth(
             // Network blip: keep the login.
             return Obtained.Missing(TokenResult.Unavailable(e.message ?: e::class.simpleName))
         }
-        val (code, body) = response
+        val (code, body, retryAfter) = response
         // Apply the result only if no logout()/login() happened while the request was in flight.
         return when {
             code == HttpStatusCode.OK -> {
@@ -267,7 +285,14 @@ class SpotifyAuth(
                 _status.value = SpotifyAuthStatus.LoginNeeded("Spotify refused the saved login (HTTP ${code.value})")
                 Obtained.Missing(TokenResult.LoginNeeded)
             }
-            // Rate limit or Spotify trouble: keep the login.
+            code == HttpStatusCode.TooManyRequests -> synchronized(stateLock) {
+                if (generation != startGeneration) return@synchronized superseded()
+                val waitMs = retryAfter?.trim()?.toLongOrNull()?.takeIf { it in 1..MAX_RETRY_AFTER_S }?.let { it * 1000 } ?: REFRESH_WAIT_MS
+                val now = clock()
+                refreshHeld = now until now + waitMs
+                Obtained.Missing(TokenResult.Unavailable("HTTP 429"))
+            }
+            // Spotify trouble: keep the login.
             else -> Obtained.Missing(TokenResult.Unavailable("HTTP ${code.value}"))
         }
     }

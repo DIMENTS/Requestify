@@ -37,12 +37,14 @@ class SpotifyApiTest {
     private fun api(
         token: suspend (Boolean) -> TokenResult = { TokenResult.Ok("tok") },
         requestTimeoutMs: Long = 15_000,
+        gate: SpotifyCallGate = SpotifyCallGate(),
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) = SpotifyApi(
         http = HttpClient(MockEngine(handler)),
         token = token,
         baseUrl = "https://spotify.test/v1",
         requestTimeoutMs = requestTimeoutMs,
+        gate = gate,
     )
 
     private fun <T> SpotifyResult<T>.ok(): T = assertIs<SpotifyResult.Ok<T>>(this).value
@@ -242,18 +244,69 @@ class SpotifyApiTest {
         assertEquals(ArtistRef("a1", "M83", null), result.ok())
     }
 
+    private fun SpotifyResult<*>.limited() = assertIs<SpotifyResult.RateLimited>(this)
+
+    @Test
+    fun whileRateLimitedNoCallOfAnyKindIsSentUntilTheWaitIsOver() = runBlocking<Unit> {
+        var now = 0L
+        var sent = 0
+        val api = api(gate = SpotifyCallGate { now }) {
+            if (++sent == 1) respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "7")) else respond("", HttpStatusCode.NoContent)
+        }
+        assertEquals(7_000, api.currentlyPlaying().limited().retryAfterMs)
+        now = 2_000
+        assertEquals(5_000, api.searchTracks("x").limited().retryAfterMs)
+        assertEquals(5_000, api.pause().limited().retryAfterMs)
+        assertEquals(1, sent, "nothing went out")
+        now = 7_000
+        assertNull(api.currentlyPlaying().ok())
+        assertEquals(2, sent)
+    }
+
+    @Test
+    fun anExhaustedQuotaHoldsThatCallOnlyAndSaysSo() = runBlocking<Unit> {
+        val paths = mutableListOf<String>()
+        val api = api(gate = SpotifyCallGate { 0L }) { req ->
+            paths += req.url.encodedPath
+            if (req.url.encodedPath.endsWith("/currently-playing")) {
+                respond("""{"error":{"status":429,"message":"Too many requests","reason":"QUOTA_EXCEEDED"}}""", HttpStatusCode.TooManyRequests, json)
+            } else {
+                respond("", HttpStatusCode.NoContent)
+            }
+        }
+        val refused = api.currentlyPlaying().limited()
+        assertTrue(refused.quota)
+        assertEquals(60_000, refused.retryAfterMs, "no Retry-After: a minute first")
+        assertEquals("QUOTA_EXCEEDED, GET me/player/currently-playing, no Retry-After, 1 calls in 30 s, 1 in 24 h", refused.detail)
+        assertTrue(api.currentlyPlaying().limited().quota)
+        api.pause().ok()
+        assertEquals(listOf("/v1/me/player/currently-playing", "/v1/me/player/pause"), paths)
+    }
+
+    @Test
+    fun songsAreOneEndpointWhateverTheirId() = runBlocking<Unit> {
+        var sent = 0
+        val api = api(gate = SpotifyCallGate { 0L }) {
+            sent++
+            respond("""{"error":{"status":429,"reason":"QUOTA_EXCEEDED"}}""", HttpStatusCode.TooManyRequests, json)
+        }
+        api.track("one").limited()
+        api.track("two").limited()
+        assertEquals(1, sent)
+    }
+
     @Test
     fun rateLimitedUsesRetryAfter() = runBlocking<Unit> {
         val result = api {
             respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "7"))
         }.addToQueue("spotify:track:x")
-        assertEquals(SpotifyResult.RateLimited(7000), result)
+        assertEquals(7000, result.limited().retryAfterMs)
     }
 
     @Test
     fun rateLimitedDefault() = runBlocking<Unit> {
         val result = api { respond("", HttpStatusCode.TooManyRequests) }.addToQueue("spotify:track:x")
-        assertEquals(SpotifyResult.RateLimited(5000), result)
+        assertEquals(5000, result.limited().retryAfterMs)
     }
 
     @Test
@@ -261,7 +314,7 @@ class SpotifyApiTest {
         val result = api {
             respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "soon"))
         }.addToQueue("spotify:track:x")
-        assertEquals(SpotifyResult.RateLimited(5000), result)
+        assertEquals(5000, result.limited().retryAfterMs)
     }
 
     @Test
@@ -519,5 +572,17 @@ class SpotifyApiTest {
             )
         }.skipPrevious()
         assertEquals(SpotifyResult.PremiumRequired, result)
+    }
+
+    @Test
+    fun aLimitReachedWhileTheTokenWasRefreshedHoldsTheCall() = runBlocking<Unit> {
+        val gate = SpotifyCallGate { 0L }
+        var sent = 0
+        val api = api(
+            token = { gate.refused("GET search", retryAfterMs = 20_000, quota = false); TokenResult.Ok("tok") },
+            gate = gate,
+        ) { sent++; respond("", HttpStatusCode.NoContent) }
+        api.currentlyPlaying().limited()
+        assertEquals(0, sent)
     }
 }

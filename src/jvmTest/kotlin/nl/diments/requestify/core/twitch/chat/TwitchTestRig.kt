@@ -22,6 +22,7 @@ import nl.diments.requestify.core.intake.RequestIntake
 import nl.diments.requestify.core.model.Track
 import nl.diments.requestify.core.playback.FakeSpotifyPlayer
 import nl.diments.requestify.core.playback.PlaybackController
+import nl.diments.requestify.core.playback.STEADY_POLLS
 import nl.diments.requestify.core.queue.PersistedPlayback
 import nl.diments.requestify.core.queue.QueueStore
 import nl.diments.requestify.core.settings.Settings
@@ -49,6 +50,7 @@ class TwitchTestRig(scope: TestScope, dir: Path) {
         paidPriority = { true },
         scope = scope.backgroundScope,
         clock = { scope.testScheduler.currentTime },
+        config = STEADY_POLLS,
         ioDispatcher = StandardTestDispatcher(scope.testScheduler),
     )
     val blacklist = BlacklistStore(JsonFileStore(dir.resolve("blacklist.json"), Blacklist.serializer()) { Blacklist() }, inCallerSaveContext())

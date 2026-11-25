@@ -56,6 +56,9 @@ import nl.diments.requestify.resources.Res
 import nl.diments.requestify.resources.log_conn_key_expiring
 import nl.diments.requestify.resources.log_conn_key_refused
 import nl.diments.requestify.resources.log_conn_login_expired
+import nl.diments.requestify.resources.log_conn_limit_over_after
+import nl.diments.requestify.resources.log_conn_limit_reached
+import nl.diments.requestify.resources.log_conn_limit_reached_because
 import nl.diments.requestify.resources.log_conn_lost
 import nl.diments.requestify.resources.log_conn_restored
 import nl.diments.requestify.resources.log_conn_restored_after
@@ -329,7 +332,11 @@ private fun LogRow.title(zone: ZoneId): String = when (kind) {
                 stringResource(Res.string.log_save_failing, changes.first().detail.orEmpty())
             }
         } else if (last.state == LogConnectionState.Restored) {
-            stringResource(Res.string.log_conn_restored_after, shortDuration(last.atEpochMs - changes.first().atEpochMs))
+            val limited = changes.all { it.state == LogConnectionState.LimitReached || it.state == LogConnectionState.Restored }
+            stringResource(
+                if (limited) Res.string.log_conn_limit_over_after else Res.string.log_conn_restored_after,
+                shortDuration(last.atEpochMs - changes.first().atEpochMs),
+            )
         } else {
             last.state.text(last.detail)
         }
@@ -382,13 +389,15 @@ private fun LogStep.text(): String = when (this) {
 
 /**
  * [detail]: why messages were held back, for [LogConnectionState.MessagesDropped], or why a connection was lost, for
- * [LogConnectionState.Lost] (when known).
+ * [LogConnectionState.Lost] and [LogConnectionState.LimitReached] (when known).
  */
 @Composable
 private fun LogConnectionState.text(detail: String? = null): String = if (this == LogConnectionState.MessagesDropped) {
     stringResource(Res.string.log_conn_messages_dropped, detail.orEmpty())
 } else if (this == LogConnectionState.Lost && detail != null) {
     stringResource(Res.string.log_conn_lost_because, detail)
+} else if (this == LogConnectionState.LimitReached && detail != null) {
+    stringResource(Res.string.log_conn_limit_reached_because, detail)
 } else stringResource(
     when (this) {
         LogConnectionState.Lost -> Res.string.log_conn_lost
@@ -399,6 +408,7 @@ private fun LogConnectionState.text(detail: String? = null): String = if (this =
         LogConnectionState.SourceChanged -> Res.string.log_conn_source_changed
         LogConnectionState.EndedWithApp -> Res.string.log_conn_ended_with_app
         LogConnectionState.MessagesDropped -> Res.string.log_conn_messages_dropped
+        LogConnectionState.LimitReached -> Res.string.log_conn_limit_reached
     },
 )
 

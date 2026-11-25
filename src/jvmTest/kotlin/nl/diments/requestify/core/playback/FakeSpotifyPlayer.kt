@@ -8,6 +8,24 @@ import nl.diments.requestify.core.spotify.SpotifyDevice
 import nl.diments.requestify.core.spotify.SpotifyPlayer
 import nl.diments.requestify.core.spotify.SpotifyResult
 
+/**
+ * A steady pace, for tests of what a poll does rather than of when it comes: every 3 s, every second in a song's last
+ * 20 s. [PollPaceTest] and [PlaybackControllerPaceTest] test the real pace.
+ */
+internal val STEADY_POLLS = PlaybackConfig(
+    playingPollMs = 3_000,
+    nearEndPollMs = 1_000,
+    nearEndWindowMs = 20_000,
+    pausedPollMs = 3_000,
+    pausedNearEndPollMs = 3_000,
+    nothingPollMs = 3_000,
+    nothingPollMaxMs = 3_000,
+    failedPollMaxMs = 3_000,
+    upcomingRefreshMs = 30_000,
+    recentlyPlayedRefreshMs = 60_000,
+    deviceCheckMaxMs = 6_000,
+)
+
 /** A scriptable [SpotifyPlayer] that records every call with the (virtual) time it was made at. */
 class FakeSpotifyPlayer(private val clock: () -> Long) : SpotifyPlayer {
     data class Call(val name: String, val arg: String?, val atMs: Long)

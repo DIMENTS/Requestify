@@ -14,7 +14,7 @@ import nl.diments.requestify.core.spotify.SpotifyResult
  * The last song played, saved for the next startup, and Spotify's own recently played song, which is shown while
  * nothing is active. Not thread-safe: used only under the controller's `stateMutex`. [lastPlayed] is saved; it
  * changes when the song, its play state or Spotify's activity changes, and while a song plays at most every
- * [PlaybackConfig.upcomingRefreshMs], so most polls save nothing.
+ * [PlaybackConfig.positionSaveMs], so most polls save nothing.
  */
 internal class LastPlayedBook(private val config: PlaybackConfig, private val clock: () -> Long) {
     /** What is saved. */
@@ -66,7 +66,7 @@ internal class LastPlayedBook(private val config: PlaybackConfig, private val cl
             val before = lastLive
             val changed = before == null || before.track.id != live.track.id || before.isPlaying != live.isPlaying
             // While it plays the position moves on: keep the saved one from going stale, with one save per while.
-            val savedLongAgo = lastPlayed.let { it == null || now - it.playedAtEpochMs >= config.upcomingRefreshMs }
+            val savedLongAgo = lastPlayed.let { it == null || now - it.playedAtEpochMs >= config.positionSaveMs }
             if (changed || (live.isPlaying && savedLongAgo)) lastPlayed = lastPlayedOf(live, now)
             lastLive = live
         }
@@ -113,12 +113,12 @@ internal class LastPlayedBook(private val config: PlaybackConfig, private val cl
     /**
      * The login generation to ask for Spotify's recently played song under, or null when it is not due: it is
      * asked on the first tick with nothing active, then at most every [PlaybackConfig.recentlyPlayedRefreshMs],
-     * and not at all while the login lacks the permission.
+     * only once while [quiet], and not at all while the login lacks the permission.
      */
-    fun recentlyPlayedDue(): Int? {
+    fun recentlyPlayedDue(quiet: Boolean): Int? {
         if (_needsExtraPermission.value) return null
         val askedAt = recentAskedAtMs
-        if (askedAt != null && clock() - askedAt < config.recentlyPlayedRefreshMs) return null
+        if (askedAt != null && (quiet || clock() - askedAt in 0 until config.recentlyPlayedRefreshMs)) return null
         recentAskedAtMs = clock()
         return loginGeneration
     }

@@ -63,6 +63,7 @@
     <string name="spotify_status_not_connected">Connect Spotify</string>
     <string name="spotify_status_premium_required">Spotify Premium required</string>
     <string name="spotify_status_rate_limited">Spotify busy, retrying</string>
+    <string name="spotify_status_limit_reached">Spotify limit reached, back at %1$s</string>
     <string name="spotify_status_unreachable">Spotify unreachable</string>
 
     <!-- Navigation -->
@@ -436,6 +437,9 @@
     <string name="log_step_fulfilled">Redemption completed</string>
     <string name="log_conn_lost">Connection lost</string>
     <string name="log_conn_lost_because">Connection lost: %1$s</string>
+    <string name="log_conn_limit_reached">Spotify limit reached</string>
+    <string name="log_conn_limit_reached_because">Spotify limit reached: %1$s</string>
+    <string name="log_conn_limit_over_after">Spotify limit reached · over after %1$s</string>
     <string name="log_conn_restored">Restored</string>
     <string name="log_conn_restored_after">Connection lost · restored after %1$s</string>
     <string name="log_conn_login_expired">Login expired</string>

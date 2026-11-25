@@ -30,7 +30,7 @@ import org.jetbrains.compose.resources.StringResource
 internal fun ConnectionProblem.statusLook(nowMs: Long = System.currentTimeMillis()): StatusLook = look(nowMs)
 
 private fun ConnectionProblem.look(nowMs: Long = System.currentTimeMillis()): StatusLook = when (this) {
-    is ConnectionProblem.Spotify -> health.look()
+    is ConnectionProblem.Spotify -> health.look(nowMs)
     ConnectionProblem.TwitchLoginNeeded -> StatusLook(Res.string.connection_twitch_login_needed, AppIcons.Warning, Tone.Problem)
     ConnectionProblem.TwitchDisconnected -> StatusLook(Res.string.connection_twitch_disconnected, AppIcons.CloudOff, Tone.Problem)
     ConnectionProblem.TwitchBotLoginNeeded -> StatusLook(Res.string.connection_twitch_bot_login_needed, AppIcons.Warning, Tone.Problem)

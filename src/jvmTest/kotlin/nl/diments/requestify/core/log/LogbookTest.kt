@@ -378,4 +378,20 @@ class LogbookTest {
         assertEquals(listOf(LogConnectionState.MessagesDropped, LogConnectionState.MessagesDropped, LogConnectionState.Restored), changes.map { it.state })
         assertEquals(listOf("Slow mode", "Followers only", null), changes.map { it.detail })
     }
+
+    @Test
+    fun aLimitIsOneRowThatNamesEachLimitOnce() = runTest {
+        val log = logbook()
+        fun limit(detail: String?) {
+            reports.tryEmit(ConnectionReport(LogService.Spotify, if (detail == null) ConnectionSnapshot.Up else ConnectionSnapshot.LimitReached, detail))
+            runCurrent()
+        }
+        limit("HTTP 429, GET search, Retry-After 5 s, 40 calls in 30 s, 900 in 24 h")
+        limit("HTTP 429, GET search, Retry-After 9 s, 41 calls in 30 s, 901 in 24 h")
+        limit("QUOTA_EXCEEDED, GET search, Retry-After 61887 s, 42 calls in 30 s, 902 in 24 h")
+        limit(null)
+        val changes = log.rows.value.single().records.map { it as LogRecord.ConnectionChanged }
+        assertEquals(listOf("HTTP 429", "QUOTA_EXCEEDED", null), changes.map { it.detail?.substringBefore(",") })
+        assertEquals(LogConnectionState.Restored, changes.last().state)
+    }
 }

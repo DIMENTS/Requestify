@@ -14,6 +14,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import java.awt.EventQueue
 import java.awt.Frame
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.beans.PropertyChangeListener
 import java.util.Locale
 import kotlin.system.exitProcess
@@ -176,6 +178,7 @@ fun main(args: Array<String>) {
             }
         }
     }
+    graph.onWindowShown(initiallyVisible(mode))
     graph.start()
 
     lateinit var tray: AwtTray
@@ -258,6 +261,8 @@ fun main(args: Array<String>) {
     val reducedMotion = windowsAnimationsOff()
     application(exitProcessOnExit = false) {
         val windowState = rememberWindowState(size = DpSize(1180.dp, 760.dp))
+        val onScreen = shell.visible && !windowState.isMinimized
+        LaunchedEffect(onScreen) { graph.onWindowShown(onScreen) }
         Window(
             onCloseRequest = { closeWindow(graph.settings, hide = { shell.visible = false }, notify = notify) },
             state = windowState,
@@ -268,6 +273,13 @@ fun main(args: Array<String>) {
             // Once: the icons do not change while the window lives.
             LaunchedEffect(Unit) { window.iconImages = AppIconImages.windowIcons() }
             SideEffect { shell.hideWindow = { window.isVisible = false } }
+            DisposableEffect(window) {
+                val listener = object : WindowAdapter() {
+                    override fun windowGainedFocus(e: WindowEvent) = graph.onWindowFocused()
+                }
+                window.addWindowFocusListener(listener)
+                onDispose { window.removeWindowFocusListener(listener) }
+            }
             // Shown again (a second start, the tray, a notification): restored and brought to the front.
             LaunchedEffect(shell.raiseRequests) {
                 if (shell.raiseRequests > 0) {

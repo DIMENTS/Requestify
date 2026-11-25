@@ -88,6 +88,7 @@ class PlaybackControllerTest {
         paidPriority = { true },
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
+        config = STEADY_POLLS,
         ioDispatcher = StandardTestDispatcher(testScheduler),
     )
 
@@ -968,7 +969,7 @@ class PlaybackControllerTest {
         assertEquals(listOf(trackB, trackC), controller.upcoming.value)
 
         player.queueTracks = SpotifyResult.Failed("HTTP 500")
-        advance(PlaybackConfig().upcomingRefreshMs)
+        advance(STEADY_POLLS.upcomingRefreshMs)
         assertEquals(2, player.callsTo("userQueue").size)
         assertEquals(listOf(trackB, trackC), controller.upcoming.value)
         assertEquals(SpotifyHealth.Ok, controller.health.value)
@@ -1137,8 +1138,7 @@ class PlaybackControllerTest {
         controller.onLoginChanged()
         runCurrent()
         assertFalse(controller.needsExtraPermission.value)
-        advance(3_000) // the next idle tick asks again
-        assertEquals(listOf(0L, 303_000L), player.callsTo("recentlyPlayed").map { it.atMs })
+        assertEquals(listOf(0L, 300_000L), player.callsTo("recentlyPlayed").map { it.atMs })
         controller.assertShowsLastPlayed(trackB, progressMs = 0, requesterKnown = false)
     }
 
@@ -1147,17 +1147,20 @@ class PlaybackControllerTest {
         val player = fakePlayer()
         player.recentResult = SpotifyResult.MissingPermission
         val gate = CompletableDeferred<Unit>()
+        val secondGate = CompletableDeferred<Unit>()
         player.recentGate = gate
         val controller = startIdleWithLastPlayedA(player) // asked under the old login, still in flight
 
         controller.onLoginChanged()
+        player.recentGate = secondGate
         gate.complete(Unit)
         runCurrent()
         assertFalse(controller.needsExtraPermission.value)
 
         player.recentResult = SpotifyResult.Ok(null)
-        advance(3_000) // asked again under the new login
-        assertEquals(listOf(0L, 3_000L), player.callsTo("recentlyPlayed").map { it.atMs })
+        secondGate.complete(Unit) // asked again under the new login, at once
+        runCurrent()
+        assertEquals(listOf(0L, 0L), player.callsTo("recentlyPlayed").map { it.atMs })
         assertFalse(controller.needsExtraPermission.value)
     }
 

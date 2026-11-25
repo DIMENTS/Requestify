@@ -19,9 +19,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
@@ -87,6 +89,7 @@ import nl.diments.requestify.core.settings.Settings
 import nl.diments.requestify.core.settings.SettingsStore
 import nl.diments.requestify.core.spotify.KtorShortLinkResolver
 import nl.diments.requestify.core.spotify.SpotifyApi
+import nl.diments.requestify.core.spotify.SpotifyCallGate
 import nl.diments.requestify.core.spotify.auth.LoopbackReceiver
 import nl.diments.requestify.core.spotify.auth.SpotifyAuth
 import nl.diments.requestify.core.spotify.auth.SpotifyAuthStatus
@@ -98,6 +101,7 @@ import nl.diments.requestify.core.storage.AppPaths
 import nl.diments.requestify.core.storage.JsonFileStore
 import nl.diments.requestify.core.storage.SaveContext
 import nl.diments.requestify.core.storage.SaveHealth
+import nl.diments.requestify.core.stream.GateStatus
 import nl.diments.requestify.core.stream.RequestsGate
 import nl.diments.requestify.core.stream.StreamState
 import nl.diments.requestify.core.twitch.StreamWatcher
@@ -177,6 +181,9 @@ class AppGraph(
 
     val settings = SettingsStore(JsonFileStore(paths.settingsFile, Settings.serializer()) { Settings() }, saveContext)
 
+    /** Holds every Spotify call while Spotify asked to wait. */
+    private val spotifyGate = SpotifyCallGate(System::currentTimeMillis)
+
     val auth = SpotifyAuth(
         http = http,
         secrets = secrets,
@@ -184,9 +191,10 @@ class AppGraph(
         clock = System::currentTimeMillis,
         openBrowser = ::openLoginPage,
         receiverFactory = { LoopbackReceiver() },
+        onLogin = spotifyGate::reset, // another developer account, perhaps: none of the waits are its own
     )
 
-    private val spotify = SpotifyApi(http, token = { force -> auth.token(force) })
+    private val spotify = SpotifyApi(http, token = { force -> auth.token(force) }, gate = spotifyGate)
 
     /**
      * Whether a Twitch account is set up: true even while its login is dead, so a Twitch streamer's requests never
@@ -207,6 +215,9 @@ class AppGraph(
         sessionConnected = { twitchSession.connected.value },
     )
 
+    /** The window is on screen (not hidden in the tray or minimized). */
+    private val windowShown = MutableStateFlow(true)
+
     private val controller = PlaybackController(
         player = spotify,
         store = QueueStore(JsonFileStore(paths.queueFile, PersistedPlayback.serializer()) { PersistedPlayback() }),
@@ -215,7 +226,19 @@ class AppGraph(
         scope = scope,
         clock = System::currentTimeMillis,
         ioDispatcher = Dispatchers.IO,
+        engaged = combine(gate.status, windowShown, ::playbackMatters)
+            .stateIn(scope, SharingStarted.Eagerly, playbackMatters(gate.status.value, windowShown.value)),
     )
+
+    /** The window came on screen, or was hidden or minimized: Spotify is asked less while nobody looks. */
+    fun onWindowShown(shown: Boolean) {
+        windowShown.value = shown
+    }
+
+    /** The streamer turned to the window: what it shows of Spotify is brought up to date. */
+    fun onWindowFocused() = controller.lookAgain()
+
+    private var loginFollower: Job? = null
 
     val blacklist = BlacklistStore(JsonFileStore(paths.blacklistFile, Blacklist.serializer()) { Blacklist() }, saveContext)
     val rejected = RejectedStore(JsonFileStore(paths.rejectedFile, ListSerializer(RejectedEntry.serializer())) { emptyList() }, saveContext)
@@ -542,7 +565,7 @@ class AppGraph(
             previousRun = previousRun,
             updates = updates.events,
             reports = merge(
-                controller.health.map(::spotifyConnection),
+                combine(controller.health, spotifyGate.limit, ::spotifyConnection),
                 combine(twitchBot.health, twitchBot.drops.dropping) { health, dropping -> botReport(health, dropping) },
                 chatSender.streamerDrops.dropping.map { dropping ->
                     ConnectionReport(LogService.TwitchChat, if (dropping == null) ConnectionSnapshot.Up else ConnectionSnapshot.MessagesDropped, dropping)
@@ -568,6 +591,13 @@ class AppGraph(
         channelPoints.startLifecycle()
         gate.start()
         controller.start()
+        // A logout, or a login that stopped working: shown at once, not at the next poll.
+        loginFollower = scope.launch {
+            auth.status.drop(1).collect { status ->
+                if (status != SpotifyAuthStatus.LoggedIn) spotifyGate.reset() // a wait must not hide that the login is gone
+                controller.pollNow()
+            }
+        }
         intake.start()
         donationHandler.start()
         donationSources.start()
@@ -587,6 +617,7 @@ class AppGraph(
         stopFollowingTwitchSession()
         donationSources.stop()
         donationHandler.stop()
+        loginFollower?.cancel()
         controller.stop()
         gate.stop() // remembers that the stream was live until now, for the next start
         channelPoints.stopLifecycle() // a change the controller still saves is settled too
@@ -734,6 +765,13 @@ private fun botReport(health: TwitchBotHealth, dropping: String?): ConnectionRep
     dropping != null -> ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.MessagesDropped, dropping)
     else -> ConnectionReport(LogService.TwitchBot, ConnectionSnapshot.Up)
 }
+
+/**
+ * Whether what Spotify plays matters to somebody right now: the window is shown, or a stream that takes requests is on
+ * (with Twitch, live or opened by hand; without it nobody can tell, but a request itself wakes playback).
+ */
+internal fun playbackMatters(status: GateStatus, windowShown: Boolean): Boolean =
+    windowShown || status.live || (status.twitch && status.open)
 
 private fun TwitchHealth.toSnapshot(): ConnectionSnapshot = when {
     loginNeeded -> ConnectionSnapshot.LoginExpired

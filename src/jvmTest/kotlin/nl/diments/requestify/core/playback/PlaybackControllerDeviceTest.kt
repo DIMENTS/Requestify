@@ -45,6 +45,7 @@ class PlaybackControllerDeviceTest {
         paidPriority = { true },
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
+        config = STEADY_POLLS,
         ioDispatcher = StandardTestDispatcher(testScheduler),
     )
 

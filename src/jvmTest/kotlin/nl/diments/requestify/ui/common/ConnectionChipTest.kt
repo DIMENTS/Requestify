@@ -5,6 +5,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.Locale
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -66,6 +68,26 @@ class ConnectionChipTest {
             listOf(ConnectionProblem.Spotify(SpotifyHealth.RateLimited(1))),
             connectionProblems(SpotifyHealth.RateLimited(1), TwitchHealth()),
         )
+    }
+
+    @Test
+    fun aWaitSpotifyAskedForSaysWhenItIsOver() = runComposeUiTest {
+        val now = Instant.parse("2026-11-25T13:00:00Z").toEpochMilli()
+        val zone = ZoneOffset.UTC
+        fun args(health: SpotifyHealth.RateLimited) = health.look(now, zone).args
+
+        assertEquals(emptyList(), args(SpotifyHealth.RateLimited(now + 59_999)), "over before it is read")
+        assertEquals(listOf("13:01"), args(SpotifyHealth.RateLimited(now + 60_000)))
+        assertEquals(listOf("13:01"), args(SpotifyHealth.RateLimited(now + 5_000, quota = true)))
+        assertEquals(listOf("14:33"), args(SpotifyHealth.RateLimited(now + 92 * 60_000 + 1, quota = true)), "never too early")
+        assertEquals(listOf("Thu 06:11"), args(SpotifyHealth.RateLimited(now + 61_860_000, quota = true)), "tomorrow")
+
+        setContent {
+            RequestifyTheme(BrandSeed, dark = true) {
+                ConnectionChip(listOf(ConnectionProblem.Spotify(SpotifyHealth.RateLimited(System.currentTimeMillis() + 3_600_000, quota = true))), onClick = {})
+            }
+        }
+        onNodeWithText("Spotify limit reached, back at", substring = true).assertIsDisplayed()
     }
 
     @Test

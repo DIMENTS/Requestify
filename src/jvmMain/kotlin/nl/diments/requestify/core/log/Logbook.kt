@@ -30,7 +30,7 @@ import nl.diments.requestify.core.twitch.points.OutboxResult
 import nl.diments.requestify.core.update.UpdateEvent
 
 /** A connection as the Log sees it; a change from one to another may be news. */
-enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged, MessagesDropped }
+enum class ConnectionSnapshot { Up, Down, LoginExpired, KeyRefused, KeyExpiring, SourceChanged, MessagesDropped, LimitReached }
 
 /**
  * A connection change with a reason to show ([detail]): Twitch holding back the bot's or the streamer's chat
@@ -80,7 +80,7 @@ class Logbook(
     private val redemptionRows = HashMap<String, String>()
     private val connectionNow = HashMap<LogService, ConnectionSnapshot>()
     private val openOutage = HashMap<LogService, String>()
-    private val droppedDetail = HashMap<LogService, String?>()
+    private val lastReason = HashMap<LogService, String?>()
 
     private val changed = MutableStateFlow(0L)
     private val _rows = MutableStateFlow<List<LogRow>>(emptyList())
@@ -243,10 +243,13 @@ class Logbook(
             return
         }
         // Held back for a new reason: the same row says so too (one row per stretch, each reason in it).
-        val newReason = snapshot == ConnectionSnapshot.MessagesDropped && detail != droppedDetail[service]
+        // So is another limit, not the same one reached again after a few more calls.
+        val reason = if (snapshot == ConnectionSnapshot.LimitReached) detail?.split(", ")?.take(2)?.joinToString() else detail
+        val hasReasons = snapshot == ConnectionSnapshot.MessagesDropped || snapshot == ConnectionSnapshot.LimitReached
+        val newReason = hasReasons && reason != lastReason[service]
         if (connectionNow[service] == snapshot && !newReason) return
         connectionNow[service] = snapshot
-        if (snapshot == ConnectionSnapshot.MessagesDropped) droppedDetail[service] = detail else droppedDetail.remove(service)
+        if (hasReasons) lastReason[service] = reason else lastReason.remove(service)
         val now = clock()
         val open = openOutage[service]
         if (snapshot == ConnectionSnapshot.Up) {
@@ -261,6 +264,7 @@ class Logbook(
             ConnectionSnapshot.LoginExpired -> LogConnectionState.LoginExpired
             ConnectionSnapshot.KeyRefused -> LogConnectionState.KeyRefused
             ConnectionSnapshot.MessagesDropped -> LogConnectionState.MessagesDropped
+            ConnectionSnapshot.LimitReached -> LogConnectionState.LimitReached
             else -> LogConnectionState.KeyExpiring
         }
         val row = open ?: "conn:${service.name}:$now".also { openOutage[service] = it }

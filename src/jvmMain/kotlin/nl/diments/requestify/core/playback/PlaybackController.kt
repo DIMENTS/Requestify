@@ -1,10 +1,12 @@
 package nl.diments.requestify.core.playback
 
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -19,10 +21,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import nl.diments.requestify.core.model.RejectReason
 import nl.diments.requestify.core.model.Request
 import nl.diments.requestify.core.model.Track
@@ -81,28 +84,11 @@ sealed interface SpotifyHealth {
     /** Spotify was never connected (or was logged out). */
     data object LoggedOut : SpotifyHealth
     data object PremiumRequired : SpotifyHealth
-    data class RateLimited(val untilEpochMs: Long) : SpotifyHealth
+
+    /** Spotify asked to wait. [quota]: for hours rather than seconds, perhaps; [detail] says why, for the Log. */
+    data class RateLimited(val untilEpochMs: Long, val quota: Boolean = false, val detail: String? = null) : SpotifyHealth
     data class Unreachable(val message: String) : SpotifyHealth
 }
-
-/**
- * [nearEndPollMs]: how often Spotify is polled while a song plays its last [nearEndWindowMs] (not while it is
- * paused). [playIntentSettleMs]: how long a pause or resume is shown while Spotify still reports the state from
- * before it (its Web API takes a moment to catch up). [upcomingRefreshMs]: how often Spotify's queue is read again
- * when nothing else asked for it, and how often the saved position of the song playing is brought up to date.
- * [recentlyPlayedRefreshMs]: how often Spotify's recently played song is asked for while nothing is active.
- * [deviceCheckMs]: how often Spotify's devices are read again while nothing is active, to make one active.
- */
-data class PlaybackConfig(
-    val handoverLeadMs: Long = 15_000,
-    val idlePollMs: Long = 3_000,
-    val nearEndPollMs: Long = 1_000,
-    val nearEndWindowMs: Long = 20_000,
-    val playIntentSettleMs: Long = 4_000,
-    val upcomingRefreshMs: Long = 30_000,
-    val recentlyPlayedRefreshMs: Long = 60_000,
-    val deviceCheckMs: Long = 6_000,
-)
 
 /**
  * Owns the request queue and hands its head to Spotify shortly before the current track ends. With an
@@ -119,13 +105,17 @@ data class PlaybackConfig(
  * edits wait in order and are applied on top of it once a later tick or edit reads it; [submit] and
  * [removeMatching] wait for it themselves, as they answer with what they did.
  *
+ * Spotify limits the calls an app may make, so it is polled no more than needed ([PollPace]), and least while nobody
+ * needs to know what plays: not [engaged], and no request queued, handed over or playing. A change, a button,
+ * [engaged] and [lookAgain] wake the loop.
+ *
  * Besides the polls, Spotify's queue ([upcoming]) and its recently played songs are read only when something
  * changed or a while has passed, never on every poll. None of these reads ever changes [health], but when Spotify
- * asks to wait after one, the next poll waits as it does after any other call.
+ * asks to wait after one, the next poll waits as it does after any other call (unless only that read's quota is used up).
  *
  * Spotify's Web API only reaches its active device, and Spotify lets a device go when it has not played for a
  * while (or was just opened). So while nothing is active, the first device Spotify lists is made active, without
- * playing: at once, also at startup, and again every [PlaybackConfig.deviceCheckMs] until one is. Only when no
+ * playing: at once, also at startup, and again ever less often ([PlaybackConfig.deviceCheckMs]) until one is. Only when no
  * device takes commands does [health] say so ([SpotifyHealth.NoActiveDevice]).
  */
 class PlaybackController(
@@ -137,6 +127,8 @@ class PlaybackController(
     private val clock: () -> Long,
     private val config: PlaybackConfig = PlaybackConfig(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Somebody needs to know what plays: the window is shown or the stream is live. */
+    private val engaged: StateFlow<Boolean> = MutableStateFlow(true),
 ) {
     private val _queue = MutableStateFlow(RequestQueue())
     private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
@@ -155,6 +147,9 @@ class PlaybackController(
 
     /** When Spotify's devices are read while nothing is active, and which is made active. Guarded by [spotifyMutex]. */
     private val deviceBook = DeviceBook(config, clock)
+
+    /** When Spotify is polled. Guarded by [spotifyMutex]. */
+    private val pace = PollPace(config, clock)
 
     val queue: StateFlow<RequestQueue> = _queue.asStateFlow()
 
@@ -227,6 +222,15 @@ class PlaybackController(
      */
     private var commandFoundNoDevice = false
 
+    /**
+     * Spotify's quota for adding to its queue is used up until then: [health] says so meanwhile, not only when a request
+     * would go. Guarded by [stateMutex]; never saved.
+     */
+    private var handOverHeld: SpotifyHealth.RateLimited? = null
+
+    /** Spotify had something active at the last poll it answered. Guarded by [spotifyMutex]. */
+    private var wasActive = false
+
     /** Edits made before the saved state could be read, in order. Guarded by [stateMutex]. */
     private val waitingEdits = mutableListOf<() -> Unit>()
 
@@ -244,18 +248,67 @@ class PlaybackController(
     private var handingOver: HandingOver? = null
 
     private val wake = Channel<Unit>(Channel.CONFLATED)
+
+    /** Like [wake], but also ends a wait Spotify asked for. */
+    private val urgentWake = Channel<Unit>(Channel.CONFLATED)
+
+    /** Somebody needs to know again since the last tick. */
+    private val lookAgainAsked = AtomicBoolean(false)
+
+    @Volatile private var polledAtMs: Long? = null
     private var loop: Job? = null
 
     /** Starts polling Spotify; does nothing when the loop already runs. */
     fun start() {
         if (loop?.isActive == true) return
         loop = scope.launch {
-            launch { requestsOpen.drop(1).collect { open -> if (open) wake.trySend(Unit) } }
-            while (true) {
-                val next = tickSafely()
-                if (next.wakeable) withTimeoutOrNull(next.afterMs) { wake.receive() } else delay(next.afterMs)
-            }
+            launch { requestsOpen.drop(1).collect { open -> if (open) askToLookAgain() } }
+            launch { engaged.drop(1).collect { if (it) askToLookAgain() } }
+            while (true) awaitNext(tickSafely())
         }
+    }
+
+    /**
+     * Waits for [next], or until woken. In stretches: a wait of hours must end when the wall clock says so (the PC
+     * slept meanwhile), or when that clock was set back, and a failed save is tried again meanwhile.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class) // onTimeout: a wake-up at the very moment a stretch ends is not lost
+    private suspend fun awaitNext(next: NextTick) {
+        var left = next.afterMs
+        var deaf = next.deafMs
+        while (left > 0) {
+            val longest = if (_persistError.value != null) config.retryMs else WAIT_STRETCH_MS
+            val stretch = minOf(left, longest, if (deaf > 0) deaf else left)
+            val from = clock()
+            val woken = select {
+                urgentWake.onReceive { true }
+                if (deaf <= 0) wake.onReceive { true }
+                onTimeout(stretch) { false }
+            }
+            val now = clock()
+            if (woken || now < from) return
+            val passed = maxOf(stretch, now - from)
+            left -= passed
+            deaf -= passed
+            if (left > 0 && _persistError.value != null) syncState()
+        }
+    }
+
+    /** The streamer looks at Requestify (again): asks Spotify at once, unless it was asked a moment ago. */
+    fun lookAgain() {
+        val polledAt = polledAtMs
+        if (polledAt == null || clock() - polledAt !in 0 until config.lookAgainGapMs) askToLookAgain()
+    }
+
+    private fun askToLookAgain() {
+        lookAgainAsked.set(true)
+        wake.trySend(Unit)
+    }
+
+    /** The login is another one, or gone: asks Spotify at once, also while it asked to wait. */
+    fun pollNow() {
+        lookAgainAsked.set(true)
+        urgentWake.trySend(Unit)
     }
 
     /**
@@ -270,7 +323,12 @@ class PlaybackController(
 
     /** Adds [request] unless a request with its id is already queued, handed over or playing. */
     fun enqueue(request: Request) {
-        change { if (!isKnown(request.id)) _queue.value = _queue.value.add(request, paidPriority()) }
+        change {
+            if (!isKnown(request.id)) {
+                _queue.value = _queue.value.add(request, paidPriority())
+                askToLookAgain()
+            }
+        }
     }
 
     /**
@@ -306,7 +364,7 @@ class PlaybackController(
             if (!isKnown(request.id)) {
                 decide(stateSnapshot())?.let { return@withState SubmitOutcome.Rejected(it) }
                 _queue.value = _queue.value.add(request, paidPriority())
-                wake.trySend(Unit) // under the lock, like [syncLocked]
+                askToLookAgain() // under the lock, like [syncLocked]
             }
             whereIs(request.id)
         }
@@ -415,11 +473,17 @@ class PlaybackController(
     }
 
     /**
-     * [skip], but only while [trackId] is still the track playing (the last poll found it, and no tick can change that
-     * while this holds [spotifyMutex]): a block that took a moment never skips the song after it. True when it skipped.
+     * [skip], but only while [trackId] is still the track playing: a block that took a moment never skips the song after
+     * it. The last poll can be a while ago, so Spotify is asked (when it does not answer, that poll decides). True when
+     * it skipped.
      */
     suspend fun skipIfPlaying(trackId: String): Boolean = spotifyMutex.withLock {
         if (liveTrackId() != trackId) return@withLock false
+        val now = player.currentlyPlaying()
+        if (now is SpotifyResult.Ok && now.value?.track?.id != trackId) {
+            wake.trySend(Unit) // what is shown is out of date
+            return@withLock false
+        }
         skipLocked()
         true
     }
@@ -433,6 +497,7 @@ class PlaybackController(
         }
         val skipped = player.skipNext()
         stateMutex.withLock { commandAnswered(skipped) }
+        if (skipped is SpotifyResult.Ok) pace.commandTaken(liveTrackId())
         upcomingBook.markStale()
         wake.trySend(Unit)
     }
@@ -446,6 +511,7 @@ class PlaybackController(
         spotifyMutex.withLock {
             val result = player.skipPrevious()
             stateMutex.withLock { commandAnswered(result) }
+            if (result is SpotifyResult.Ok) pace.commandTaken(liveTrackId())
             upcomingBook.markStale()
             wake.trySend(Unit)
         }
@@ -457,7 +523,11 @@ class PlaybackController(
     /** The Spotify login changed: the permission is checked again by asking for the recently played song. */
     fun onLoginChanged() {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            stateMutex.withLock { lastPlayedBook.onLoginChanged() }
+            stateMutex.withLock {
+                lastPlayedBook.onLoginChanged()
+                handOverHeld = null
+            }
+            pollNow()
         }
     }
 
@@ -478,6 +548,8 @@ class PlaybackController(
                 if (result !is SpotifyResult.Ok) refused(intent)
                 commandAnswered(result)
             }
+            // With nothing shown there is no intent to confirm, but something may play in a moment.
+            if (intent == null && result is SpotifyResult.Ok) pace.commandTaken(null)
             wake.trySend(Unit)
         }
     }
@@ -545,9 +617,9 @@ class PlaybackController(
     /** [syncLocked] under [stateMutex]. */
     private suspend fun syncState(): Boolean = stateMutex.withLock { syncLocked() }
 
-    /** Reads the saved state if needed, trying again every [PlaybackConfig.idlePollMs] until it can be read. */
+    /** Reads the saved state if needed, trying again every [PlaybackConfig.retryMs] until it can be read. */
     private suspend fun awaitLoaded() {
-        while (!syncState()) delay(config.idlePollMs)
+        while (!syncState()) delay(config.retryMs)
     }
 
     /**
@@ -583,7 +655,12 @@ class PlaybackController(
 
     private suspend fun tickSafely(): NextTick = spotifyMutex.withLock {
         // Without the saved state nothing can be handed over safely: the next poll tries to read it again.
-        if (!syncState()) return@withLock NextTick(config.idlePollMs)
+        if (!syncState()) return@withLock NextTick(config.retryMs)
+        if (lookAgainAsked.getAndSet(false)) {
+            pace.lookAgain()
+            deviceBook.markStale()
+        }
+        polledAtMs = clock()
         try {
             tick()
         } catch (e: CancellationException) {
@@ -597,8 +674,16 @@ class PlaybackController(
     private fun crashed(e: Exception): NextTick {
         wake.tryReceive() // like [failed]
         _health.value = SpotifyHealth.Unreachable(e.message ?: e::class.simpleName ?: "error")
-        return NextTick(config.idlePollMs)
+        return nextTryAfterFailure()
     }
+
+    /**
+     * Nobody needs to know what plays: not [engaged], and no request is queued, handed over or playing. With nothing
+     * [active] the last two can be left from long ago (the PC was shut down while a request played), so they do not
+     * count. Caller holds [stateMutex].
+     */
+    private fun isQuiet(active: Boolean): Boolean =
+        !engaged.value && _queue.value.items.isEmpty() && (!active || (_handedOver.value == null && playing == null))
 
     /**
      * Spotify calls run between the state sections; health is published once, at the end. The section that
@@ -610,43 +695,47 @@ class PlaybackController(
             else -> return withState { failed(result) }
         }
         val track = cp?.track
-        val spotifyQueue = if (withState { needsSpotifyQueueCheck(track?.id) }) {
-            when (val result = player.userQueueTrackIds()) {
-                is SpotifyResult.Ok -> result.value
-                else -> return withState { failed(result) }
-            }
-        } else {
-            null
-        }
+        val sampledAt = clock()
+        wasActive = cp != null
+        val quiet = withState { isQuiet(active = cp != null) }
+        val queueCheck = if (withState { needsSpotifyQueueCheck(track?.id) }) player.userQueueTrackIds() else null
+        val spotifyQueue = (queueCheck as? SpotifyResult.Ok)?.value
+        // Its quota is used up, for hours perhaps: the song change cannot be settled yet, but the rest goes on.
+        val checkHeld = queueCheck is SpotifyResult.RateLimited && queueCheck.quota
+        if (queueCheck != null && spotifyQueue == null && !checkHeld) return withState { failed(queueCheck) }
         // The handed-over request left Spotify's queue: its recently played tells whether it played meanwhile.
         val playedSince = spotifyQueue
             ?.let { ids -> withState { playedCheckSince(ids) } }
             ?.let { since -> player.recentlyPlayedSince(since) }
-        val recentAskedUnder = if (cp == null) withState { lastPlayedBook.recentlyPlayedDue() } else null
+        // Held for a moment only: settled on the next tick, with the answer.
+        val unsettled = checkHeld || (playedSince is SpotifyResult.RateLimited && !playedSince.quota)
+        val recentAskedUnder = if (cp == null) withState { lastPlayedBook.recentlyPlayedDue(quiet = !engaged.value) } else null
         val recent = recentAskedUnder?.let { player.recentlyPlayed() }
         if (cp != null) deviceBook.reset() // look again as soon as nothing is active
-        val connect = if (cp == null && deviceBook.due()) connectDevice() else null
-        val remainingMs = if (cp != null && track != null) track.durationMs - cp.progressMs else null
+        val connect = if (cp == null && deviceBook.due(quiet = !engaged.value)) connectDevice() else null
+        // As it is now, not when Spotify answered: the reads since can have taken a while.
+        fun remainingMs(): Long? {
+            val atSample = if (cp != null && track != null) track.durationMs - cp.progressMs else return null
+            return if (cp.isPlaying) atSample - (clock() - sampledAt).coerceAtLeast(0) else atSample
+        }
         val head = withState {
             wake.tryReceive()
             if (recentAskedUnder != null && recent != null) lastPlayedBook.answeredRecentlyPlayed(recent, recentAskedUnder)
-            if (track?.id != lastTrackId) {
+            if (track?.id != lastTrackId && !unsettled) {
                 settleTrackChange(track?.id, spotifyQueue, (playedSince as? SpotifyResult.Ok)?.value)
             }
             _nowPlaying.value = lastPlayedBook.show(cp, playing, _nowPlaying.value, ::withPlayIntent)
-            if (remainingMs != null && remainingMs <= config.handoverLeadMs) pickForHandOver(track?.id) else null
+            if (remainingMs().let { it != null && it <= config.handoverLeadMs }) pickForHandOver(track?.id) else null
         }
         val handOverResult = head?.let { handOver(it) }
         if (cp == null) upcomingBook.reset() // read again as soon as something is active
         // After the hand-over, so Spotify's queue already has it.
-        val upcoming = if (upcomingBook.due(cp != null, track?.id, handOverResult)) {
+        val upcoming = if (upcomingBook.due(cp != null && !quiet, track?.id, handOverResult, cp?.isPlaying == true)) {
             upcomingBook.markRead(track?.id)
             player.userQueue()
         } else {
             null
         }
-        // Only while Spotify plays: a paused song gets no nearer its end.
-        val nearEnd = cp?.isPlaying == true && remainingMs != null && remainingMs <= config.nearEndWindowMs
         return withState {
             if (cp == null) {
                 _upcoming.value = emptyList()
@@ -655,22 +744,44 @@ class PlaybackController(
                 if (upcoming is SpotifyResult.Ok) _upcoming.value = upcomingBook.from(upcoming.value, _handedOver.value)
             }
             if (connect?.madeActive == true) commandFoundNoDevice = false
+            if (handOverResult != null) handOverHeld = healthOf(handOverResult) as? SpotifyHealth.RateLimited
+            val held = handOverHeld?.takeIf { it.quota && clock() < it.untilEpochMs }
             _health.value = when {
                 handOverResult != null && handOverResult !is SpotifyResult.Ok -> healthOf(handOverResult)
+                checkHeld -> healthOf(queueCheck)
+                held != null -> held
                 cp == null && (commandFoundNoDevice || deviceBook.noDevice) -> SpotifyHealth.NoActiveDevice
                 cp == null -> SpotifyHealth.NothingPlaying
                 else -> SpotifyHealth.Ok
             }
-            val pollMs = when {
-                playIntent != null -> config.nearEndPollMs // soon picks up Spotify's confirmation
-                nearEnd -> config.nearEndPollMs
-                connect?.madeActive == true -> config.nearEndPollMs // soon shows what the device has
-                else -> config.idlePollMs
-            }
+            val refused = handOverResult != null && handOverResult !is SpotifyResult.Ok
+            val handOverWaits = handOverCandidate(track?.id) != null
+            // The reads took so long that its moment came after it was decided on.
+            val handOverLate = head == null && handOverWaits && cp?.isPlaying == true &&
+                remainingMs().let { it != null && it <= config.handoverLeadMs }
+            val paceMs = pace.next(
+                Polled(
+                    active = cp != null,
+                    trackId = track?.id,
+                    isPlaying = cp?.isPlaying == true,
+                    remainingMs = remainingMs(),
+                    handOverWaits = handOverWaits,
+                    // A held call is answered at once, without a try: no reason to hurry.
+                    handOverRefused = refused && handOverResult !is SpotifyResult.RateLimited,
+                    // Spotify's confirmation of a pause or resume, or what the device has.
+                    settling = playIntent != null || connect?.madeActive == true || handOverLate,
+                    quiet = isQuiet(active = cp != null),
+                ),
+            )
+            // Somebody needs to know since this tick began: what it asked for was for nobody.
+            val pollMs = if (lookAgainAsked.get()) minOf(paceMs, config.settlePollMs) else paceMs
             // Spotify asked to wait, also when only an extra read was refused: no sooner than it said, nor than usual.
+            // A quota used up is that call's alone: it is held by itself.
             val limited = listOf(handOverResult, upcoming, recent, playedSince, connect?.result)
-                .firstNotNullOfOrNull { it as? SpotifyResult.RateLimited }
-            if (limited != null) NextTick(maxOf(retryAfterMs(limited), pollMs), wakeable = false) else NextTick(pollMs)
+                .firstNotNullOfOrNull { (it as? SpotifyResult.RateLimited)?.takeUnless(SpotifyResult.RateLimited::quota) }
+            if (limited == null) return@withState NextTick(pollMs)
+            val asked = retryAfterMs(limited)
+            NextTick(maxOf(asked, pollMs), deafMs = asked)
         }
     }
 
@@ -734,7 +845,7 @@ class PlaybackController(
      * ([RequestEvent.Started]) or [spotifyQueue] no longer has it. Then, when it is in [playedSince] (Spotify's
      * recently played since its hand-over), it played while nobody watched, e.g. while the app was closed: it gets
      * its [RequestEvent.Started] and goes to history. Otherwise (also when that read failed, [playedSince] null) it
-     * goes back to the head. A failed queue check never gets here, so [lastTrackId] stays put and the next tick
+     * goes back to the head: rather played twice than, paid for, never. A failed queue check never gets here, so [lastTrackId] stays put and the next tick
      * settles the change again.
      */
     private fun settleTrackChange(trackId: String?, spotifyQueue: List<String>?, playedSince: List<RecentTrack>?) {
@@ -829,10 +940,17 @@ class PlaybackController(
         wake.tryReceive()
         _health.value = healthOf(result)
         return if (result is SpotifyResult.RateLimited) {
-            NextTick(retryAfterMs(result), wakeable = false)
+            NextTick(retryAfterMs(result), deafMs = retryAfterMs(result))
         } else {
-            NextTick(config.idlePollMs)
+            nextTryAfterFailure()
         }
+    }
+
+    /** Caller holds [spotifyMutex] and [stateMutex]. */
+    private fun nextTryAfterFailure(): NextTick {
+        val waitMs = pace.failed(isQuiet(active = wasActive))
+        // Somebody needs to know since this tick began.
+        return NextTick(if (lookAgainAsked.get()) minOf(waitMs, config.failedPollMs) else waitMs)
     }
 
     private fun healthOf(result: SpotifyResult<*>): SpotifyHealth = when (result) {
@@ -841,14 +959,14 @@ class PlaybackController(
         SpotifyResult.PremiumRequired -> SpotifyHealth.PremiumRequired
         SpotifyResult.LoginNeeded -> SpotifyHealth.LoginNeeded
         SpotifyResult.LoggedOut -> SpotifyHealth.LoggedOut
-        is SpotifyResult.RateLimited -> SpotifyHealth.RateLimited(clock() + retryAfterMs(result))
+        is SpotifyResult.RateLimited -> SpotifyHealth.RateLimited(clock() + retryAfterMs(result), result.quota, result.detail)
         is SpotifyResult.Failed -> SpotifyHealth.Unreachable(result.message)
         SpotifyResult.NotFound -> SpotifyHealth.Unreachable("not found")
         SpotifyResult.MissingPermission -> SpotifyHealth.Unreachable("missing permission")
     }
 
-    /** Never shorter than [PlaybackConfig.nearEndPollMs], so a `Retry-After: 0` cannot make the loop spin. */
-    private fun retryAfterMs(result: SpotifyResult.RateLimited): Long = maxOf(result.retryAfterMs, config.nearEndPollMs)
+    /** Never shorter than [PlaybackConfig.settlePollMs], so a `Retry-After: 0` cannot make the loop spin. */
+    private fun retryAfterMs(result: SpotifyResult.RateLimited): Long = maxOf(result.retryAfterMs, config.settlePollMs)
 
     /**
      * Reads the saved state before the first change or tick, so nothing written earlier is overwritten. False
@@ -917,8 +1035,8 @@ class PlaybackController(
         }
     }
 
-    /** When the loop polls again; a rate-limit wait is not cut short by wake-ups. */
-    private class NextTick(val afterMs: Long, val wakeable: Boolean = true)
+    /** When the loop polls again. Wake-ups cut it short, but only urgent ones within the [deafMs] Spotify asked for. */
+    private class NextTick(val afterMs: Long, val deafMs: Long = 0)
 
     /** How [connectDevice] went: Spotify's last answer, and whether a device is active now. */
     private class DeviceConnect(val result: SpotifyResult<*>, val madeActive: Boolean)
@@ -934,3 +1052,6 @@ class PlaybackController(
 
 /** How often [PlaybackController.awaitSaved] tries queue.json again while it cannot be saved. */
 private const val SAVE_RETRY_MS = 1_000L
+
+/** The longest the loop waits without looking at the clock. */
+private const val WAIT_STRETCH_MS = 60_000L

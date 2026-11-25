@@ -66,6 +66,7 @@ class PlaybackControllerFollowUpTest {
         paidPriority = { true },
         scope = backgroundScope,
         clock = { testScheduler.currentTime },
+        config = STEADY_POLLS,
         ioDispatcher = StandardTestDispatcher(testScheduler),
     )
 
@@ -195,7 +196,8 @@ class PlaybackControllerFollowUpTest {
         runCurrent()
         val first = player.pollTimes().single()
 
-        assertEquals(listOf(r1), controller.queue.value.items)
+        assertEquals(r1, controller.handedOver.value, "not settled without the answer: it may have played")
+        assertTrue(controller.queue.value.items.isEmpty())
         controller.enqueue(r2) // a wake-up must not cut the wait short
         advance(6_999)
         assertEquals(listOf(first), player.pollTimes())

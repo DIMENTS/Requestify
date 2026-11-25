@@ -346,7 +346,7 @@ class HomeViewModelTest {
         assertEquals(listOf(track("next-1"), track("next-2")), home.vm.state.value.upcoming)
 
         home.player.currentlyPlayingResult = SpotifyResult.Ok(null) // Spotify stopped
-        advanceTimeBy(PlaybackConfig().idlePollMs)
+        advanceTimeBy(PlaybackConfig().playingPollMs)
         settle()
         assertEquals(emptyList(), home.vm.state.value.upcoming)
     }

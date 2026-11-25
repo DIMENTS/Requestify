@@ -8,6 +8,7 @@ import nl.diments.requestify.core.spotify.SpotifyDevice
  */
 internal class DeviceBook(private val config: PlaybackConfig, private val clock: () -> Long) {
     private var readAtMs: Long? = null // null: read them on the next tick that finds nothing active
+    private var reads = 0 // in a row
 
     /**
      * The last read found no device that takes commands, so Spotify is open nowhere: until a read finds one or
@@ -16,25 +17,33 @@ internal class DeviceBook(private val config: PlaybackConfig, private val clock:
     var noDevice = false
         private set
 
-    /** Whether the devices are read on this tick: at once when nothing is active, then every [PlaybackConfig.deviceCheckMs]. */
-    fun due(): Boolean {
+    /**
+     * Whether the devices are read on this tick: at once when nothing is active, then after
+     * [PlaybackConfig.deviceCheckMs], doubling to [PlaybackConfig.deviceCheckMaxMs], or while [quiet] to
+     * [PlaybackConfig.quietDeviceCheckMs].
+     */
+    fun due(quiet: Boolean): Boolean {
         val readAt = readAtMs ?: return true
-        return clock() - readAt >= config.deviceCheckMs
+        val wait = grown(config.deviceCheckMs, if (quiet) config.quietDeviceCheckMs else config.deviceCheckMaxMs, reads - 1)
+        return clock() - readAt !in 0 until wait
     }
 
     /** The devices are being read now. */
     fun markRead() {
         readAtMs = clock()
+        reads++
     }
 
-    /** A command found no active device: read the devices on the next tick. */
+    /** A command found no active device, or somebody looks again: read the devices on the next tick. */
     fun markStale() {
         readAtMs = null
+        reads = 0
     }
 
     /** Something is active: read the devices as soon as nothing is. */
     fun reset() {
         readAtMs = null
+        reads = 0
         noDevice = false
     }
 

@@ -193,6 +193,7 @@ class SavedFormatCompatTest {
         val enums = listOf(
             AppJson.instance.encodeToString(LogService.serializer(), LogService.StreamElements) to "\"streamelements\"",
             AppJson.instance.encodeToString(LogConnectionState.serializer(), LogConnectionState.KeyExpiring) to "\"key_expiring\"",
+            AppJson.instance.encodeToString(LogConnectionState.serializer(), LogConnectionState.LimitReached) to "\"limit_reached\"",
             AppJson.instance.encodeToString(LogStreamChange.serializer(), LogStreamChange.OpenedByHand) to "\"opened_by_hand\"",
             AppJson.instance.encodeToString(RemoveReason.serializer(), RemoveReason.StreamEnded) to "\"stream_ended\"",
         )
